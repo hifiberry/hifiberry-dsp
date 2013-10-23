@@ -15,7 +15,7 @@ for i in range(0,size/16):
 	for j in range(0,16):
                 v=eeprom.eeprom_read_byte(i*16+j)
 		if ((v>=32) and (v<=127)):
-			print "{c}".format(v),
+			print "{:c}".format(v),
 		else:
 			print ".",
 
