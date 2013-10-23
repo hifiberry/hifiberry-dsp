@@ -58,7 +58,7 @@ def read_txbuffer(filename):
 
 			name=match.group(1)
 			addresslist=hex_line_to_int(line);
-			address=addresslist[1]*256+addresslist[0]
+			address=addresslist[0]*256+addresslist[1]
 		else:
 			data.extend(hex_line_to_int(line))
 
@@ -86,10 +86,12 @@ def commands(address,data,minlen=0):
 # generate the full commands for a list of blocks.first block will be extended to 32 byte to ensure compatibility with writeback 
 # mechanism of the DSP
 #
-def txbuffer_data_to_eeprom(blocks):
+def txbuffer_data_to_eeprom(blocks,verbose=0):
 	i=0
 	res=[]
 	for b in blocks:
+		if (verbose):
+			print "{0} @ {1:04X}".format(b['name'],b['address'])
 		i+=1
 		minlen=0
 		if (i==1):
@@ -100,4 +102,4 @@ def txbuffer_data_to_eeprom(blocks):
 		
 
 data=read_txbuffer("demo/txbuffer.dat")
-dump_data(txbuffer_data_to_eeprom(data))
+dump_data(txbuffer_data_to_eeprom(data,1))
