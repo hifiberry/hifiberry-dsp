@@ -17,18 +17,21 @@ def write_device(data, destination=DSP):
 		# split into 32 byte blocks
 		while len(code) > 0:
 			block=code[0:blocksize-1]
-			print block
+			# print block
 			eeprom.eeprom_write_block(0x50,block)
 			code=code[blocksize:]
 			addr += blocksize;
 	elif destination==DSP:
 		for block in data:
-			dsp_i2c.dsp_write_block(block["address"],block["data"])
+			addr=block["address"]
+			data=block["data"]
+			print "Writing {0} at {1:04X} ({1}), {2} byte".format(block["name"],addr,len(data))
+			dsp_i2c.dsp_write_block(addr,data)
 		
 
 def main(argv):
 	address=0x50
-	file="demo/txbuffer-ledon.dat"
+	file=argv[1]
 
 	data=sigmaimporter.read_txbuffer(file)
 	if (len(data)==0):
