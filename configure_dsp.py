@@ -67,8 +67,11 @@ def main(argv=None):
         print corereg
         # Calculate parameter value
         parameters=hardware.network_to_sigmadsp_config(network)
-        print parameters
-    
+        # write calculated parameters
+        # TODO: mute
+        for paramaddr in parameters:
+            adau1701.write_param(int(paramaddr),parameters[paramaddr])
+        # TODO: unmute
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

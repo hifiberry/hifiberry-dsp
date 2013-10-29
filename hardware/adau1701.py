@@ -74,7 +74,15 @@ def dsp_write_small_block(addr,data):
 	if smb:
 		smb.write_i2c_block_data(I2C_SLAVEADDR,a1,data)
 	else:
-		print "I2C write @{}".format(I2C_SLAVEADDR)
+		print "Simulated I2C write address={}".format(addr)
+		
+def write_param(paramaddr,value):
+	# convert to 4 byte representation first
+	values=[]
+	for _i in range(0,4):
+		values.insert(0,value%256)
+		value/=256
+	dsp_write_small_block(paramaddr, values)
 		
 # generate a full memory dump based on the content parsed from TXBuffer
 def memory_map_from_blocks(blocks):
