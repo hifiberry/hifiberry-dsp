@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #
 # Methods for handling SigmaStudio compiler output
 #
@@ -99,7 +100,7 @@ def txbuffer_data_to_eeprom(blocks,verbose=0):
 		cmd=commands(b['address'],b['data'],minlen);
 		res.extend(cmd)
 	return res
-		
+
 
 if __name__ == "__main__":
 	data=read_txbuffer("demo/txbuffer.dat")
