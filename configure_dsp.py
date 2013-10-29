@@ -67,6 +67,8 @@ def main(argv=None):
         print corereg
         # Calculate parameter value
         parameters=hardware.network_to_sigmadsp_config(network)
+        for p in sorted(parameters):
+            print "{}: {}".format(p,parameters[p])
         # write calculated parameters
         # TODO: mute
         pa=[]
@@ -75,7 +77,10 @@ def main(argv=None):
             pa.append(int(paramaddrstr))
             
         for paramaddr in sorted(pa):
-            adau1701.write_param(paramaddr,parameters[str(paramaddr)])
+            # Convert to internal SigmaDSP 28 bit representation
+            p=adau1701.float_to_28bit_fixed(parameters[str(paramaddr)])
+            print "Param@{}: {} (FP: {})".format(paramaddr,p,adau1701.dsp28bit_fixed_to_float(p))
+            adau1701.write_param(paramaddr,p)
         # TODO: unmute
 
 if __name__ == "__main__":
