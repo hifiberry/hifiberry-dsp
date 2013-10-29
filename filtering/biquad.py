@@ -10,7 +10,7 @@ by Robert Bristow-Johnson  <rbj@audioimagination.com>
 import math
 
 def _omega(f0,fs):
-    return math.pi*f0/fs
+    return math.pi*f0/fs*2
 
 def _alpha(omega,q):
     return math.sin(omega)/(2*q)
@@ -138,7 +138,7 @@ from A pratical guide for digital audio IIR filters
 http://freeverb3.sourceforge.net/iir_filter.shtml
 '''
 def low_pass_firstorder(f0,q,fs):
-    w = math.tan(math.pi*f0/fs/2)
+    w = math.tan(math.pi*f0/fs)
     n = 1/(1+w)
     b0 = w*n
     b1 = b0
@@ -146,13 +146,10 @@ def low_pass_firstorder(f0,q,fs):
     return [a1,0,b0,b1,0]
 
 def high_pass_firstorder(f0,q,fs):
-    w = math.tan(math.pi*f0/fs/2)
+    w = math.tan(math.pi*f0/fs)
     n = 1/(1+w)
     b0 = n
     b1 = -b0
     a1 = n*(w-1)    
     return [a1,0,b0,b1,0]
 
-    
-    
-    
