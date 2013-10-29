@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+#
 # Simple I2C EEPROM routines
 # works with 16-bit addressable EEPROMs (up to 64kB)
 
