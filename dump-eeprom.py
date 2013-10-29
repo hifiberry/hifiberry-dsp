@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # 
 # Dump the contents of an I2C EEPROM
 #
