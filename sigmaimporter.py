@@ -78,7 +78,8 @@ def commands(address,data,minlen=0):
         # 0x00          device address
         # a1 a0     	address of the program memory
 	size=len(data)
-	cmd=[0x01,size/256,size%256,0x00,address/256,address%256]+data
+	blocksize=size+3 # 3 additional bytes for device address and register address
+	cmd=[0x01,blocksize/256,blocksize%256,0x00,address/256,address%256]+data
 	while (len(cmd)<minlen):
 		cmd=cmd+[0x03]	# append NOOPs 
 	return cmd

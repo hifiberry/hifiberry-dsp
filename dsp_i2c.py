@@ -35,18 +35,18 @@ def addr2memsize(addr):
 		blocksize=1
 	return blocksize
 
-def dsp_write_block(addr,data):
-	# split into 32 byte blocks
+def dsp_write_block(addr,data,verbose=0):
+	# split into blocks, block size depends on the address
 	while len(data) > 0:
 		blocksize=addr2memsize(addr)
 		block=data[0:blocksize]
-		#print block
+		if (verbose):
+			print addr, block
 		dsp_write_small_block(addr,block)
 		data=data[blocksize:]
 		addr += 1;
 
 def dsp_write_small_block(addr,data):
-	print addr, data
 	a1=addr/256
 	a0=addr%256
 
