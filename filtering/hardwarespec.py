@@ -70,7 +70,8 @@ class HardwareSpec(object):
                         if not ignoremissing:
                             raise Exception("Address for {}.{} not found in parameter definition".format(n.name,v))
                     value=n.get_coefficient(v)
-                    res[str(addr)]=float_to_28bit_fixed(value)
+                    paramvalue=float_to_28bit_fixed(value)
+                    res[str(addr)]=paramvalue
         return res;
     
     def get_programfile(self):
