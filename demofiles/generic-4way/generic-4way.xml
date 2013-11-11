@@ -1,8 +1,15 @@
 <dsp>
   <network samplerate="48000">
-  <input name="input1"/>
+    <input name="input1"/>
+    <input name="input2"/>
+    
+    <mixer name="mx1" input="input1,input2" dbgain="-6,-6"/>
+    <mixer name="mx2" input="input1,input2" dbgain="0,0"/>
+    <mixer name="mx3" input="input1,input2" dbgain="-3,-3"/>
+    <mixer name="mx4" input="input1,input2" dbgain="-3,-3"/>
 
-         <biquad name="bq11" input="input1" type="highpass1" frequency="200" q="0.7" />
+
+         <biquad name="bq11" input="mx1" type="highpass1" frequency="200" q="0.7" />
          <biquad name="bq12" input="bq11" type="highpass1" frequency="200" q="0.7" />
          <biquad name="bq13" input="bq12" type="lowpass1" frequency="2000" q="0.7" />
          <biquad name="bq14" input="bq13" type="lowpass1" frequency="2000" q="0.7" />
@@ -20,7 +27,7 @@
          <biquad name="bq116" input="bq115"/>
          <output name="out1" input="bq116" />
          
-         <biquad name="bq21" input="input1" type="highpass1" frequency="200" q="0.7" />
+         <biquad name="bq21" input="mx2" type="highpass1" frequency="200" q="0.7" />
          <biquad name="bq22" input="bq21" type="lowpass1" frequency="800" q="0.7" />
          <biquad name="bq23" input="bq22"/>
          <biquad name="bq24" input="bq23"/>
@@ -38,7 +45,7 @@
          <biquad name="bq216" input="bq215"/>
          <output name="out2" input="bq216" />
 
-         <biquad name="bq31" input="input1" type="highpass1" frequency="800" q="0.7" />
+         <biquad name="bq31" input="mx3" type="highpass1" frequency="800" q="0.7" />
          <biquad name="bq32" input="bq31" type="lowpass1" frequency="3000" q="0.7" />
          <biquad name="bq33" input="bq32"/>
          <biquad name="bq34" input="bq33"/>
@@ -56,7 +63,7 @@
          <biquad name="bq316" input="bq315"/>
          <output name="out3" input="bq316" />
  
-         <biquad name="bq41" input="input1" type="highpass1" frequency="3000" q="0.7"  />
+         <biquad name="bq41" input="mx4" type="highpass1" frequency="3000" q="0.7"  />
          <biquad name="bq42" input="bq41"/>
          <biquad name="bq43" input="bq42"/>
          <biquad name="bq44" input="bq43"/>

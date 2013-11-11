@@ -6,6 +6,7 @@ Created on 11.11.2013
 import re
 import os.path
 from filternetwork import *
+import filtermath
 
     
 '''
@@ -26,13 +27,26 @@ class HardwareSpec(object):
         
         # Regexps:
         #define MOD_BQ116_ALG0_STAGE0_B0_ADDR 89  -> BQ116, B0 = 89
+        #define MOD_MX1_ALG0_STAGE0_MONOSWITCHNOSLEW_ADDR
         biquad_re = re.compile('#define MOD_([A-Z0-9]*)_ALG0_STAGE0_([AB][012])_ADDR\s*([0-9]*)')
+        monomixer_re = re.compile("#define MOD_([A-Z0-9]*)_ALG0_STAGE([012]*)_MONOSWITCHNOSLEW_ADDR\s*([0-9]*)")
+        
+        #
         
         for line in f:
+            # Check for biquad
             match=biquad_re.match(line)
             if match:
                 name=match.group(1)+"__"+match.group(2)
-                self.address[name.lower()]=int(match.group(3)) 
+                self.address[name.lower()]=int(match.group(3))
+                continue
+            
+            # check for monoswitch, which is basically a mixer
+            match=monomixer_re.match(line)
+            if match:
+                name=match.group(1)+"__"+match.group(2)
+                self.address[name.lower()]=int(match.group(3))
+                continue
                 
                 
     def network_to_sigmadsp_config(self, network, ignoremissing=False):
@@ -63,6 +77,17 @@ class HardwareSpec(object):
                         paramvalue=value
                         
                     res[str(addr)]=paramvalue
+            if isinstance(n,Mixer):
+                gains=n.get_dbgains()
+                for i in range(0,len(gains)):
+                    try:
+                        addr=self.address[n.name+"__"+str(i)]
+                    except KeyError:
+                        if not ignoremissing:
+                            raise Exception("Address for {}.{} not found in parameter definition".format(n.name,v))
+                    value=gains[i] # TODO: convert to multiplier
+                    res[str(addr)]=filtermath.db_to_gain(value)
+                # TODO
         return res;
     
     def get_programfile(self):

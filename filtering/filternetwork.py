@@ -145,6 +145,32 @@ class Output(Filter):
         return self.name+" (Output)"
     
     
+class Mixer(Filter):
+    
+    def __init__(self):
+        super(Mixer,self).__init__()
+        self.inputs=[]
+        return
+    
+    def set_dbgains(self,gains):
+        self.gains=gains
+    
+    def get_dbgains(self):
+        return self.gains
+    
+    def set_inputs(self,inputs):
+        self.inputs=inputs
+        
+    def add_input(self,inputnode):
+        self.inputs.append(inputnode)
+    
+    def get_response(self):
+        ## TODO: phase correct addition of the signals
+        return self.inputs[0].get_response()
+
+    def __str__(self):
+        return self.name+" (Mixer)"
+    
     
     
 class BiQuad(Filter):

@@ -4,7 +4,7 @@ Created on 09.11.2013
 @author: matuschd
 '''
 
-from filternetwork import Input, BiQuad, Output, Network
+from filternetwork import Input, BiQuad, Output, Mixer, Network
 from hardwarespec import HardwareSpec
 from xml.dom import minidom
 import os
@@ -23,6 +23,8 @@ def filter_from_node(xmlnode, samplerate):
         filterelement=BiQuad()
     elif filtertype=="output":
         filterelement=Output()
+    elif filtertype=="mixer":
+        filterelement=Mixer()
     else:
         raise Exception("Unknown filter type "+filtertype)
         
@@ -45,16 +47,21 @@ def filter_from_node(xmlnode, samplerate):
         elif aName=="type":
             filterelement.set_type(aValue)
         elif aName=="dbgain":
-            filterelement.set_dbgain(float(aValue))
+            gains = [float(x) for x in aValue.split(",")]
+            if (len(gains)==1):
+                filterelement.set_dbgain(gains[0])
+            else:
+                filterelement.set_dbgains(gains)
         elif aName=="firstorder":
             if (aValue.lower() in ["yes","true","1"]):
                 filterelement.set_first_order(True)
         elif aName=="input":
-            # store the input names in a separate array to connect them later
-            try:
-                filterelement.imported_inputnames.append(aValue)
-            except AttributeError:
-                filterelement.imported_inputnames=[aValue] 
+            for inp in aValue.split(","):
+                # store the input names in a separate array to connect them later
+                try:
+                    filterelement.imported_inputnames.append(inp)
+                except AttributeError:
+                    filterelement.imported_inputnames=[inp] 
             
     # we need to calculate the coefficients for biquads
     if isinstance(filterelement, BiQuad):
@@ -96,7 +103,12 @@ def network_from_minidom(networknode):
                 raise Exception("Cannot connect {} with {}".format(f.name,inputnames[0]))
             
         else:
-            raise Exception("Multiple inputs on a filter not supported yet")
+            for i in inputnames:
+                inputobject=network.get_node_by_name(i)
+                if inputobject is not None:
+                    f.add_input(inputobject)
+                else:
+                    raise Exception("Cannot connect {} with {}".format(f.name,inputnames[0]))
     
     return network
     

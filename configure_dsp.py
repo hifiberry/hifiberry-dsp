@@ -67,8 +67,8 @@ def main(argv=None):
         print corereg
         # Calculate parameter value
         parameters=hardware.network_to_sigmadsp_config(network)
-        for p in sorted(parameters):
-            print "{}: {}".format(p,parameters[p])
+        #for p in sorted(parameters):
+        #    print "{}: {}".format(p,parameters[p])
         # write calculated parameters
         # TODO: mute
         pa=[]
