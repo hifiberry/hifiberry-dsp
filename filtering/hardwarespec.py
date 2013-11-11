@@ -38,7 +38,7 @@ class HardwareSpec(object):
         return
     
     def read_param_h(self):
-        f = open(self.param_h, 'r')
+        f = open(os.path.join(self.basedir,self.param_h), 'r')
         
         # Regexps:
         #define MOD_BQ116_ALG0_STAGE0_B0_ADDR 89  -> BQ116, B0 = 89

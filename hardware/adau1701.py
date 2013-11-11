@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Simple I2C DSP routines for Sigma DSP processors
+# Hardware routines for the ADAU1701
 # addressing is always done in 16bit
 
 try:
@@ -11,7 +11,10 @@ except ImportError:
 	i2c_available=False
 	smb=None
 
-slaveaddr=0x34;
+# ADAU1701 address range
+MAXADDRESS=2087
+I2C_SLAVEADDR=0x34
+COREREG_ADDR=2076
 
 def addr2memsize(addr):
 	if (addr < 1024):
@@ -40,6 +43,17 @@ def addr2memsize(addr):
 		blocksize=1
 	return blocksize
 
+def dsp_write_blocks(blocks, verbose=True):
+	if not i2c_available:
+			print "I2C not available, simulating only"
+	for block in blocks:
+		addr=block["address"]
+		data=block["data"]
+		if verbose:
+			print "Writing {0} at {1:04X} ({1}), {2} byte".format(block["name"],addr,len(data))
+		if i2c_available:
+			dsp_write_block(addr,data,verbose)
+
 def dsp_write_block(addr,data,verbose=0):
 	# split into blocks, block size depends on the address
 	while len(data) > 0:
@@ -50,6 +64,7 @@ def dsp_write_block(addr,data,verbose=0):
 		dsp_write_small_block(addr,block)
 		data=data[blocksize:]
 		addr += 1;
+		
 
 def dsp_write_small_block(addr,data):
 	a1=addr/256
@@ -57,7 +72,22 @@ def dsp_write_small_block(addr,data):
 
 	data.insert(0,a0);
 	if smb:
-		smb.write_i2c_block_data(slaveaddr,a1,data)
+		smb.write_i2c_block_data(I2C_SLAVEADDR,a1,data)
 	else:
-		print "I2C write @{}".format(slaveaddr)
+		print "I2C write @{}".format(I2C_SLAVEADDR)
+		
+# generate a full memory dump based on the content parsed from TXBuffer
+def memory_map_from_blocks(blocks):
+	mem=[0]*(MAXADDRESS+1)
+	for block in blocks:
+		addr=block["address"]
+		data=block["data"]
+		# split into blocks, block size depends on the address
+		while len(data) > 0:
+			blocksize=addr2memsize(addr)
+			block=data[0:blocksize]
+			mem[addr]=block
+			data=data[blocksize:]
+			addr += 1;
+	return mem
 		

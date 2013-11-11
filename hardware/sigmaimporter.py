@@ -11,10 +11,10 @@ import re
 def dump_data(data):
 	size=len(data)
 	for i in range(0,size/16):
-        	print "{0:04X}".format(i*16), " :  ", 
-        	for j in range(0,16):
-                	print "{0:02X}".format(data[i*16+j]), " ",
-        	print
+		print "{0:04X}".format(i*16), " :  ", 
+		for j in range(0,16):
+			print "{0:02X}".format(data[i*16+j]), " ",
+			print
 
 #
 # convert a comma seperated list of hex values to a list containing the integer values
@@ -44,10 +44,10 @@ def read_txbuffer(filename):
 	comment=re.compile('/\\*(.*)\\*/')
 	f = open(filename, 'r')
 	result=[]
-        data=[]
+	data=[]
 	address=0
 	name=None
-        for line in f:
+	for line in f:
 		match=comment.search(line)
 		if (match):	
 			# save last group object
@@ -67,16 +67,16 @@ def read_txbuffer(filename):
 	if (name):
 		result.append({'name': name, 'address': address, 'data': data})
 
-        return result
+	return result
 
 #
 # generates a write command for a block of data at a specific address
 #
 def commands(address,data,minlen=0):
 	# 0x01          write
-        # x y           2 byte length = len(data)
-        # 0x00          device address
-        # a1 a0     	address of the program memory
+	# x y           2 byte length = len(data)
+	# 0x00          device address
+	# a1 a0     	address of the program memory
 	size=len(data)
 	blocksize=size+3 # 3 additional bytes for device address and register address
 	cmd=[0x01,blocksize/256,blocksize%256,0x00,address/256,address%256]+data
@@ -101,8 +101,11 @@ def txbuffer_data_to_eeprom(blocks,verbose=0):
 		cmd=commands(b['address'],b['data'],minlen);
 		res.extend(cmd)
 	return res
+	
 
 
 if __name__ == "__main__":
 	data=read_txbuffer("demo/txbuffer.dat")
 	dump_data(txbuffer_data_to_eeprom(data,1))
+	
+	

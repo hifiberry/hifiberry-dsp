@@ -20,7 +20,7 @@ It defines classes_and_methods
 import sys
 import argparse
 import filtering.dspxml
-from hardware import sigmaimporter
+from hardware import sigmaimporter, adau1701
 
 
 __all__ = []
@@ -61,11 +61,14 @@ def main(argv=None):
     if args.writedsp:
         filename=hardware.get_programfile()
         data=sigmaimporter.read_txbuffer(filename)
-        print data
+        hardware.read_param_h()
+        adau1701.dsp_write_blocks(data, verbose=True)
+        corereg=data[len(data)-1]
+        print corereg
+        # Calculate parameter value
+        parameters=hardware.network_to_sigmadsp_config(network)
+        print parameters
     
-            
-    # MAIN BODY #
-        
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
