@@ -74,7 +74,7 @@ def dsp_write_small_block(addr,data):
 	if smb:
 		smb.write_i2c_block_data(I2C_SLAVEADDR,a1,data)
 	else:
-		print "Simulated I2C write address={}".format(addr)
+		print "Simulated I2C write address={} value={}".format(addr,data[1:])
 		
 def write_param(paramaddr,value):
 	# convert to 4 byte representation first

@@ -50,10 +50,15 @@ class HardwareSpec(object):
                 name=match.group(1)+"__"+match.group(2)
                 self.address[name.lower()]=int(match.group(3)) 
                 
+                
     def network_to_sigmadsp_config(self, network, ignoremissing=True):
         '''
         read all parameters from a network and create a hardware configuration
         '''
+        
+        for a in sorted(self.address):
+            print a+"  "+str(self.address[a])
+        
         res={}
         for n in network.get_nodes():
             if isinstance(n,BiQuad):
@@ -70,7 +75,12 @@ class HardwareSpec(object):
                         if not ignoremissing:
                             raise Exception("Address for {}.{} not found in parameter definition".format(n.name,v))
                     value=n.get_coefficient(v)
-                    paramvalue=float_to_28bit_fixed(value)
+                    if v.startswith("a"):
+                        paramvalue=float_to_28bit_fixed(value)
+                    else:
+                        # a1 and a2 needs to be inverted for the SigmaDSP BiQuad filter
+                        paramvalue=float_to_28bit_fixed(-value)
+                    
                     res[str(addr)]=paramvalue
         return res;
     

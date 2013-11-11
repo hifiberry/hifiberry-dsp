@@ -69,8 +69,13 @@ def main(argv=None):
         parameters=hardware.network_to_sigmadsp_config(network)
         # write calculated parameters
         # TODO: mute
-        for paramaddr in parameters:
-            adau1701.write_param(int(paramaddr),parameters[paramaddr])
+        pa=[]
+        # convert string to addresses and sort them
+        for paramaddrstr in parameters:
+            pa.append(int(paramaddrstr))
+            
+        for paramaddr in sorted(pa):
+            adau1701.write_param(paramaddr,parameters[str(paramaddr)])
         # TODO: unmute
 
 if __name__ == "__main__":
