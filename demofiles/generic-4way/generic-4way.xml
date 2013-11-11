@@ -2,7 +2,7 @@
   <network samplerate="48000">
   <input name="input1"/>
 
-         <biquad name="bq11" input="input1" type="lowpass1" frequency="200" q="0.7"/>
+         <biquad name="bq11" input="input1" />
          <biquad name="bq12" input="bq11"/>
          <biquad name="bq13" input="bq12"/>
          <biquad name="bq14" input="bq13"/>

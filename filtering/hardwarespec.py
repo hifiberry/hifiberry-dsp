@@ -56,7 +56,7 @@ class HardwareSpec(object):
                         if not ignoremissing:
                             raise Exception("Address for {}.{} not found in parameter definition".format(n.name,v))
                     value=n.get_coefficient(v)
-                    if v.startswith("b"):
+                    if v.startswith("a"):
                         # a1 and a2 needs to be inverted for the SigmaDSP BiQuad filter
                         paramvalue=-value
                     else:
