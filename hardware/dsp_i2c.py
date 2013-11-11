@@ -3,8 +3,13 @@
 # Simple I2C DSP routines for Sigma DSP processors
 # addressing is always done in 16bit
 
-from smbus import SMBus
-smb=SMBus(1);
+try:
+	from smbus import SMBus
+	i2c_available=True
+	smb=SMBus(1);
+except ImportError:
+	i2c_available=False
+	smb=None
 
 slaveaddr=0x34;
 
@@ -51,4 +56,7 @@ def dsp_write_small_block(addr,data):
 	a0=addr%256
 
 	data.insert(0,a0);
-	smb.write_i2c_block_data(slaveaddr,a1,data)
+	if smb:
+		smb.write_i2c_block_data(slaveaddr,a1,data)
+	else:
+		print "I2C write @{}".format(slaveaddr)

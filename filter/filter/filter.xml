@@ -1,9 +1,0 @@
-<network>
- <input name="input1"/>
- <biquad name="bq1" input="input1" />
- <biquad name="bq2" input="bq1" />
- <biquad name="bq3" input="bq2" />
- <biquad name="bq4" input="bq3" />
- <biquad name="bq5" input="bq4" />
- <output input="bq5" />
-</network>

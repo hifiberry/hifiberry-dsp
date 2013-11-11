@@ -19,17 +19,21 @@ BIQUAD_ALLPASS=6
 BIQUAD_PEAKING_EQ=7
 BIQUAD_LOW_SHELF=8
 BIQUAD_HIGH_SHELF=9
+BIQUAD_LOWPASS_FIRSTORDER=10
+BIQUAD_HIGHPASS_FIRSTORDER=11
 
-BIQUAD_TYPES = {'general':          BIQUAD_GENERAL, 
-                'lowpass':          BIQUAD_LOWPASS,
-                'highpass':         BIQUAD_HIGHPASS,
-                'bandpass_peak_q':  BIQUAD_BANDPASS_PEAK_Q,
-                'bandpass':         BIQUAD_BANDPASS,
-                'notch':            BIQUAD_NOTCH,
-                'allpass':          BIQUAD_ALLPASS,
-                'peaking_eq':       BIQUAD_PEAKING_EQ,
-                'low_shelf':        BIQUAD_LOW_SHELF,
-                'high_shelf':       BIQUAD_HIGH_SHELF
+BIQUAD_TYPES = {'general':              BIQUAD_GENERAL, 
+                'lowpass':              BIQUAD_LOWPASS,
+                'highpass':             BIQUAD_HIGHPASS,
+                'lowpass1':             BIQUAD_LOWPASS_FIRSTORDER,
+                'highpass1':            BIQUAD_HIGHPASS_FIRSTORDER,
+                'bandpass_peak_q':      BIQUAD_BANDPASS_PEAK_Q,
+                'bandpass':             BIQUAD_BANDPASS,
+                'notch':                BIQUAD_NOTCH,
+                'allpass':              BIQUAD_ALLPASS,
+                'peaking_eq':           BIQUAD_PEAKING_EQ,
+                'low_shelf':            BIQUAD_LOW_SHELF,
+                'high_shelf':           BIQUAD_HIGH_SHELF
                 }
 
 DEFAULT_FREQUENCIES = [10,15,20,30,40,50,75,
@@ -152,6 +156,7 @@ class BiQuad(Filter):
         self.dbgain=0
         self.f=1
         self.set_coefficients([0,0,1,0,0])
+        self.first_order=False
         return
     
     def __filterstr_to_type__(self,s):
@@ -200,7 +205,20 @@ class BiQuad(Filter):
             self.set_coefficients(biquad.low_shelf(self.f,self.q, self.dbgain, self.fs))
         elif self.filtertype == BIQUAD_HIGH_SHELF:
             self.set_coefficients(biquad.low_shelf(self.f,self.q, self.dbgain, self.fs))
+        elif self.filtertype == BIQUAD_LOWPASS_FIRSTORDER:
+            self.set_coefficients(biquad.low_pass_firstorder(self.f,self.q, self.fs))
+        elif self.filtertype == BIQUAD_HIGHPASS_FIRSTORDER:
+            self.set_coefficients(biquad.high_pass_firstorder(self.f,self.q, self.fs))
+
+        
+        if self.first_order:
+            self.a2=0
+            self.b2=0
             
+            
+    def get_coefficient(self,name):
+        return self.__dict__[name]
+           
         
     def get_response(self):
         input_response=self.input_filter.get_response()
@@ -226,6 +244,13 @@ class BiQuad(Filter):
             resp=array('d',[f,magnitude,phase])
             res.append(resp)
         return res
+    
+    '''
+    convert the filter to a first-order filter by setting a2 and b2 to 0
+    '''
+    def set_first_order(self,first_order=True):
+        self.first_order=first_order
+        self.recalc_coefficients()
     
     def __str__(self):
         # TODO add more details
