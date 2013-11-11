@@ -60,3 +60,4 @@ def dsp_write_small_block(addr,data):
 		smb.write_i2c_block_data(slaveaddr,a1,data)
 	else:
 		print "I2C write @{}".format(slaveaddr)
+		
