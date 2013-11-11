@@ -7,22 +7,6 @@ import re
 import os.path
 from filternetwork import *
 
-LSB_SIGMA=float(1)/math.pow(2,23)
-
-def float_to_28bit_fixed(f):
-    '''
-    converts a float to an 28bit fixed point value used in SigmaDSP processors
-    '''
-    if (f>16-LSB_SIGMA) or (f<-16):
-        raise Exception("value {} not in range [-16,16]".format(f))
-    
-    # dual complement
-    if (f<0):
-        f=32+f
-    
-    # multiply by 2^23, then convert to integer
-    f=f*(1<<23)
-    return int(f)
     
 '''
 a generic class that holds some hardware information
@@ -51,13 +35,10 @@ class HardwareSpec(object):
                 self.address[name.lower()]=int(match.group(3)) 
                 
                 
-    def network_to_sigmadsp_config(self, network, ignoremissing=True):
+    def network_to_sigmadsp_config(self, network, ignoremissing=False):
         '''
         read all parameters from a network and create a hardware configuration
         '''
-        
-        for a in sorted(self.address):
-            print a+"  "+str(self.address[a])
         
         res={}
         for n in network.get_nodes():
@@ -75,12 +56,12 @@ class HardwareSpec(object):
                         if not ignoremissing:
                             raise Exception("Address for {}.{} not found in parameter definition".format(n.name,v))
                     value=n.get_coefficient(v)
-                    if v.startswith("a"):
-                        paramvalue=float_to_28bit_fixed(value)
-                    else:
+                    if v.startswith("b"):
                         # a1 and a2 needs to be inverted for the SigmaDSP BiQuad filter
-                        paramvalue=float_to_28bit_fixed(-value)
-                    
+                        paramvalue=-value
+                    else:
+                        paramvalue=value
+                        
                     res[str(addr)]=paramvalue
         return res;
     
@@ -92,12 +73,7 @@ class HardwareSpec(object):
 # Demo code
 #
 def main():
-    print "0       {:07x}".format(float_to_28bit_fixed(0))
-    print "16-1LSB {:07x}".format(float_to_28bit_fixed(16-LSB_SIGMA))
-    print "8       {:07x}".format(float_to_28bit_fixed(8))
-    print "-16     {:07x}".format(float_to_28bit_fixed(-16))
-    print "0.25    {:07x}".format(float_to_28bit_fixed(0.25))
-    print "-0.25   {:07x}".format(float_to_28bit_fixed(-0.25))
+
     
     hw = HardwareSpec()
     hw.param_h="../../demofiles/generic-4way/generic-4way_IC_1_PARAM.h"
