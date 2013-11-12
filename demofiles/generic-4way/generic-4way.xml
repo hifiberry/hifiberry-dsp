@@ -3,10 +3,10 @@
     <input name="input1"/>
     <input name="input2"/>
     
-    <mixer name="mx1" input="input1,input2" dbgain="-6,-6"/>
+    <mixer name="mx1" input="input1,input2" dbgain="-3,0"/>
     <mixer name="mx2" input="input1,input2" dbgain="0,0"/>
-    <mixer name="mx3" input="input1,input2" dbgain="-3,-3"/>
-    <mixer name="mx4" input="input1,input2" dbgain="-3,-3"/>
+    <mixer name="mx3" input="input1,input2" dbgain="0,0"/>
+    <mixer name="mx4" input="input1,input2" dbgain="0,0"/>
 
 
          <biquad name="bq11" input="mx1" type="highpass1" frequency="200" q="0.7" />
