@@ -28,8 +28,10 @@ class HardwareSpec(object):
         # Regexps:
         #define MOD_BQ116_ALG0_STAGE0_B0_ADDR 89  -> BQ116, B0 = 89
         #define MOD_MX1_ALG0_STAGE0_MONOSWITCHNOSLEW_ADDR
+        #define MOD_MUL1_GAIN1940ALGNS1_ADDR                   328
         biquad_re = re.compile('#define MOD_([A-Z0-9]*)_ALG0_STAGE0_([AB][012])_ADDR\s*([0-9]*)')
-        monomixer_re = re.compile("#define MOD_([A-Z0-9]*)_ALG0_STAGE([012]*)_MONOSWITCHNOSLEW_ADDR\s*([0-9]*)")
+        monomixer_re = re.compile("#define MOD_([A-Z0-9]*)_ALG0_STAGE([0-9]*)_MONOSWITCHNOSLEW_ADDR\s*([0-9]*)")
+        gain_re = re.compile("#define MOD_([A-Z0-9]*)_GAIN1940ALGNS([0-9]*)_ADDR\s*([0-9]*)")
         
         #
         
@@ -48,6 +50,15 @@ class HardwareSpec(object):
                 self.address[name.lower()]=int(match.group(3))
                 continue
                 
+            # check for gain stage, which is a volume control
+            match=gain_re.match(line)
+            if match:
+                print match.groups()
+                name=match.group(1)+"__0" # It seems, that we do not need the second group to identify a mono volume control
+                self.address[name.lower()]=int(match.group(3))
+                print name
+                continue
+                
                 
     def network_to_sigmadsp_config(self, network, ignoremissing=False):
         '''
@@ -56,6 +67,9 @@ class HardwareSpec(object):
         
         res={}
         for n in network.get_nodes():
+            '''
+            BiQuad filters
+            '''
             if isinstance(n,BiQuad):
                 for v in ["a1","a2","b0","b1","b2"]:
                     # unfortunately, SigmaStudio has an incorrect naming for the A parameters
@@ -77,6 +91,9 @@ class HardwareSpec(object):
                         paramvalue=value
                         
                     res[str(addr)]=paramvalue
+            '''
+            Mixers
+            '''
             if isinstance(n,Mixer):
                 gains=n.get_dbgains()
                 for i in range(0,len(gains)):
@@ -85,9 +102,21 @@ class HardwareSpec(object):
                     except KeyError:
                         if not ignoremissing:
                             raise Exception("Address for {}.{} not found in parameter definition".format(n.name,v))
-                    value=gains[i] # TODO: convert to multiplier
+                    value=filtermath.db_to_gain(gains[i])
                     res[str(addr)]=filtermath.db_to_gain(value)
-                # TODO
+            ''' 
+            Single volume controls
+            '''
+            if isinstance(n,Volume):
+                try:
+                    addr=self.address[n.name+"__0"]
+                except KeyError:
+                    if not ignoremissing:
+                        raise Exception("Address for {} not found in parameter definition".format(n.name))
+
+                gain=n.get_dbgain()
+                res[str(addr)]=filtermath.db_to_gain(gain)
+
         return res;
     
     def get_programfile(self):

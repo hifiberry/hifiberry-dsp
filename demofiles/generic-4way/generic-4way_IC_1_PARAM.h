@@ -1,7 +1,7 @@
 /*
  * File:           Z:\Dropbox\SigmaStudio\generic-4way\generic-4way_IC_1_PARAM.h
  *
- * Created:        Monday, November 11, 2013 8:53:28 PM
+ * Created:        Tuesday, November 12, 2013 7:36:24 AM
  * Description:    generic-4way:IC 1 parameter RAM definitions.
  *
  * This software is distributed in the hope that it will be useful,
@@ -1604,36 +1604,36 @@
 #define MOD_BQ416_ALG0_STAGE0_A1_VALUE                 SIGMASTUDIOTYPE_FIXPOINT_CONVERT(0)
 #define MOD_BQ416_ALG0_STAGE0_A1_TYPE                  SIGMASTUDIOTYPE_FIXPOINT
 
-/* Module mul1 - Single Volume*/
-#define MOD_MUL1_COUNT                                 1
-#define MOD_MUL1_DEVICE                                "IC1"
-#define MOD_MUL1_GAIN1940ALGNS1_ADDR                   328
-#define MOD_MUL1_GAIN1940ALGNS1_FIXPT                  0x00800000
-#define MOD_MUL1_GAIN1940ALGNS1_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
-#define MOD_MUL1_GAIN1940ALGNS1_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
+/* Module vol1 - Single Volume*/
+#define MOD_VOL1_COUNT                                 1
+#define MOD_VOL1_DEVICE                                "IC1"
+#define MOD_VOL1_GAIN1940ALGNS1_ADDR                   328
+#define MOD_VOL1_GAIN1940ALGNS1_FIXPT                  0x00800000
+#define MOD_VOL1_GAIN1940ALGNS1_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
+#define MOD_VOL1_GAIN1940ALGNS1_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
 
-/* Module mul2 - Single Volume*/
-#define MOD_MUL2_COUNT                                 1
-#define MOD_MUL2_DEVICE                                "IC1"
-#define MOD_MUL2_GAIN1940ALGNS2_ADDR                   329
-#define MOD_MUL2_GAIN1940ALGNS2_FIXPT                  0x00800000
-#define MOD_MUL2_GAIN1940ALGNS2_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
-#define MOD_MUL2_GAIN1940ALGNS2_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
+/* Module vol2 - Single Volume*/
+#define MOD_VOL2_COUNT                                 1
+#define MOD_VOL2_DEVICE                                "IC1"
+#define MOD_VOL2_GAIN1940ALGNS2_ADDR                   329
+#define MOD_VOL2_GAIN1940ALGNS2_FIXPT                  0x00800000
+#define MOD_VOL2_GAIN1940ALGNS2_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
+#define MOD_VOL2_GAIN1940ALGNS2_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
 
-/* Module mul3 - Single Volume*/
-#define MOD_MUL3_COUNT                                 1
-#define MOD_MUL3_DEVICE                                "IC1"
-#define MOD_MUL3_GAIN1940ALGNS3_ADDR                   330
-#define MOD_MUL3_GAIN1940ALGNS3_FIXPT                  0x00800000
-#define MOD_MUL3_GAIN1940ALGNS3_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
-#define MOD_MUL3_GAIN1940ALGNS3_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
+/* Module vol3 - Single Volume*/
+#define MOD_VOL3_COUNT                                 1
+#define MOD_VOL3_DEVICE                                "IC1"
+#define MOD_VOL3_GAIN1940ALGNS3_ADDR                   330
+#define MOD_VOL3_GAIN1940ALGNS3_FIXPT                  0x00800000
+#define MOD_VOL3_GAIN1940ALGNS3_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
+#define MOD_VOL3_GAIN1940ALGNS3_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
 
-/* Module mul4 - Single Volume*/
-#define MOD_MUL4_COUNT                                 1
-#define MOD_MUL4_DEVICE                                "IC1"
-#define MOD_MUL4_GAIN1940ALGNS4_ADDR                   331
-#define MOD_MUL4_GAIN1940ALGNS4_FIXPT                  0x00800000
-#define MOD_MUL4_GAIN1940ALGNS4_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
-#define MOD_MUL4_GAIN1940ALGNS4_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
+/* Module vol4 - Single Volume*/
+#define MOD_VOL4_COUNT                                 1
+#define MOD_VOL4_DEVICE                                "IC1"
+#define MOD_VOL4_GAIN1940ALGNS4_ADDR                   331
+#define MOD_VOL4_GAIN1940ALGNS4_FIXPT                  0x00800000
+#define MOD_VOL4_GAIN1940ALGNS4_VALUE                  SIGMASTUDIOTYPE_FIXPOINT_CONVERT(1)
+#define MOD_VOL4_GAIN1940ALGNS4_TYPE                   SIGMASTUDIOTYPE_FIXPOINT
 
 #endif

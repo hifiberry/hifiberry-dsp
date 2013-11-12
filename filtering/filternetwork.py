@@ -5,7 +5,8 @@ Created on 09.11.2013
 '''
 
 from array import array
-from filtermath import *
+import math
+from filtermath import db_sum, magnitude_to_db
 import biquad
 
 
@@ -171,6 +172,32 @@ class Mixer(Filter):
     def __str__(self):
         return self.name+" (Mixer)"
     
+
+class Volume(Filter):
+    
+    def __init__(self):
+        super(Volume,self).__init__()
+        self.dbgain=0
+        return
+    
+    def set_dbgain(self,dbgain):
+        self.dbgain=dbgain
+    
+    def get_dbgain(self):
+        return self.dbgain
+    
+    def get_response(self):
+        input_response=self.input_filter.get_response()
+        res=[]
+        for iresp in input_response:
+            resp=array('d',[iresp[0],iresp[1]+self.dbgain,iresp[2]])
+            res.append(resp)
+        return res
+
+    def __str__(self):
+        return self.name+" (Volume)"
+    
+    
     
     
 class BiQuad(Filter):
@@ -263,6 +290,7 @@ class BiQuad(Filter):
             phase=math.atan2(numerator_imag,numerator_real)-math.atan2(denominator_imag,denominator_real);
             
             # add phase and magnitude to previous stage
+            # TODO: this seems to be wrong!, correct it to a phase correct addition
             phase=phase+input_phase
             magnitude=magnitude_to_db(magnitude)+input_mag
     

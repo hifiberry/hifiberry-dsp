@@ -4,7 +4,7 @@ Created on 09.11.2013
 @author: matuschd
 '''
 
-from filternetwork import Input, BiQuad, Output, Mixer, Network
+from filternetwork import Input, BiQuad, Output, Mixer, Volume, Network
 from hardwarespec import HardwareSpec
 from xml.dom import minidom
 import os
@@ -25,6 +25,8 @@ def filter_from_node(xmlnode, samplerate):
         filterelement=Output()
     elif filtertype=="mixer":
         filterelement=Mixer()
+    elif filtertype=="volume":
+        filterelement=Volume()
     else:
         raise Exception("Unknown filter type "+filtertype)
         

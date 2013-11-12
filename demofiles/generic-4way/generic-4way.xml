@@ -25,7 +25,6 @@
          <biquad name="bq114" input="bq113"/>
          <biquad name="bq115" input="bq114"/>
          <biquad name="bq116" input="bq115"/>
-         <output name="out1" input="bq116" />
          
          <biquad name="bq21" input="mx2" type="highpass1" frequency="200" q="0.7" />
          <biquad name="bq22" input="bq21" type="lowpass1" frequency="800" q="0.7" />
@@ -43,7 +42,6 @@
          <biquad name="bq214" input="bq213"/>
          <biquad name="bq215" input="bq214"/>
          <biquad name="bq216" input="bq215"/>
-         <output name="out2" input="bq216" />
 
          <biquad name="bq31" input="mx3" type="highpass1" frequency="800" q="0.7" />
          <biquad name="bq32" input="bq31" type="lowpass1" frequency="3000" q="0.7" />
@@ -61,7 +59,6 @@
          <biquad name="bq314" input="bq313"/>
          <biquad name="bq315" input="bq314"/>
          <biquad name="bq316" input="bq315"/>
-         <output name="out3" input="bq316" />
  
          <biquad name="bq41" input="mx4" type="highpass1" frequency="3000" q="0.7"  />
          <biquad name="bq42" input="bq41"/>
@@ -79,7 +76,17 @@
          <biquad name="bq414" input="bq413"/>
          <biquad name="bq415" input="bq414"/>
          <biquad name="bq416" input="bq415"/>
-         <output name="out4" input="bq416" />
+
+	     <volume name="vol1" input="bq116" dbgain="+3"/>
+	     <volume name="vol2" input="bq216" dbgain="-3"/>
+	     <volume name="vol3" input="bq316" dbgain="0"/>
+	     <volume name="vol4" input="bq416" dbgain="-5"/>
+
+         <output name="out1" input="vol1" />
+         <output name="out2" input="vol2" />
+         <output name="out3" input="vol3" />
+         <output name="out4" input="vol4" />
+
 
         </network>
         <hardware type="ADAU1701" program="TxBuffer_IC_1.dat" param_h="generic-4way_IC_1_PARAM.h">
