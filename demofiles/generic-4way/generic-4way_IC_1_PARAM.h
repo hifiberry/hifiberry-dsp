@@ -1,7 +1,7 @@
 /*
  * File:           Z:\Dropbox\SigmaStudio\generic-4way\generic-4way_IC_1_PARAM.h
  *
- * Created:        Tuesday, November 12, 2013 7:36:24 AM
+ * Created:        Tuesday, November 12, 2013 8:28:16 AM
  * Description:    generic-4way:IC 1 parameter RAM definitions.
  *
  * This software is distributed in the hope that it will be useful,
