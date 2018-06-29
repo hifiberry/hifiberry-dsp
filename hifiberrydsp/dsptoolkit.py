@@ -1,3 +1,26 @@
+#!/usr/bin/env python3
+
+'''
+Copyright (c) 2018 Modul 9/HiFiBerry
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+'''
 import logging
 import argparse
 import os
@@ -271,11 +294,22 @@ def string_to_volume(strval):
     strval = strval.lower()
     vol = 0
     if strval.endswith("db"):
-        return 1
+        try:
+            dbval = - float(strval[0:-2])
+            print(dbval)
+            vol = decibel2amplification(dbval)
+        except:
+            logging.error("Can't parse db value {}", strval)
+            return None
         # TODO
     elif strval.endswith("%"):
-        return 1
-        # TODO
+        try:
+            pval = - float(strval[0:-1])
+            print(pval)
+            vol = percent2amplification(pval)
+        except:
+            logging.error("Can't parse db value {}", strval)
+            return None
     else:
         vol = float(strval)
 
@@ -306,22 +340,25 @@ def main():
     dspprogram = os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
 
     args = parser.parse_args()
-    print(args)
 
     dsptk = DSPToolkit(xmlfile=dspprogram)
     dsptk.read_config()
 
     if args.command == "store":
         dsptk.store_values(register_file())
+        print("Settings stored to {}".format(register_file()))
     elif args.command == "restore":
         dsptk.mute(True)
         dsptk.hibernate(True)
         dsptk.read_values(register_file())
         dsptk.hibernate(False)
         dsptk.mute(False)
+        print("Settings restored from {}".format(register_file()))
     elif args.command == "store-global":
         dsptk.store_values(GLOBAL_REGISTER_FILE)
-        shutil.copy(dsptk.xmlfile, GLOBAL_PROGRAM_FILE)
+        shutil.copy(dsptk.xmlfile, GLOBAL_REGISTER_FILE)
+        print("Settings stored to {}".format(GLOBAL_REGISTER_FILE))
+        print("DSP program copied to {}".format(GLOBAL_REGISTER_FILE))
     elif args.command == "restore-global":
         dsptk.xmlfile = GLOBAL_PROGRAM_FILE
         dsptk.parse_xml()
@@ -330,20 +367,35 @@ def main():
         dsptk.read_values(GLOBAL_REGISTER_FILE)
         dsptk.hibernate(False)
         dsptk.mute(False)
+        print("Settings restored from {},{}".format(GLOBAL_PROGRAM_FILE,
+                                                    GLOBAL_REGISTER_FILE))
     elif args.command == "set-volume":
         vol = string_to_volume(args.value)
-        dsptk.set_volume(vol)
+        if vol is not None:
+            dsptk.set_volume(vol)
+            print("Volume set to {}dB".format(amplification2decibel(vol)))
     elif args.command == "set-limit":
         vol = string_to_volume(args.value)
-        dsptk.set_(vol)
+        if vol is not None:
+            dsptk.set_limit(vol)
+            print("Limit set to {}dB".format(amplification2decibel(vol)))
+    elif args.command == "get-volume":
+        vol = dsptk.get_volume()
+        if vol is not None:
+            print("Volume: {:.4f} / {:.0f}% / {:.0f}db".format(
+                vol,
+                amplification2percent(vol),
+                amplification2decibel(vol)))
     elif args.command == "reset":
         dsptk.reset()
+        print("Resetting DSP")
     elif args.command == "clear-filters":
         dsptk.mute(True)
         dsptk.hibernate(True)
         dsptk.clear_filters(MODE_BOTH)
         dsptk.hibernate(False)
         dsptk.mute(False)
+        print("Filters removed")
     elif args.command == "set-rew-filters":
         dsptk.mute(True)
         dsptk.hibernate(True)
@@ -359,7 +411,7 @@ def main():
         dsptk.hibernate(True)
         filters = REW.readfilters(args.value)
         dsptk.clear_filters(MODE_LEFT)
-        dsptk.set_filters(filters, MODE_LEFT)
+        filters = dsptk.set_filters(filters, MODE_LEFT)
         print("Filters configured on left channel:")
         print_filters(filters)
         dsptk.hibernate(False)
