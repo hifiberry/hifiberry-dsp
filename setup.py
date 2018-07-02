@@ -17,5 +17,6 @@ setup(name='hifiberrydsp',
           'Programming Language :: Python :: 3.5'
       ],
       packages=find_packages(),
+      scripts=['bin/dsptoolkit'],
       keywords='audio raspberrypi dsp',
       zip_safe=False)
