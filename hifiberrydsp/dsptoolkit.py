@@ -26,6 +26,7 @@ import argparse
 import os
 import time
 import shutil
+import sys
 
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.hardware.sigmatcp import SigmaTCP
@@ -337,12 +338,18 @@ def main():
                                  "reset"],
                         help='command')
 
-    dspprogram = os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
-
     args = parser.parse_args()
-
-    dsptk = DSPToolkit(xmlfile=dspprogram)
+    dsptk = DSPToolkit()
     dsptk.read_config()
+
+    if dsptk.xmlfile is None:
+        dsptk.xmlfile = os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
+
+    try:
+        dsptk.parse_xml()
+    except IOError:
+        print("Can't read or parse {}".format(dsptk.xmlfile))
+        sys.exit(1)
 
     if args.command == "store":
         dsptk.store_values(register_file())
