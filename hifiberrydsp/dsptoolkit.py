@@ -27,11 +27,15 @@ import os
 import time
 import shutil
 import sys
+import urllib.request
+
+import xmltodict
 
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.hardware.sigmatcp import SigmaTCP
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
+
 
 MODE_BOTH = 0
 MODE_LEFT = 1
@@ -119,7 +123,6 @@ class DSPToolkit():
             logging.info("Config: Can't read DSP program")
 
     def parse_xml(self):
-        import xmltodict
 
         if self.xmlfile is None:
             return
@@ -133,6 +136,7 @@ class DSPToolkit():
         self.filterright = None
         self.muteRegister = None
         self.volctlrange = None
+        self.balancectl = None
 
         for metadata in doc["ROM"]["beometa"]["metadata"]:
             t = metadata["@type"]
@@ -142,6 +146,9 @@ class DSPToolkit():
 
             if (t == "volumeLimitRegister"):
                 self.volumelimit = self.parse_int(metadata)
+
+            if (t == "balanceRegister"):
+                self.balancectl = self.parse_int(metadata)
 
             if (t == "volumeControlRangeDb"):
                 try:
@@ -202,6 +209,18 @@ class DSPToolkit():
         if self.volumectl:
             return self.sigmatcp.read_decimal(self.volumectl)
 
+    def set_balance(self, value):
+        '''
+        Sets the balance of left/right channels.
+        Value ranges from 0 (only left channel) to 2 (only right channel)
+        at balance=1 the volume setting on both channels is equal
+        '''
+        if (value < 0) or (value > 2):
+            raise RuntimeError("Balance value must be between 0 and 2")
+
+        if self.balancectl is not None:
+            self.sigmatcp.write_decimal(self.balancectl, value)
+
     def write_biquad(self, index, bq_params, mode=MODE_BOTH):
         if mode == MODE_BOTH or mode == MODE_LEFT:
             addr = self.filterleft[index]
@@ -255,6 +274,9 @@ class DSPToolkit():
         nullfilter = Biquad.plain()
         for reg in regs:
             self.sigmatcp.write_biquad(reg, nullfilter)
+
+    def install_profile(self):
+        self.sigmatcp.write_eeprom(self.xmlfile)
 
     def mute(self, mute=True):
         if self.muteRegister is not None:
@@ -328,6 +350,7 @@ def main():
     parser.add_argument('value', nargs='?')
     parser.add_argument('--command', dest='command',
                         choices=["store", "restore",
+                                 "install-profile",
                                  "store-global", "restore-global"
                                  "set-volume", "get-volume",
                                  "set-limit", "get_limit",
@@ -433,6 +456,24 @@ def main():
         print_filters(filters)
         dsptk.hibernate(False)
         dsptk.mute(False)
+    elif args.command == "install-profile":
+        f = args.value
+        if (f.startswith("http://") or f.startswith("https://")):
+            # Download and store a local copy
+            try:
+                localname = os.path.expanduser(
+                    "~/.dsptoolkit/" + os.path.basename(f))
+                urllib.request.urlretrieve(f, localname)
+                defaultname = dsptk.xmlfile
+                shutil.copy(localname, dsptk.xmlfile)
+                print("Stored profile {} as {}".format(localname, defaultname))
+                f = localname
+            except IOError:
+                print("Couldn't download {}".format(f))
+                sys.exit(1)
+        dsptk.xml = f
+        dsptk.install_profile()
+        print("DSP profile installed")
 
 
 if __name__ == "__main__":
