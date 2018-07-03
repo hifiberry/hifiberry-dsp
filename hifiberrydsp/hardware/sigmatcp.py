@@ -22,6 +22,7 @@ SOFTWARE.
 
 import socket
 import time
+import os
 
 COMMAND_READ = 0x0a
 COMMAND_WRITE = 0x09
@@ -85,8 +86,20 @@ class SigmaTCP():
                 raise SigmaTCPException("Not connected")
 
         packet = self.write_request(addr, data)
-        print(addr, data)
         self.socket.send(packet)
+
+    def write_eeprom(self, filename):
+        if self.socket is None:
+            if self.autoconnect:
+                self.connect()
+            else:
+                raise SigmaTCPException("Not connected")
+
+        if (os.path.exists(filename)):
+            packet = self.write_eeprom_request(filename)
+            self.socket.send(packet)
+        else:
+            raise IOError("{} does not exist".format(filename))
 
     def write_decimal(self, addr, value):
         data = self.dsp.decimal_repr(value)
@@ -139,6 +152,14 @@ class SigmaTCP():
         packet[12] = (addr >> 8) & 0xff
         for d in data:
             packet.append(d)
+        return packet
+
+    def write_eeprom_request(self, filename):
+        packet = bytearray(HEADER_SIZE)
+        packet[0] = COMMAND_EEPROM
+        packet[1] = len(filename)
+        packet.extend(map(ord, filename))
+        packet.extend([0])
         return packet
 
     def reset(self):
