@@ -98,6 +98,13 @@ class SigmaTCP():
         if (os.path.exists(filename)):
             packet = self.write_eeprom_request(filename)
             self.socket.send(packet)
+            result = int.from_bytes(self.socket.recv(1),
+                                    byteorder='big',
+                                    signed=False)
+            if result == 1:
+                return(True)
+            else:
+                return False
         else:
             raise IOError("{} does not exist".format(filename))
 
