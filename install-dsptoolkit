@@ -1,0 +1,30 @@
+#!/bin/sh
+sudo apt-get install -y python3-pip
+sudo pip3 install --upgrade hifiberrydsp
+LOC=`which dsptoolkit`
+mkdir ~/.dsptoolkit
+cat <<EOF >~/.dsptoolkit/dsptoolkit.conf
+[host]
+ip=127.0.0.1
+
+[dsp]
+program=~/.dsptoolkit/dspprogram.xml
+EOF
+
+# Create new systemd file
+cat <<EOT >/tmp/dsptoolkit.service
+[Unit]
+Description=DSP Toolkit, load defaults
+Wants=network-online.target
+After=network.target network-online.target
+[Service]
+Type=oneshot
+ExecStart=$LOC --command=restore-global
+StandardOutput=journal
+[Install]
+WantedBy=multi-user.target
+EOT
+
+sudo mv /tmp/dsptoolkit.service /lib/systemd/system/dsptoolkit.service
+
+sudo systemctl enable dsptoolkit
