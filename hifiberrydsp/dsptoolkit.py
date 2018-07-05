@@ -393,7 +393,7 @@ def main():
     if dsptk.xmlfile is None:
         dsptk.xmlfile = os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
 
-    if args.command != "install-profile":
+    if args.command not in ["install-profile", "restore-global"]:
         try:
             dsptk.parse_xml()
         except IOError:
@@ -412,9 +412,9 @@ def main():
         print("Settings restored from {}".format(register_file()))
     elif args.command == "store-global":
         dsptk.store_values(GLOBAL_REGISTER_FILE)
-        shutil.copy(dsptk.xmlfile, GLOBAL_REGISTER_FILE)
+        shutil.copy(dsptk.xmlfile, GLOBAL_PROGRAM_FILE)
         print("Settings stored to {}".format(GLOBAL_REGISTER_FILE))
-        print("DSP program copied to {}".format(GLOBAL_REGISTER_FILE))
+        print("DSP program copied to {}".format(GLOBAL_PROGRAM_FILE))
     elif args.command == "restore-global":
         dsptk.xmlfile = GLOBAL_PROGRAM_FILE
         dsptk.parse_xml()
