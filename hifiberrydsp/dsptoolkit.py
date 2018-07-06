@@ -250,6 +250,8 @@ class DSPToolkit():
                 outfile.write("{}:{}:{}\n".format(reg, length, data))
 
     def read_values(self, filename):
+        self.hibernate(True)
+
         with open(filename, "r") as infile:
             self.mute(True)
             for line in infile:
@@ -263,7 +265,10 @@ class DSPToolkit():
                     pass
             self.mute(False)
 
+        self.dsptk.hibernate(False)
+
     def set_filters(self, filters, mode=MODE_BOTH):
+
         index = 0
         l1 = len(self.filterleft)
         l2 = len(self.filterright)
@@ -278,13 +283,18 @@ class DSPToolkit():
             raise(DSPError("{} filters given, but filter bank has only {} slots".format(
                 len(filters), maxlen)))
 
+        self.hibernate(True)
+
         for f in filters:
             logging.debug(f)
             self.write_biquad(index, f, mode)
             index += 1
-        time.sleep(1)
+
+        self.hibernate(False)
 
     def clear_filters(self, mode=MODE_BOTH):
+
+        self.hibernate(True)
 
         if mode == MODE_BOTH:
             regs = self.filterleft + self.filterright
@@ -296,6 +306,8 @@ class DSPToolkit():
         nullfilter = Biquad.plain()
         for reg in regs:
             self.sigmatcp.write_biquad(reg, nullfilter)
+
+        self.hibernate(False)
 
     def install_profile(self):
         return self.sigmatcp.write_eeprom(self.xmlfile)
@@ -334,193 +346,196 @@ class DSPToolkit():
         time.sleep(0.5)
 
 
-def register_file():
-    return os.path.expanduser("~/.dsptoolkit/registers.dat")
+class CommandLine():
 
+    def __init__(self):
+        self.command_map = {
+            "store":  self.cmd_store,
+            "restore": self.cmd_restore,
+            "install-profile": self.cmd_install_profile,
+            "store-global": self.cmd_store_global,
+            "restore-global": self.cmd_restore_global,
+            "set-volume": self.cmd_set_volume,
+            "get-volume": self.cmd_get_volume,
+            "set-limit": self.cmd_set_limit,
+            "get_limit": self.cmd_get_limit,
+            "set-rew-filters": self.cmd_set_rew_filters,
+            "set-rew-filters-left": self.cmd_set_rew_filters_left,
+            "set-rew-filters-right": self.cmd_set_rew_filters_right,
+            "clear-filters": self.cmd_clear_filters,
+            "reset": self.cmd_reset,
+        }
+        self.dsptk = DSPToolkit()
 
-def string_to_volume(strval):
-    strval = strval.lower()
-    vol = 0
-    if strval.endswith("db"):
+    def register_file(self):
+        return os.path.expanduser("~/.dsptoolkit/registers.dat")
+
+    def string_to_volume(self, strval):
+        strval = strval.lower()
+        vol = 0
+        if strval.endswith("db"):
+            try:
+                dbval = float(strval[0:-2])
+                vol = decibel2amplification(dbval)
+            except:
+                logging.error("Can't parse db value {}", strval)
+                return None
+            # TODO
+        elif strval.endswith("%"):
+            try:
+                pval = float(strval[0:-1])
+                vol = percent2amplification(pval)
+            except:
+                logging.error("Can't parse db value {}", strval)
+                return None
+        else:
+            vol = float(strval)
+
+        return vol
+
+    def parse_xml(self):
         try:
-            dbval = - float(strval[0:-2])
-            print(dbval)
-            vol = decibel2amplification(dbval)
-        except:
-            logging.error("Can't parse db value {}", strval)
-            return None
-        # TODO
-    elif strval.endswith("%"):
-        try:
-            pval = - float(strval[0:-1])
-            print(pval)
-            vol = percent2amplification(pval)
-        except:
-            logging.error("Can't parse db value {}", strval)
-            return None
-    else:
-        vol = float(strval)
-
-    return vol
-
-
-def print_filters(filters):
-    for f in filters:
-        print (f.description)
-
-
-def main():
-
-    parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
-    parser.add_argument('value', nargs='?')
-    parser.add_argument('--command', dest='command',
-                        choices=["store", "restore",
-                                 "install-profile",
-                                 "store-global", "restore-global",
-                                 "set-volume", "get-volume",
-                                 "set-limit", "get_limit",
-                                 "set-rew-filters",
-                                 "set-rew-filters-left",
-                                 "set-rew-filters-right",
-                                 "clear-filters",
-                                 "reset"],
-                        help='command')
-
-    args = parser.parse_args()
-    dsptk = DSPToolkit()
-    dsptk.read_config()
-
-    if dsptk.xmlfile is None:
-        dsptk.xmlfile = os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
-
-    if args.command not in ["install-profile", "restore-global"]:
-        try:
-            dsptk.parse_xml()
+            self.dsptk.parse_xml()
         except IOError:
-            print("Can't read or parse {}".format(dsptk.xmlfile))
+            print("Can't read or parse {}".format(self.dsptk.xmlfile))
             sys.exit(1)
 
-    if args.command == "store":
-        dsptk.store_values(register_file())
-        print("Settings stored to {}".format(register_file()))
-    elif args.command == "restore":
-        dsptk.mute(True)
-        dsptk.hibernate(True)
-        dsptk.read_values(register_file())
-        dsptk.hibernate(False)
-        dsptk.mute(False)
-        print("Settings restored from {}".format(register_file()))
-    elif args.command == "store-global":
-        dsptk.store_values(GLOBAL_REGISTER_FILE)
-        shutil.copy(dsptk.xmlfile, GLOBAL_PROGRAM_FILE)
+    def cmd_store(self):
+        self.parse_xml()
+        self.dsptk.store_values(self.register_file())
+        print("Settings stored to {}".format(self.register_file()))
+
+    def cmd_restore(self):
+        self.parse_xml()
+        self.dsptk.read_values(self.register_file())
+        print("Settings restored from {}".format(self.register_file()))
+
+    def cmd_store_global(self):
+        self.parse_xml()
+        self.dsptk.store_values(GLOBAL_REGISTER_FILE)
+        shutil.copy(self.dsptk.xmlfile, GLOBAL_PROGRAM_FILE)
         print("Settings stored to {}".format(GLOBAL_REGISTER_FILE))
         print("DSP program copied to {}".format(GLOBAL_PROGRAM_FILE))
-    elif args.command == "restore-global":
-        dsptk.xmlfile = GLOBAL_PROGRAM_FILE
-        dsptk.parse_xml()
-        dsptk.mute(True)
-        dsptk.hibernate(True)
-        dsptk.read_values(GLOBAL_REGISTER_FILE)
-        dsptk.hibernate(False)
-        dsptk.mute(False)
+
+    def cmd_restore_global(self):
+        self.dsptk.xmlfile = GLOBAL_PROGRAM_FILE
+        self.dsptk.parse_xml()
+        self.dsptk.read_values(GLOBAL_REGISTER_FILE)
         print("Settings restored from {},{}".format(GLOBAL_PROGRAM_FILE,
                                                     GLOBAL_REGISTER_FILE))
-    elif args.command == "set-volume":
-        vol = string_to_volume(args.value)
+
+    def cmd_set_volume(self):
+        self.parse_xml()
+        vol = self.string_to_volume(self.args.value)
         if vol is not None:
-            if dsptk.volumectl is None:
+            if self.dsptk.volumectl is None:
                 print("Profile doesn't support volume control")
             else:
-                dsptk.set_volume(vol)
-                print("Volume set to {}dB".format(amplification2decibel(vol)))
-    elif args.command == "set-limit":
-        vol = string_to_volume(args.value)
+                self.dsptk.set_volume(vol)
+                print("Volume set to {}dB".format(
+                    amplification2decibel(vol)))
+
+    def cmd_set_limit(self):
+        self.parse_xml()
+        vol = self.string_to_volume(self.args.value)
         if vol is not None:
-            if dsptk.volumelimit is None:
+            if self.dsptk.volumelimit is None:
                 print("Profile doesn't support volume control")
             else:
-                dsptk.set_limit(vol)
+                self.dsptk.set_limit(vol)
             print("Limit set to {}dB".format(amplification2decibel(vol)))
-    elif args.command == "get-volume":
-        vol = dsptk.get_volume()
+
+    def cmd_get_volume(self):
+        self.parse_xml()
+        vol = self.dsptk.get_volume()
         if vol is not None:
             print("Volume: {:.4f} / {:.0f}% / {:.0f}db".format(
                 vol,
                 amplification2percent(vol),
                 amplification2decibel(vol)))
-    elif args.command == "reset":
-        dsptk.reset()
+
+    def cmd_get_limit(self):
+        self.parse_xml()
+        vol = self.dsptk.get_limit()
+        if vol is not None:
+            print("Limit: {:.4f} / {:.0f}% / {:.0f}db".format(
+                vol,
+                amplification2percent(vol),
+                amplification2decibel(vol)))
+
+    def cmd_reset(self):
+        self.parse_xml()
+        self.dsptk.reset()
         print("Resetting DSP")
-    elif args.command == "clear-filters":
-        dsptk.mute(True)
-        dsptk.hibernate(True)
-        dsptk.clear_filters(MODE_BOTH)
-        dsptk.hibernate(False)
-        dsptk.mute(False)
+
+    def cmd_clear_filters(self):
+        self.parse_xml()
+        self.dsptk.clear_filters(MODE_BOTH)
         print("Filters removed")
-    elif args.command == "set-rew-filters":
-        dsptk.mute(True)
-        dsptk.hibernate(True)
-        filters = REW.readfilters(args.value)
-        dsptk.clear_filters(MODE_BOTH)
+
+    def cmd_set_rew_filters(self, mode=MODE_BOTH):
+        self.parse_xml()
+        filters = REW.readfilters(self.args.value)
+        self.dsptk.clear_filters(mode)
         try:
-            dsptk.set_filters(filters, MODE_BOTH)
+            self.dsptk.set_filters(filters, mode)
             print("Filters configured on both channels:")
-            print_filters(filters)
+            for f in filters:
+                print (f.description)
         except DSPError as e:
             print(e)
-        dsptk.hibernate(False)
-        dsptk.mute(False)
-    elif args.command == "set-rew-filters-left":
-        dsptk.mute(True)
-        dsptk.hibernate(True)
-        filters = REW.readfilters(args.value)
-        try:
-            dsptk.clear_filters(MODE_LEFT)
-            dsptk.set_filters(filters, MODE_LEFT)
-            print("Filters configured on left channel:")
-            print_filters(filters)
-        except DSPError as e:
-            print(e)
-        dsptk.hibernate(False)
-        dsptk.mute(False)
-    elif args.command == "set-rew-filters-right":
-        dsptk.mute(True)
-        dsptk.hibernate(True)
-        filters = REW.readfilters(args.value)
-        try:
-            dsptk.clear_filters(MODE_RIGHT)
-            dsptk.set_filters(filters, MODE_RIGHT)
-            print("Filters configured on right channel:")
-            print_filters(filters)
-        except DSPError as e:
-            print(e)
-        dsptk.hibernate(False)
-        dsptk.mute(False)
-    elif args.command == "install-profile":
-        f = args.value
-        default_location = dsptk.xmlfile
+
+    def cmd_set_rew_filters_left(self):
+        self.set_rew_filters(mode=MODE_LEFT)
+
+    def cmd_set_rew_filters_right(self):
+        self.set_rew_filters(mode=MODE_RIGHT)
+
+    def cmd_install_profile(self):
+        self.parse_xml()
+        f = self.args.value
+        default_location = self.dsptk.xmlfile
         if (f.startswith("http://") or f.startswith("https://")):
             # Download and store a local copy
             try:
                 localname = os.path.expanduser(
                     "~/.dsptoolkit/" + os.path.basename(f))
                 urllib.request.urlretrieve(f, localname)
-                defaultname = dsptk.xmlfile
-                shutil.copy(localname, dsptk.xmlfile)
-                print("Stored profile {} as {}".format(localname, defaultname))
+                defaultname = self.dsptk.xmlfile
+                shutil.copy(localname, self.dsptk.xmlfile)
+                print("Stored profile {} as {}".format(
+                    localname, defaultname))
                 f = localname
             except IOError:
                 print("Couldn't download {}".format(f))
                 sys.exit(1)
-        res = dsptk.install_profile()
+        self.dsptk.xmlfile = f
+        res = self.dsptk.install_profile()
         if res:
             print("DSP profile {} installed".format(f))
-            shutil.copy(f, dsptk.xmlfile)
-            print("Copied {} to {}".format(f, dsptk.xmlfile))
+            shutil.copy(f, default_location)
+            print("Copied {} to {}".format(f, default_location))
         else:
-            print("Failed to install DSP profile {}".format(dsptk.xmlfile))
+            print("Failed to install DSP profile {}".format(self.dsptk.xmlfile))
+
+    def main(self):
+
+        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
+        parser.add_argument('command',
+                            choices=self.command_map.keys())
+        parser.add_argument('value', nargs='?')
+
+        self.args = parser.parse_args()
+
+        self.dsptk.read_config()
+
+        if self.dsptk.xmlfile is None:
+            self.dsptk.xmlfile = os.path.expanduser(
+                "~/.dsptoolkit/dspprogram.xml")
+
+        self.command_map[self.args.command]()
 
 
 if __name__ == "__main__":
-    main()
+    cmdline = CommandLine()
+    cmdline.main()

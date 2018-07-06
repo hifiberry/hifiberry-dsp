@@ -96,7 +96,7 @@ class SigmaTCP():
                 raise SigmaTCPException("Not connected")
 
         if (os.path.exists(filename)):
-            packet = self.write_eeprom_request(filename)
+            packet = self.write_eeprom_request(os.path.abspath(filename))
             self.socket.send(packet)
             result = int.from_bytes(self.socket.recv(1),
                                     byteorder='big',
