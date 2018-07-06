@@ -3,5 +3,5 @@
 import hifiberrydsp.dsptoolkit
 
 if __name__ == '__main__':
-    cmdline = hifiberrydsp.dsptoolkit.CommandLine
+    cmdline = hifiberrydsp.dsptoolkit.CommandLine()
     cmdline.main()

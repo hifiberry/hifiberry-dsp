@@ -331,12 +331,14 @@ class DSPToolkit():
             self.registers[self.volumectl] = self.dsp.DECIMAL_LEN
         if self.volumelimit is not None:
             self.registers[self.volumectl] = self.dsp.DECIMAL_LEN
-        for reg in self.filterleft:
-            for i in range(0, 5):
-                self.registers[reg + i] = self.dsp.DECIMAL_LEN
-        for reg in self.filterright:
-            for i in range(0, 5):
-                self.registers[reg + i] = self.dsp.DECIMAL_LEN
+        if self.filterleft is not None:
+            for reg in self.filterleft:
+                for i in range(0, 5):
+                    self.registers[reg + i] = self.dsp.DECIMAL_LEN
+        if self.filterright is not None:
+            for reg in self.filterright:
+                for i in range(0, 5):
+                    self.registers[reg + i] = self.dsp.DECIMAL_LEN
 
     def reset(self):
         self.sigmatcp.reset()
