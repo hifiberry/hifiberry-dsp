@@ -25,7 +25,7 @@ import time
 import os
 import logging
 
-from socketserver import BaseRequestHandler
+from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
 import xmltodict
 from lxml.html.builder import INS
@@ -114,10 +114,12 @@ class SigmaTCP():
         else:
             raise IOError("{} does not exist".format(filename))
 
-    def write_decimal(self, addr, value):
+    def get_decimal_repr(self, value):
         data = self.dsp.decimal_repr(value)
-        self.write_memory(addr, self.int_data(data,
-                                              self.dsp.DECIMAL_LEN))
+        return self.int_data(data, self.dsp.DECIMAL_LEN)
+
+    def write_decimal(self, addr, value):
+        self.write_memory(addr, self.get_decimal_repr(value))
 
     def read_decimal(self, addr):
         data = self.read_memory(addr, self.dsp.DECIMAL_LEN)
@@ -412,3 +414,13 @@ class SigmaTCPHandler(BaseRequestHandler):
     def _list_str(self, int_list):
         formatted_list = [str(item) for item in int_list]
         return "[" + ','.join(formatted_list) + "]"
+
+
+class SigmaTCPServer(ThreadingMixIn, TCPServer):
+
+    def __init__(self,
+                 server_address=("0.0.0.0", DEFAULT_PORT),
+                 RequestHandlerClass=SigmaTCPHandler):
+        self.allow_reuse_address = True
+
+        TCPServer.__init__(self, server_address, RequestHandlerClass)
