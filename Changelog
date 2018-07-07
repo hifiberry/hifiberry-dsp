@@ -1,6 +1,9 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.5.1 (20180707)
+ - Bugfix for SigmaStudio read support
+
 0.5 (20180707)
  - Functionality to upload FIR filter coefficients
 
