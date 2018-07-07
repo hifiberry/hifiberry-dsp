@@ -1,6 +1,13 @@
 #!/bin/sh
 sudo apt-get install -y python3-pip
 sudo pip3 install --upgrade hifiberrydsp
+
+for i in dsptoolkit sigmatcp; do
+ sudo systemctl stop $i
+ sudo systemctl disable $i
+done
+
+
 LOC=`which dsptoolkit`
 mkdir ~/.dsptoolkit
 cat <<EOF >~/.dsptoolkit/dsptoolkit.conf
@@ -15,11 +22,12 @@ EOF
 cat <<EOT >/tmp/dsptoolkit.service
 [Unit]
 Description=DSP Toolkit, load defaults
-Wants=network-online.target
-After=network.target network-online.target
+Wants=network-online.target sigmatcp.service
+After=network.target network-online.target sigmatcp.service
 [Service]
 Type=oneshot
-ExecStart=$LOC --command=restore-global
+ExecStartPre=/bin/sleep 3
+ExecStart=$LOC restore-global
 StandardOutput=journal
 [Install]
 WantedBy=multi-user.target
@@ -27,4 +35,28 @@ EOT
 
 sudo mv /tmp/dsptoolkit.service /lib/systemd/system/dsptoolkit.service
 
-sudo systemctl enable dsptoolkit
+# Create systemd config for the TCP server
+LOC=`which sigmatcpserver`
+
+cat <<EOT >/tmp/sigmatcp.service
+[Unit]
+Description=SigmaTCP Server for HiFiBerry DSP
+Wants=network-online.target
+After=network.target network-online.target
+[Service]
+Type=simple
+ExecStart=$LOC
+StandardOutput=journal
+[Install]
+WantedBy=multi-user.target
+EOT
+
+sudo mv /tmp/sigmatcp.service /lib/systemd/system/sigmatcp.service
+
+sudo systemctl daemon-reload
+
+for i in dsptoolkit sigmatcp; do
+ sudo systemctl start $i
+ sudo systemctl enable $i
+done
+
