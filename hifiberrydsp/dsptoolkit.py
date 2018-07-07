@@ -97,6 +97,11 @@ class DSPToolkit():
         self.volctlrange = 60
         self.filterleft = []
         self.filterright = []
+        self.firleft = None
+        self.firright = None
+        self.firleft_len = 0
+        self.firright_len = 0
+
         self.mutegio = None
         self.muteRegister = None
         self.invertmute = False
@@ -146,6 +151,10 @@ class DSPToolkit():
         self.muteRegister = None
         self.volctlrange = None
         self.balancectl = None
+        self.firleft = None
+        self.firright = None
+        self.firleft_len = 0
+        self.firright_len = 0
 
         for metadata in doc["ROM"]["beometa"]["metadata"]:
             t = metadata["@type"]
@@ -172,6 +181,12 @@ class DSPToolkit():
             if (t == "customFilterBankRight"):
                 self.filterright = self.parse_int_list(metadata)
 
+            if (t == "customFirFilterLeft"):
+                (self.firleft, self.firleft_len) = self.parse_int_length(metadata)
+
+            if (t == "customFirFilterRight"):
+                (self.firright, self.firright_len) = self.parse_int_length(metadata)
+
             if (t == "muteRegister"):
                 self.muteRegister = self.parse_int(metadata)
 
@@ -191,6 +206,27 @@ class DSPToolkit():
         except:
             logging.error("Can't parse metadata %s", metadata["@type"])
             return None
+
+    def parse_int_length(self, metadata):
+        try:
+            strval = metadata["#text"]
+            (addr, length) = strval.split("/")
+
+            if addr.startswith("0x"):
+                addr = int(addr, 16)
+            else:
+                addr = int(addr)
+
+            if length.startswith("0x"):
+                length = int(length, 16)
+            else:
+                length = int(length)
+        except:
+            addr = None
+            length = 0
+            logging.error("Can't parse metadata %s", metadata["@type"])
+
+        return (addr, length)
 
     def parse_int_list(self, metadata):
         try:
@@ -233,13 +269,40 @@ class DSPToolkit():
     def write_biquad(self, index, bq_params, mode=MODE_BOTH):
         if mode == MODE_BOTH or mode == MODE_LEFT:
             addr = self.filterleft[index]
-            #print(addr, bq_params)
             self.sigmatcp.write_biquad(addr, bq_params)
 
         if mode == MODE_BOTH or mode == MODE_RIGHT:
             addr = self.filterright[index]
-            #print(addr, bq_params)
             self.sigmatcp.write_biquad(addr, bq_params)
+
+    def write_fir(self, coefficients, mode=MODE_BOTH):
+        if mode == MODE_BOTH or mode == MODE_LEFT:
+            self.write_coefficients(self.firleft,
+                                    self.firleft_len,
+                                    coefficients)
+
+        if mode == MODE_BOTH or mode == MODE_RIGHT:
+            self.write_coefficients(self.firright,
+                                    self.firright_len,
+                                    coefficients)
+
+    def write_coefficients(self, addr, length, coefficients, fill_zero=True):
+        if len(coefficients) > length:
+            logging.error("Can't deploy coefficients {} > {}",
+                          len(coefficients), length)
+            return
+
+        data = []
+        for coeff in coefficients:
+            x = list(self.sigmatcp.get_decimal_repr(coeff))
+            print(x)
+            data[0:0] = x
+
+        x = list(self.sigmatcp.get_decimal_repr(0))
+        for i in range(len(coefficients), length):
+            data[0:0] = x
+
+        self.sigmatcp.write_memory(addr, data)
 
     def store_values(self, filename):
         with open(filename, "w") as outfile:
@@ -380,6 +443,9 @@ class CommandLine():
             "set-rew-filters": self.cmd_set_rew_filters,
             "set-rew-filters-left": self.cmd_set_rew_filters_left,
             "set-rew-filters-right": self.cmd_set_rew_filters_right,
+            "set-fir-filters": self.cmd_set_fir_filters,
+            "set-fir-filter-right": self.cmd_set_fir_filter_right,
+            "set-fir-filter-left": self.cmd_set_fir_filter_left,
             "clear-filters": self.cmd_clear_filters,
             "reset": self.cmd_reset,
         }
@@ -508,6 +574,25 @@ class CommandLine():
 
     def cmd_set_rew_filters_right(self):
         self.set_rew_filters(mode=MODE_RIGHT)
+
+    def cmd_set_fir_filters(self, mode=MODE_BOTH):
+        self.parse_xml()
+        filename = self.args.value
+        coefficients = []
+        with open(filename) as firfile:
+            for line in firfile:
+                coeff = float(line)
+                coefficients.append(coeff)
+
+        self.dsptk.hibernate(True)
+        self.dsptk.write_fir(coefficients, mode)
+        self.dsptk.hibernate(False)
+
+    def cmd_set_fir_filter_left(self):
+        self.cmd_set_fir_filters(MODE_LEFT)
+
+    def cmd_set_fir_filter_right(self):
+        self.cmd_set_fir_filters(MODE_RIGHT)
 
     def cmd_install_profile(self):
         self.parse_xml()
