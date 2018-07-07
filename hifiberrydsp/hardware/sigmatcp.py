@@ -31,6 +31,7 @@ import xmltodict
 from lxml.html.builder import INS
 
 COMMAND_READ = 0x0a
+COMMAND_READRESPONSE = 0x0b
 COMMAND_WRITE = 0x09
 COMMAND_EEPROM = 0xf0
 
@@ -257,16 +258,19 @@ class SigmaTCPHandler(BaseRequestHandler):
                     read_more = False
 
                 # Not an expected header?
-                if len(data) < 14:
+                if len(data) > 0 and len(data) < 14:
                     read_more = True
                     continue
 
                 if data[0] == COMMAND_READ:
                     command_length = int.from_bytes(
                         data[1:5], byteorder='big')
-                    if (command_length > 0) and (len(data) != command_length):
+                    if (command_length > 0) and (len(data) < command_length):
                         read_more = True
+                        logging.debug(
+                            "Expect %s bytes from header information (read), but have only %s", command_length, len(data))
                         continue
+
                     result = self.handle_read(data)
                 elif data[0] == COMMAND_WRITE:
                     command_length = int.from_bytes(
@@ -279,16 +283,23 @@ class SigmaTCPHandler(BaseRequestHandler):
                         buffer = data[command_length:]
                         data = data[0:command_length]
 
-                    if (command_length > 0) and (len(data) != command_length):
+                    if (command_length > 0) and (len(data) < command_length):
                         read_more = True
+                        logging.debug(
+                            "Expect %s bytes from header information (write), but have only %s", command_length, len(data))
                         continue
-                    result = self.handle_write(data)
+
+                    self.handle_write(data)
+                    result = None
+
                 elif data[0] == COMMAND_EEPROM:
                     filename_length = data[1]
                     filename = "".join(map(chr, data[14:14 + filename_length]))
                     result = self.write_eeprom_file(filename)
 
                 if (result is not None) and (len(result) > 0):
+                    logging.debug(
+                        "Sending %s bytes answer to client", len(result))
                     self.request.send(result)
 
                 # Still got data that hasn't been processed?
@@ -321,7 +332,8 @@ class SigmaTCPHandler(BaseRequestHandler):
         spi_response = SigmaTCPHandler.spi.xfer(spi_request)  # SPI read
         logging.debug("spi read %s bytes from %s", len(spi_request), addr)
 
-        res = bytearray(data)
+        res = self._read_response(addr, len(spi_response[3:]))
+
         for b in spi_response[3:]:
             res.append(b)
 
@@ -414,6 +426,20 @@ class SigmaTCPHandler(BaseRequestHandler):
     def _list_str(self, int_list):
         formatted_list = [str(item) for item in int_list]
         return "[" + ','.join(formatted_list) + "]"
+
+    def _read_response(self, addr, data_length):
+        packet = bytearray(HEADER_SIZE)
+        packet[0] = COMMAND_READRESPONSE
+        packet[4] = 14  # header length
+        packet[5] = 1  # chip address
+
+        packet[9] = data_length & 0xff
+        packet[8] = (data_length >> 8) & 0xff
+
+        packet[11] = addr & 0xff
+        packet[10] = (addr >> 8) & 0xff
+
+        return packet
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
