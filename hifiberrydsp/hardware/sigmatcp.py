@@ -286,7 +286,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                     filename = "".join(map(chr, data[14:14 + filename_length]))
                     result = self.write_eeprom_file(filename)
 
-                if len(result) > 0:
+                if (result is not None) and (len(result) > 0):
                     self.request.send(result)
 
                 # Still got data that hasn't been processed?
@@ -363,7 +363,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             if instr == "delay":
                 time.sleep(1)
 
-        return 1
+        return b'\01'
 
     def write_data(self, addr, data):
 
