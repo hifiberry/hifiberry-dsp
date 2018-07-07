@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+
+import socketserver
+import logging
+import sys
+
+from hifiberrydsp.hardware.sigmatcp import DEFAULT_PORT, SigmaTCPHandler
+
+
+if __name__ == "__main__":
+
+    if (len(sys.argv)>1) and (sys.argv[1] == "-v"):
+	    logging.basicConfig(level=logging.DEBUG)
+    else:
+	    logging.basicConfig(level=logging.INFO)
+	
+
+    HOST, PORT = "0.0.0.0", DEFAULT_PORT
+
+    server = socketserver.TCPServer((HOST, PORT), SigmaTCPHandler)
+    logging.info("Starting TCP server")
+    server.serve_forever()
