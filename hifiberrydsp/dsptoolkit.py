@@ -270,8 +270,16 @@ class DSPToolkit():
     def set_filters(self, filters, mode=MODE_BOTH):
 
         index = 0
-        l1 = len(self.filterleft)
-        l2 = len(self.filterright)
+        if self.filterleft is None:
+            l1 = 0
+        else:
+            l1 = len(self.filterleft)
+
+        if self.filterright is None:
+            l2 = 0
+        else:
+            l2 = len(self.filterright)
+
         if mode == MODE_LEFT:
             maxlen = l1
         elif mode == MODE_RIGHT:
@@ -297,11 +305,19 @@ class DSPToolkit():
         self.hibernate(True)
 
         if mode == MODE_BOTH:
-            regs = self.filterleft + self.filterright
+            if (self.filterleft) is None:
+                regs = self.filterright
+            elif (self.filterright) is None:
+                regs = self.filterleft
+            else:
+                regs = self.filterleft + self.filterright
         elif mode == MODE_LEFT:
             regs = self.filterleft
         elif mode == MODE_RIGHT:
             regs = self.filterright
+
+        if regs is None:
+            return
 
         nullfilter = Biquad.plain()
         for reg in regs:
