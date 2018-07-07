@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='hifiberrydsp',
-      version='0.4',
+      version='0.5',
       description='A DSP Toolkit',
       long_description=long_description,
       url='http://github.com/hifiberry/hifiberry-dsp',

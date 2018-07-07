@@ -1,0 +1,2 @@
+- control SELFBOOT jumper when programming the EEPROM
+- Store FIR filters
