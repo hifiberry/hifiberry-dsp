@@ -41,6 +41,11 @@ MODE_BOTH = 0
 MODE_LEFT = 1
 MODE_RIGHT = 2
 
+DISPLAY_FLOAT = 0
+DISPLAY_INT = 1
+DISPLAY_HEX = 2
+DISPLAY_BIN = 2
+
 GLOBAL_REGISTER_FILE = "/etc/dspparameter.dat"
 GLOBAL_PROGRAM_FILE = "/etc/dspprogram.xml"
 
@@ -160,13 +165,13 @@ class DSPToolkit():
             t = metadata["@type"]
 
             if (t == "volumeControlRegister"):
-                self.volumectl = self.parse_int(metadata)
+                self.volumectl = self.parse_meta_int(metadata)
 
             if (t == "volumeLimitRegister"):
-                self.volumelimit = self.parse_int(metadata)
+                self.volumelimit = self.parse_meta_int(metadata)
 
             if (t == "balanceRegister"):
-                self.balancectl = self.parse_int(metadata)
+                self.balancectl = self.parse_meta_int(metadata)
 
             if (t == "volumeControlRangeDb"):
                 try:
@@ -182,13 +187,13 @@ class DSPToolkit():
                 self.filterright = self.parse_int_list(metadata)
 
             if (t == "customFirFilterLeft"):
-                (self.firleft, self.firleft_len) = self.parse_int_length(metadata)
+                (self.firleft, self.firleft_len) = self.parse_meta_int_length(metadata)
 
             if (t == "customFirFilterRight"):
-                (self.firright, self.firright_len) = self.parse_int_length(metadata)
+                (self.firright, self.firright_len) = self.parse_meta_int_length(metadata)
 
             if (t == "muteRegister"):
-                self.muteRegister = self.parse_int(metadata)
+                self.muteRegister = self.parse_meta_int(metadata)
 
         self._collect_registers()
 
@@ -196,31 +201,21 @@ class DSPToolkit():
         self.ip = ip
         self.sigmatcp = SigmaTCP(self.dsp, self.ip)
 
-    def parse_int(self, metadata):
+    def parse_meta_int(self, metadata):
         try:
-            strval = metadata["#text"]
-            if strval.startswith("0x"):
-                return int(strval, 16)
-            else:
-                return int(strval)
+            return parse_int(metadata["#text"])
         except:
             logging.error("Can't parse metadata %s", metadata["@type"])
             return None
 
-    def parse_int_length(self, metadata):
+    def parse_meta_int_length(self, metadata):
         try:
             strval = metadata["#text"]
             (addr, length) = strval.split("/")
 
-            if addr.startswith("0x"):
-                addr = int(addr, 16)
-            else:
-                addr = int(addr)
+            addr = parse_int(addr)
+            length = parse_int(length)
 
-            if length.startswith("0x"):
-                length = int(length, 16)
-            else:
-                length = int(length)
         except:
             addr = None
             length = 0
@@ -448,6 +443,12 @@ class CommandLine():
             "set-fir-filter-left": self.cmd_set_fir_filter_left,
             "clear-filters": self.cmd_clear_filters,
             "reset": self.cmd_reset,
+            "read-dec": self.cmd_read,
+            "loop-read-dec": self.cmd_loop_read_dec,
+            "read-int": self.cmd_read_int,
+            "loop-read-int": self.cmd_loop_read_int,
+            "read-hex": self.cmd_read_hex,
+            "loop-read-hex": self.cmd_loop_read_hex,
         }
         self.dsptk = DSPToolkit()
 
@@ -547,6 +548,48 @@ class CommandLine():
                 amplification2percent(vol),
                 amplification2decibel(vol)))
 
+    def cmd_read(self, display=DISPLAY_FLOAT, loop=False):
+        self.parse_xml()
+        try:
+            addr = parse_int(self.args.value)
+        except:
+            print("Can't parse address {}".format(self.args.value))
+            sys.exit(1)
+
+        while True:
+            if display == DISPLAY_FLOAT:
+                val = self.dsptk.sigmatcp.read_decimal(addr)
+                print("{:.8f}".format(val))
+            elif display == DISPLAY_INT:
+                val = 0
+                for i in self.dsptk.sigmatcp.read_data(addr):
+                    val *= 256
+                    val += i
+                print(val)
+            elif display == DISPLAY_HEX:
+                val = self.dsptk.sigmatcp.read_data(addr)
+                print(''.join(["%02X " % x for x in val]))
+
+            if not loop:
+                break
+
+            time.sleep(float(self.args.delay) / 1000)
+
+    def cmd_loop_read_dec(self):
+        self.cmd_read(DISPLAY_FLOAT, True)
+
+    def cmd_read_int(self):
+        self.cmd_read(DISPLAY_INT, False)
+
+    def cmd_loop_read_int(self):
+        self.cmd_read(DISPLAY_INT, True)
+
+    def cmd_read_hex(self):
+        self.cmd_read(DISPLAY_HEX, False)
+
+    def cmd_loop_read_hex(self):
+        self.cmd_read(DISPLAY_HEX, True)
+
     def cmd_reset(self):
         self.parse_xml()
         self.dsptk.reset()
@@ -624,6 +667,11 @@ class CommandLine():
     def main(self):
 
         parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
+        parser.add_argument('--delay',
+                            help='delay for loop operations in ms',
+                            nargs='?',
+                            type=int,
+                            default=1000)
         parser.add_argument('command',
                             choices=self.command_map.keys())
         parser.add_argument('value', nargs='?')
@@ -637,6 +685,13 @@ class CommandLine():
                 "~/.dsptoolkit/dspprogram.xml")
 
         self.command_map[self.args.command]()
+
+
+def parse_int(val):
+    if val.startswith("0x"):
+        return int(val, 16)
+    else:
+        return int(val)
 
 
 if __name__ == "__main__":
