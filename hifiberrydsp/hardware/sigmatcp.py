@@ -126,6 +126,9 @@ class SigmaTCP():
         data = self.read_memory(addr, self.dsp.DECIMAL_LEN)
         return self.dsp.decimal_val(self.data_int(data))
 
+    def read_data(self, addr):
+        return self.read_memory(addr, self.dsp.DECIMAL_LEN)
+
     def write_biquad(self, start_addr, bq):
 
         bqn = bq.normalized()
