@@ -35,6 +35,10 @@ class Adau145x():
         self.DECIMAL_LEN = 4
         self.GPIO_LEN = 2
 
+        self.word_length = 4
+        self.program_addr = 0xc000
+        self.program_length = 0x2000
+
     def decimal_repr(self, f):
         '''
         converts a float to an 32bit fixed point value used in 

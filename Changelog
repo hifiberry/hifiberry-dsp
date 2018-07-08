@@ -1,14 +1,18 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.6
+ - added more functions to read registers
+ - added program memory checksum
+
 0.5.1 (20180707)
- - Bugfix for SigmaStudio read support
+ - bugfix for SigmaStudio read support
 
 0.5 (20180707)
- - Functionality to upload FIR filter coefficients
+ - functionality to upload FIR filter coefficients
 
 0.4 (20180707)
- - Write EEPROM support
+ - write EEPROM support
 
 0.3 (20180706)
  - SigmaTCPServer support

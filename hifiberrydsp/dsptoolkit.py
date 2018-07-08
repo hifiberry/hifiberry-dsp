@@ -29,6 +29,7 @@ import shutil
 import sys
 import urllib.request
 
+
 import xmltodict
 
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -299,6 +300,9 @@ class DSPToolkit():
 
         self.sigmatcp.write_memory(addr, data)
 
+    def get_checksum(self):
+        return self.sigmatcp.program_checksum()
+
     def store_values(self, filename):
         with open(filename, "w") as outfile:
             for reg in self.registers:
@@ -449,6 +453,7 @@ class CommandLine():
             "loop-read-int": self.cmd_loop_read_int,
             "read-hex": self.cmd_read_hex,
             "loop-read-hex": self.cmd_loop_read_hex,
+            "get-checksum": self.cmd_checksum,
         }
         self.dsptk = DSPToolkit()
 
@@ -573,7 +578,10 @@ class CommandLine():
             if not loop:
                 break
 
-            time.sleep(float(self.args.delay) / 1000)
+            try:
+                time.sleep(float(self.args.delay) / 1000)
+            except KeyboardInterrupt:
+                break
 
     def cmd_loop_read_dec(self):
         self.cmd_read(DISPLAY_FLOAT, True)
@@ -636,6 +644,11 @@ class CommandLine():
 
     def cmd_set_fir_filter_right(self):
         self.cmd_set_fir_filters(MODE_RIGHT)
+
+    def cmd_checksum(self):
+        checksum = self.dsptk.sigmatcp.program_checksum()
+
+        print(''.join(["%02X" % x for x in checksum]))
 
     def cmd_install_profile(self):
         self.parse_xml()
