@@ -29,13 +29,13 @@ import shutil
 import sys
 import urllib.request
 
-
-import xmltodict
-
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.hardware.sigmatcp import SigmaTCP
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
+from hifiberrydsp.hardware import sigmatcp
+
+from hifiberrydsp.datatools import parse_int, parse_xml
 
 
 MODE_BOTH = 0
@@ -107,12 +107,13 @@ class DSPToolkit():
         self.firright = None
         self.firleft_len = 0
         self.firright_len = 0
+        self.checksum = 0
 
         self.mutegio = None
         self.muteRegister = None
         self.invertmute = False
         self.sigmatcp = SigmaTCP(self.dsp, self.ip)
-        self.parse_xml()
+        parse_xml(self, xmlfile)
         self.resetgpio = None
 
     def read_config(self, configfile="~/.dsptoolkit/dsptoolkit.conf"):
@@ -138,105 +139,14 @@ class DSPToolkit():
         try:
             self.xmlfile = os.path.expanduser(config["dsp"].get("program"))
             # If there is an program defined, parse it
-            self.parse_xml()
+            parse_xml(self, self.xmlfile)
+
         except:
             logging.info("Config: Can't read DSP program")
-
-    def parse_xml(self):
-
-        if self.xmlfile is None:
-            return
-
-        with open(self.xmlfile) as fd:
-            doc = xmltodict.parse(fd.read())
-
-        self.volumectl = None
-        self.volumelimit = None
-        self.filterleft = None
-        self.filterright = None
-        self.muteRegister = None
-        self.volctlrange = None
-        self.balancectl = None
-        self.firleft = None
-        self.firright = None
-        self.firleft_len = 0
-        self.firright_len = 0
-
-        for metadata in doc["ROM"]["beometa"]["metadata"]:
-            t = metadata["@type"]
-
-            if (t == "volumeControlRegister"):
-                self.volumectl = self.parse_meta_int(metadata)
-
-            if (t == "volumeLimitRegister"):
-                self.volumelimit = self.parse_meta_int(metadata)
-
-            if (t == "balanceRegister"):
-                self.balancectl = self.parse_meta_int(metadata)
-
-            if (t == "volumeControlRangeDb"):
-                try:
-                    strval = metadata["#text"]
-                    self.volctlrange = float(strval)
-                except:
-                    logging.error("Can't parse metadata volumeControlRangeDb")
-
-            if (t == "customFilterBankLeft"):
-                self.filterleft = self.parse_int_list(metadata)
-
-            if (t == "customFilterBankRight"):
-                self.filterright = self.parse_int_list(metadata)
-
-            if (t == "customFirFilterLeft"):
-                (self.firleft, self.firleft_len) = self.parse_meta_int_length(metadata)
-
-            if (t == "customFirFilterRight"):
-                (self.firright, self.firright_len) = self.parse_meta_int_length(metadata)
-
-            if (t == "muteRegister"):
-                self.muteRegister = self.parse_meta_int(metadata)
-
-        self._collect_registers()
 
     def set_ip(self, ip):
         self.ip = ip
         self.sigmatcp = SigmaTCP(self.dsp, self.ip)
-
-    def parse_meta_int(self, metadata):
-        try:
-            return parse_int(metadata["#text"])
-        except:
-            logging.error("Can't parse metadata %s", metadata["@type"])
-            return None
-
-    def parse_meta_int_length(self, metadata):
-        try:
-            strval = metadata["#text"]
-            (addr, length) = strval.split("/")
-
-            addr = parse_int(addr)
-            length = parse_int(length)
-
-        except:
-            addr = None
-            length = 0
-            logging.error("Can't parse metadata %s", metadata["@type"])
-
-        return (addr, length)
-
-    def parse_int_list(self, metadata):
-        try:
-            res = []
-            vals = metadata["#text"].split(",")
-            for v in vals:
-                if v.startswith("0x"):
-                    res.append(int(v, 16))
-                else:
-                    res.append(int(v))
-            return res
-        except:
-            logging.error("Can't parse metadata %s", metadata["@type"])
-            return None
 
     def set_volume(self, volume):
         if self.volumectl is not None:
@@ -303,31 +213,8 @@ class DSPToolkit():
     def get_checksum(self):
         return self.sigmatcp.program_checksum()
 
-    def store_values(self, filename):
-        with open(filename, "w") as outfile:
-            for reg in self.registers:
-                length = self.registers[reg]
-                data = self.sigmatcp.data_int(
-                    self.sigmatcp.read_memory(reg, length))
-                outfile.write("{}:{}:{}\n".format(reg, length, data))
-
-    def read_values(self, filename):
-        self.hibernate(True)
-
-        with open(filename, "r") as infile:
-            self.mute(True)
-            for line in infile:
-                try:
-                    [addr, length, data] = line.split(":")
-                    addr = int(addr)
-                    length = int(length)
-                    data = self.sigmatcp.int_data(int(data), length)
-                    self.sigmatcp.write_memory(addr, data)
-                except:
-                    pass
-            self.mute(False)
-
-        self.dsptk.hibernate(False)
+    def generic_request(self, request_code, response_code):
+        return self.sigmatcp.read_generic(request_code, response_code)
 
     def set_filters(self, filters, mode=MODE_BOTH):
 
@@ -457,6 +344,7 @@ class CommandLine():
             "loop-read-reg": self.cmd_loop_read_reg,
             "get-checksum": self.cmd_checksum,
             "write-reg": self.cmd_write_reg,
+            "get-xml": self.cmd_get_xml
         }
         self.dsptk = DSPToolkit()
 
@@ -486,25 +374,25 @@ class CommandLine():
 
         return vol
 
-    def parse_xml(self):
+    def read_and_parse_xml(self):
         try:
-            self.dsptk.parse_xml()
+            parse_xml(self.dsptk, self.dsptk.xmlfile)
         except IOError:
             print("Can't read or parse {}".format(self.dsptk.xmlfile))
             sys.exit(1)
 
     def cmd_store(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         self.dsptk.store_values(self.register_file())
         print("Settings stored to {}".format(self.register_file()))
 
     def cmd_restore(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         self.dsptk.read_values(self.register_file())
         print("Settings restored from {}".format(self.register_file()))
 
     def cmd_store_global(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         self.dsptk.store_values(GLOBAL_REGISTER_FILE)
         shutil.copy(self.dsptk.xmlfile, GLOBAL_PROGRAM_FILE)
         print("Settings stored to {}".format(GLOBAL_REGISTER_FILE))
@@ -512,13 +400,13 @@ class CommandLine():
 
     def cmd_restore_global(self):
         self.dsptk.xmlfile = GLOBAL_PROGRAM_FILE
-        self.dsptk.parse_xml()
+        self.dsptk.read_and_parse_xml()
         self.dsptk.read_values(GLOBAL_REGISTER_FILE)
         print("Settings restored from {},{}".format(GLOBAL_PROGRAM_FILE,
                                                     GLOBAL_REGISTER_FILE))
 
     def cmd_set_volume(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             vol = self.string_to_volume(self.args.parameters[0])
         else:
@@ -534,7 +422,7 @@ class CommandLine():
                     amplification2decibel(vol)))
 
     def cmd_set_limit(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             vol = self.string_to_volume(self.args.parameters[0])
         else:
@@ -549,7 +437,7 @@ class CommandLine():
             print("Limit set to {}dB".format(amplification2decibel(vol)))
 
     def cmd_get_volume(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         vol = self.dsptk.get_volume()
         if vol is not None:
             print("Volume: {:.4f} / {:.0f}% / {:.0f}db".format(
@@ -558,7 +446,7 @@ class CommandLine():
                 amplification2decibel(vol)))
 
     def cmd_get_limit(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         vol = self.dsptk.get_limit()
         if vol is not None:
             print("Limit: {:.4f} / {:.0f}% / {:.0f}db".format(
@@ -567,7 +455,7 @@ class CommandLine():
                 amplification2decibel(vol)))
 
     def cmd_read(self, display=DISPLAY_FLOAT, loop=False, length=None):
-        self.parse_xml()
+        self.read_and_parse_xml()
         try:
             addr = parse_int(self.args.parameters[0])
         except:
@@ -614,25 +502,25 @@ class CommandLine():
     def cmd_read_reg(self):
         self.cmd_read(DISPLAY_HEX,
                       False,
-                      self.dsptk.dsp.register_word_length)
+                      self.dsptk.dsp.REGISTER_WORD_LENGTH)
 
     def cmd_loop_read_reg(self):
         self.cmd_read(DISPLAY_HEX,
                       True,
-                      self.dsptk.dsp.register_word_length)
+                      self.dsptk.dsp.REGISTER_WORD_LENGTH)
 
     def cmd_reset(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         self.dsptk.reset()
         print("Resetting DSP")
 
     def cmd_clear_filters(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         self.dsptk.clear_filters(MODE_BOTH)
         print("Filters removed")
 
     def cmd_set_rew_filters(self, mode=MODE_BOTH):
-        self.parse_xml()
+        self.read_and_parse_xml()
         filters = REW.readfilters(self.args.value)
         self.dsptk.clear_filters(mode)
         try:
@@ -650,7 +538,7 @@ class CommandLine():
         self.set_rew_filters(mode=MODE_RIGHT)
 
     def cmd_set_fir_filters(self, mode=MODE_BOTH):
-        self.parse_xml()
+        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             filename = self.args.parameters[0]
         else:
@@ -678,8 +566,13 @@ class CommandLine():
 
         print(''.join(["%02X" % x for x in checksum]))
 
+    def cmd_get_xml(self):
+        xml = self.dsptk.generic_request(sigmatcp.COMMAND_XML,
+                                         sigmatcp.COMMAND_XML_RESPONSE)
+        print(xml.decode("utf-8", errors="replace"))
+
     def cmd_install_profile(self):
-        self.parse_xml()
+        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             filename = self.args.parameters[0]
         else:
@@ -743,13 +636,6 @@ class CommandLine():
                 "~/.dsptoolkit/dspprogram.xml")
 
         self.command_map[self.args.command]()
-
-
-def parse_int(val):
-    if val.startswith("0x"):
-        return int(val, 16)
-    else:
-        return int(val)
 
 
 if __name__ == "__main__":

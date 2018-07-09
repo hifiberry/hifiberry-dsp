@@ -31,16 +31,24 @@ LSB_SIGMA = float(1) / math.pow(2, 23)
 
 class Adau145x():
 
-    def __init__(self):
-        self.DECIMAL_LEN = 4
-        self.GPIO_LEN = 2
+    DECIMAL_LEN = 4
+    GPIO_LEN = 2
 
-        self.word_length = 4
-        self.program_addr = 0xc000
-        self.program_length = 0x2000
-        self.register_word_length = 2
+    WORD_LENGTH = 4
+    PROGRAM_ADDR = 0xc000
+    PROGRAM_LENGTH = 0x2000
+    REGISTER_WORD_LENGTH = 2
 
-    def decimal_repr(self, f):
+    RESET_REGISTER = 0xf890
+    HIBERNATE_REGISTER = 0xf400
+
+    STARTCORE_REGISTER = 0xf402
+    KILLCORE_REGISTER = 0xf403
+
+    PROGRAM_END_SIGNATURE = b'\x02\xC2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+    @staticmethod
+    def decimal_repr(f):
         '''
         converts a float to an 32bit fixed point value used in 
         ADAU154x SigmaDSP processors
@@ -56,7 +64,8 @@ class Adau145x():
         f = f * (1 << 24)
         return int(f)
 
-    def decimal_val(self, p):
+    @staticmethod
+    def decimal_val(p):
         '''
         converts an 32bit fixed point value used in SigmaDSP 
         processors to a float value
@@ -66,14 +75,5 @@ class Adau145x():
             f = -32 + f
         return f
 
-    def reset_register(self):
-        return (0xf890, 2)
-
-    def hibernate_register(self):
-        return (0xf400, 2)
-
-    def killcore_register(self):
-        return (0xf401, 2)
-
-    def startcore_register(self):
-        return (0xf402, 2)
+    def program_end_signature(self):
+        return
