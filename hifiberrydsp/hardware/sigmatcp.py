@@ -523,14 +523,12 @@ class SigmaTCPHandler(BaseRequestHandler):
                                                delete=False)
         try:
             tempfile.write(data)
-            self.write_eeprom_file(tempfile.name)
-            shutil.copy(tempfile.name, self.dspprogramfile)
-            result = b'\01'
+            tempfile.close()
+            result = self.write_eeprom_file(tempfile.name)
         except IOError:
             result = b'\00'
 
         try:
-            tempfile.close()
             os.remove(tempfile.name)
         except:
             pass
@@ -539,28 +537,38 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     def write_eeprom_file(self, filename):
 
-        with open(filename) as fd:
-            doc = xmltodict.parse(fd.read())
+        try:
+            with open(filename) as fd:
+                doc = xmltodict.parse(fd.read())
 
-        for action in doc["ROM"]["page"]["action"]:
-            instr = action["@instr"]
+            for action in doc["ROM"]["page"]["action"]:
+                instr = action["@instr"]
 
-            if instr == "writeXbytes":
-                addr = int(action["@addr"])
-                paramname = action["@ParamName"]
-                data = []
-                for d in action["#text"].split(" "):
-                    value = int(d, 16)
-                    data.append(value)
+                if instr == "writeXbytes":
+                    addr = int(action["@addr"])
+                    paramname = action["@ParamName"]
+                    data = []
+                    for d in action["#text"].split(" "):
+                        value = int(d, 16)
+                        data.append(value)
 
-                self.write_data(addr, data)
+                    self.write_data(addr, data)
 
-                # Sleep after erase operations
-                if ("g_Erase" in paramname):
-                    time.sleep(10)
+                    # Sleep after erase operations
+                    if ("g_Erase" in paramname):
+                        time.sleep(10)
 
-            if instr == "delay":
-                time.sleep(1)
+                if instr == "delay":
+                    time.sleep(1)
+
+            if (filename != self.dspprogramfile):
+                logging.debug("copied %s to %s",
+                              filename,
+                              self.dspprogramfile)
+                shutil.copy(tempfile.name, self.dspprogramfile)
+
+        except IOError:
+            return b'\00'
 
         return b'\01'
 
@@ -605,27 +613,39 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         return data
 
-    def get_program_memory(self):
-        '''
-        Calculate a checksum of the program memory of the DSP
-        '''
-        addr = self.dsp.PROGRAM_ADDR
+    def save_data_memory(self):
+        pass
+
+    def get_memory_block(self, addr, length):
         block_size = 2048
 
         logging.debug("reading %s bytes program code",
-                      self.dsp.PROGRAM_LENGTH * self.dsp.WORD_LENGTH)
+                      length * self.dsp.WORD_LENGTH)
 
-        # Must kill the core to read program memory :(
+        # Must kill the core to read program memory, but it doesn't
+        # hurt doing it also for other memory types :(
         self._kill_dsp()
 
         memory = bytearray()
 
-        while len(memory) < self.dsp.PROGRAM_LENGTH * self.dsp.WORD_LENGTH:
+        while len(memory) < length * self.dsp.WORD_LENGTH:
             logging.debug("reading program code block from addr %s", addr)
             data = self.spi_read(addr, block_size, add_header=False)
             # logging.debug("%s", data)
             memory += data
             addr = addr + int(block_size / self.dsp.WORD_LENGTH)
+
+        # Restart the core
+        self._start_dsp()
+
+        return memory[0:length * self.dsp.WORD_LENGTH]
+
+    def get_program_memory(self):
+        '''
+        Calculate a checksum of the program memory of the DSP
+        '''
+        memory = self.get_memory_block(self.dsp.PROGRAM_ADDR,
+                                       self.dsp.PROGRAM_LENGTH)
 
         end_index = memory.find(self.dsp.PROGRAM_END_SIGNATURE)
 
@@ -638,9 +658,6 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         logging.debug("Program lengths = %s words",
                       end_index / self.dsp.WORD_LENGTH)
-
-        # Restart the core
-        self._start_dsp()
 
         # logging.debug("%s", memory[0:end_index])
         return memory[0:end_index]
