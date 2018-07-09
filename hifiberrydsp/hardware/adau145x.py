@@ -38,6 +38,7 @@ class Adau145x():
         self.word_length = 4
         self.program_addr = 0xc000
         self.program_length = 0x2000
+        self.register_word_length = 2
 
     def decimal_repr(self, f):
         '''
@@ -70,6 +71,9 @@ class Adau145x():
 
     def hibernate_register(self):
         return (0xf400, 2)
+
+    def killcore_register(self):
+        return (0xf401, 2)
 
     def startcore_register(self):
         return (0xf402, 2)

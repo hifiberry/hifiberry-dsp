@@ -453,7 +453,10 @@ class CommandLine():
             "loop-read-int": self.cmd_loop_read_int,
             "read-hex": self.cmd_read_hex,
             "loop-read-hex": self.cmd_loop_read_hex,
+            "read-reg": self.cmd_read_reg,
+            "loop-read-reg": self.cmd_loop_read_reg,
             "get-checksum": self.cmd_checksum,
+            "write-reg": self.cmd_write_reg,
         }
         self.dsptk = DSPToolkit()
 
@@ -516,7 +519,12 @@ class CommandLine():
 
     def cmd_set_volume(self):
         self.parse_xml()
-        vol = self.string_to_volume(self.args.value)
+        if len(self.args.parameters) > 0:
+            vol = self.string_to_volume(self.args.parameters[0])
+        else:
+            print("Volume parameter missing")
+            sys.exit(1)
+
         if vol is not None:
             if self.dsptk.volumectl is None:
                 print("Profile doesn't support volume control")
@@ -527,7 +535,12 @@ class CommandLine():
 
     def cmd_set_limit(self):
         self.parse_xml()
-        vol = self.string_to_volume(self.args.value)
+        if len(self.args.parameters) > 0:
+            vol = self.string_to_volume(self.args.parameters[0])
+        else:
+            print("Volume parameter missing")
+            sys.exit(1)
+
         if vol is not None:
             if self.dsptk.volumelimit is None:
                 print("Profile doesn't support volume control")
@@ -553,12 +566,12 @@ class CommandLine():
                 amplification2percent(vol),
                 amplification2decibel(vol)))
 
-    def cmd_read(self, display=DISPLAY_FLOAT, loop=False):
+    def cmd_read(self, display=DISPLAY_FLOAT, loop=False, length=None):
         self.parse_xml()
         try:
-            addr = parse_int(self.args.value)
+            addr = parse_int(self.args.parameters[0])
         except:
-            print("Can't parse address {}".format(self.args.value))
+            print("Can't parse address {}".format(self.args.parameters))
             sys.exit(1)
 
         while True:
@@ -567,12 +580,12 @@ class CommandLine():
                 print("{:.8f}".format(val))
             elif display == DISPLAY_INT:
                 val = 0
-                for i in self.dsptk.sigmatcp.read_data(addr):
+                for i in self.dsptk.sigmatcp.read_data(addr, length):
                     val *= 256
                     val += i
                 print(val)
             elif display == DISPLAY_HEX:
-                val = self.dsptk.sigmatcp.read_data(addr)
+                val = self.dsptk.sigmatcp.read_data(addr, length)
                 print(''.join(["%02X " % x for x in val]))
 
             if not loop:
@@ -597,6 +610,16 @@ class CommandLine():
 
     def cmd_loop_read_hex(self):
         self.cmd_read(DISPLAY_HEX, True)
+
+    def cmd_read_reg(self):
+        self.cmd_read(DISPLAY_HEX,
+                      False,
+                      self.dsptk.dsp.register_word_length)
+
+    def cmd_loop_read_reg(self):
+        self.cmd_read(DISPLAY_HEX,
+                      True,
+                      self.dsptk.dsp.register_word_length)
 
     def cmd_reset(self):
         self.parse_xml()
@@ -628,7 +651,12 @@ class CommandLine():
 
     def cmd_set_fir_filters(self, mode=MODE_BOTH):
         self.parse_xml()
-        filename = self.args.value
+        if len(self.args.parameters) > 0:
+            filename = self.args.parameters[0]
+        else:
+            print("FIR filename missing")
+            sys.exit(1)
+
         coefficients = []
         with open(filename) as firfile:
             for line in firfile:
@@ -652,14 +680,20 @@ class CommandLine():
 
     def cmd_install_profile(self):
         self.parse_xml()
-        f = self.args.value
+        if len(self.args.parameters) > 0:
+            filename = self.args.parameters[0]
+        else:
+            print("profile filename missing")
+            sys.exit(1)
+
         default_location = self.dsptk.xmlfile
-        if (f.startswith("http://") or f.startswith("https://")):
+        if (filename.startswith("http://") or
+                filename.startswith("https://")):
             # Download and store a local copy
             try:
                 localname = os.path.expanduser(
-                    "~/.dsptoolkit/" + os.path.basename(f))
-                urllib.request.urlretrieve(f, localname)
+                    "~/.dsptoolkit/" + os.path.basename(filename))
+                urllib.request.urlretrieve(filename, localname)
                 defaultname = self.dsptk.xmlfile
                 shutil.copy(localname, self.dsptk.xmlfile)
                 print("Stored profile {} as {}".format(
@@ -677,6 +711,17 @@ class CommandLine():
         else:
             print("Failed to install DSP profile {}".format(self.dsptk.xmlfile))
 
+    def cmd_write_reg(self):
+        if len(self.args.parameters) > 1:
+            reg = parse_int(self.args.parameters[0])
+            value = parse_int(self.args.parameters[1])
+        else:
+            print("parameter missing, need addr value")
+
+        data = [(value >> 8) & 0xff, value & 0xff]
+        self.dsptk.sigmatcp.write_memory(reg, data)
+        sys.exit(1)
+
     def main(self):
 
         parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
@@ -687,7 +732,7 @@ class CommandLine():
                             default=1000)
         parser.add_argument('command',
                             choices=self.command_map.keys())
-        parser.add_argument('value', nargs='?')
+        parser.add_argument('parameters', nargs='*')
 
         self.args = parser.parse_args()
 

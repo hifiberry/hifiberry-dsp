@@ -25,19 +25,21 @@ import time
 import os
 import logging
 import hashlib
+import tempfile
+import shutil
 
 from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
 import xmltodict
-from lxml.html.builder import INS
 from hifiberrydsp.hardware import adau145x
 
 COMMAND_READ = 0x0a
 COMMAND_READRESPONSE = 0x0b
 COMMAND_WRITE = 0x09
-COMMAND_EEPROM = 0xf0
+COMMAND_EEPROM_FILE = 0xf0
 COMMAND_CHECKSUM = 0xf1
 COMMAND_CHECKSUM_RESPONSE = 0xf2
+COMMAND_EEPROM_CONTENT = 0xf3
 
 HEADER_SIZE = 14
 
@@ -202,7 +204,7 @@ class SigmaTCP():
 
     def write_eeprom_request(self, filename):
         packet = bytearray(HEADER_SIZE)
-        packet[0] = COMMAND_EEPROM
+        packet[0] = COMMAND_EEPROM_FILE
         packet[1] = len(filename)
         packet.extend(map(ord, filename))
         packet.extend([0])
@@ -249,6 +251,9 @@ class SigmaTCPHandler(BaseRequestHandler):
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
         BaseRequestHandler.__init__(self, request, client_address, server)
+
+        self.dspprogramfile = "/etc/dspprogram.xml"
+        self.paramaterfile = "/etc/dspparameters.dat"
 
     def setup(self):
         import spidev
@@ -325,7 +330,12 @@ class SigmaTCPHandler(BaseRequestHandler):
                     self.handle_write(data)
                     result = None
 
-                elif data[0] == COMMAND_EEPROM:
+                elif data[0] == COMMAND_EEPROM_FILE:
+                    filename_length = data[1]
+                    filename = "".join(map(chr, data[14:14 + filename_length]))
+                    result = self.write_eeprom_file(filename)
+
+                elif data[0] == COMMAND_EEPROM_FILE:
                     filename_length = data[1]
                     filename = "".join(map(chr, data[14:14 + filename_length]))
                     result = self.write_eeprom_file(filename)
@@ -333,6 +343,25 @@ class SigmaTCPHandler(BaseRequestHandler):
                 elif data[0] == COMMAND_CHECKSUM:
                     result = self._response_packet(
                         COMMAND_CHECKSUM_RESPONSE, 0, 16) + self.program_checksum()
+
+                elif data[0] == COMMAND_EEPROM_CONTENT:
+                    command_length = int.from_bytes(
+                        data[3:7], byteorder='big')
+
+                    logging.debug("Len (data, header info): %s %s",
+                                  len(data), command_length)
+
+                    if command_length < len(data):
+                        buffer = data[command_length:]
+                        data = data[0:command_length]
+
+                    if (command_length > 0) and (len(data) < command_length):
+                        read_more = True
+                        logging.debug(
+                            "Expect %s bytes from header information (write), but have only %s", command_length, len(data))
+                        continue
+
+                    result = self.write_eeprom_content(data[14:command_length])
 
                 if (result is not None) and (len(result) > 0):
                     logging.debug(
@@ -398,6 +427,25 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         logging.debug("writing {} bytes to {}".format(length, addr))
         return self.write_data(addr, data[14:])
+
+    def write_eeprom_content(self, data):
+        tempfile = tempfile.NamedTemporaryFile(mode='w+b',
+                                               delete=False)
+        try:
+            tempfile.write(data)
+            self.write_eeprom_file(tempfile.name)
+            shutil.copy(tempfile.name, self.dspprogramfile)
+            result = b'\01'
+        except IOError:
+            result = b'\00'
+
+        try:
+            tempfile.close()
+            os.remove(tempfile.name)
+        except:
+            pass
+
+        return result
 
     def write_eeprom_file(self, filename):
 
@@ -467,6 +515,36 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         return data
 
+    def program_checksum(self):
+        '''
+        Calculate a checksum of the program memory of the DSP
+        '''
+        addr = self.dsp.program_addr
+        block_size = 2048
+
+        datalen = 0
+        m = hashlib.md5()
+
+        logging.debug("reading %s bytes program code",
+                      self.dsp.program_length * self.dsp.word_length)
+
+        # Must kill the core to read program memory :(
+        self._kill_dsp()
+
+        while datalen < self.dsp.program_length * self.dsp.word_length:
+            logging.debug("reading program code block from addr %s", addr)
+            data = self.spi_read(addr, block_size)
+            print(data)
+            m.update(data)
+            addr = addr + int(block_size / self.dsp.word_length)
+            datalen += block_size
+
+        # Restart the core
+        self._start_dsp()
+
+        logging.debug("digest: %s", m.digest())
+        return m.digest()
+
     def finish(self):
         logging.debug('finish')
 
@@ -488,37 +566,20 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         return packet
 
-    def program_checksum(self):
-        '''
-        Calculate a checksum of the program memory of the DSP
-        '''
-        addr = self.dsp.program_addr
-        block_size = 2048
+    def _kill_dsp(self):
+        logging.debug("killing DSP core")
+        (register, _length) = self.dsp.hibernate_register()
+        self.write_data(register, [0, 1])
+        time.sleep(0.001)
+        (register, _length) = self.dsp.killcore_register()
+        self.write_data(register, [0, 0])
+        self.write_data(register, [0, 1])
 
-        datalen = 0
-        m = hashlib.md5()
-
-        logging.debug("reading %s bytes program code",
-                      self.dsp.program_length * self.dsp.word_length)
-
-        # Must kill the core to read program memory :(
-        self.write_data(0xf403, [0, 1])
-
-        while datalen < self.dsp.program_length * self.dsp.word_length:
-            logging.debug("reading program code block from addr %s", addr)
-            data = self.spi_read(addr, block_size)
-            print(data)
-            m.update(data)
-            addr = addr + int(block_size / self.dsp.word_length)
-            datalen += block_size
-
-        # Restart the core
-        (register, length) = self.dsp.reset_register()
-        self.write_data(register, SigmaTCP.int_data(0, length))
-        self.write_data(register, SigmaTCP.int_data(1, length))
-
-        logging.debug("digest: %s", m.digest())
-        return m.digest()
+    def _start_dsp(self):
+        logging.debug("starting DSP core")
+        (register, _length) = self.dsp.startcore_register()
+        self.write_data(register, [0, 0])
+        self.write_data(register, [0, 1])
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
