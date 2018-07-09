@@ -4,6 +4,7 @@ Changelog HiFiBerry DSP toolkit
 0.6
  - added more functions to read registers
  - added program memory checksum
+ - TCPServer can now manage the DSP profile
 
 0.5.1 (20180707)
  - bugfix for SigmaStudio read support
