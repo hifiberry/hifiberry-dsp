@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
-with open("README.md", "r") as fh:
+with open("README", "r") as fh:
     long_description = fh.read()
 
 setup(name='hifiberrydsp',
-      version='0.5.1',
+      version='0.6',
       description='A DSP Toolkit',
       long_description=long_description,
       url='http://github.com/hifiberry/hifiberry-dsp',

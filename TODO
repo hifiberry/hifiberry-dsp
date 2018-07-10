@@ -1,2 +1,3 @@
-- control SELFBOOT jumper when programming the EEPROM
-- Store FIR filters
+- cache checksum (optional)
+- cleanup dsptoolkit client code and remove all direct access to local XML files
+
