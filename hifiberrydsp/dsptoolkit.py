@@ -214,7 +214,7 @@ class DSPToolkit():
         return self.sigmatcp.program_checksum()
 
     def generic_request(self, request_code, response_code):
-        return self.sigmatcp.read_generic(request_code, response_code)
+        return self.sigmatcp.request_generic(request_code, response_code)
 
     def set_filters(self, filters, mode=MODE_BOTH):
 
@@ -286,25 +286,6 @@ class DSPToolkit():
                 self.sigmatcp.write_memory(
                     self.muteRegister, self.sigmatcp.int_data(0))
 
-    def _collect_registers(self):
-        '''
-        Create a list of registers that are managed by the DSP toolkit
-        This is used to store/restore the data
-        '''
-        self.registers = {}
-        if self.volumectl is not None:
-            self.registers[self.volumectl] = self.dsp.DECIMAL_LEN
-        if self.volumelimit is not None:
-            self.registers[self.volumectl] = self.dsp.DECIMAL_LEN
-        if self.filterleft is not None:
-            for reg in self.filterleft:
-                for i in range(0, 5):
-                    self.registers[reg + i] = self.dsp.DECIMAL_LEN
-        if self.filterright is not None:
-            for reg in self.filterright:
-                for i in range(0, 5):
-                    self.registers[reg + i] = self.dsp.DECIMAL_LEN
-
     def reset(self):
         self.sigmatcp.reset()
 
@@ -320,8 +301,6 @@ class CommandLine():
             "store":  self.cmd_store,
             "restore": self.cmd_restore,
             "install-profile": self.cmd_install_profile,
-            "store-global": self.cmd_store_global,
-            "restore-global": self.cmd_restore_global,
             "set-volume": self.cmd_set_volume,
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
@@ -344,7 +323,8 @@ class CommandLine():
             "loop-read-reg": self.cmd_loop_read_reg,
             "get-checksum": self.cmd_checksum,
             "write-reg": self.cmd_write_reg,
-            "get-xml": self.cmd_get_xml
+            "get-xml": self.cmd_get_xml,
+            "get-meta": self.cmd_get_meta
         }
         self.dsptk = DSPToolkit()
 
@@ -380,30 +360,6 @@ class CommandLine():
         except IOError:
             print("Can't read or parse {}".format(self.dsptk.xmlfile))
             sys.exit(1)
-
-    def cmd_store(self):
-        self.read_and_parse_xml()
-        self.dsptk.store_values(self.register_file())
-        print("Settings stored to {}".format(self.register_file()))
-
-    def cmd_restore(self):
-        self.read_and_parse_xml()
-        self.dsptk.read_values(self.register_file())
-        print("Settings restored from {}".format(self.register_file()))
-
-    def cmd_store_global(self):
-        self.read_and_parse_xml()
-        self.dsptk.store_values(GLOBAL_REGISTER_FILE)
-        shutil.copy(self.dsptk.xmlfile, GLOBAL_PROGRAM_FILE)
-        print("Settings stored to {}".format(GLOBAL_REGISTER_FILE))
-        print("DSP program copied to {}".format(GLOBAL_PROGRAM_FILE))
-
-    def cmd_restore_global(self):
-        self.dsptk.xmlfile = GLOBAL_PROGRAM_FILE
-        self.dsptk.read_and_parse_xml()
-        self.dsptk.read_values(GLOBAL_REGISTER_FILE)
-        print("Settings restored from {},{}".format(GLOBAL_PROGRAM_FILE,
-                                                    GLOBAL_REGISTER_FILE))
 
     def cmd_set_volume(self):
         self.read_and_parse_xml()
@@ -571,6 +527,18 @@ class CommandLine():
                                          sigmatcp.COMMAND_XML_RESPONSE)
         print(xml.decode("utf-8", errors="replace"))
 
+    def cmd_get_meta(self):
+        if len(self.args.parameters) > 0:
+            attribute = self.args.parameters[0]
+        value = self.dsptk.sigmatcp.request_metadata(attribute)
+        print(value.decode("utf-8"))
+
+    def cmd_store(self):
+        self.dsptk.generic_request(sigmatcp.COMMAND_STORE_DATA)
+
+    def cmd_restore(self):
+        self.dsptk.generic_request(sigmatcp.COMMAND_RESTORE_DATA)
+
     def cmd_install_profile(self):
         self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
@@ -591,16 +559,14 @@ class CommandLine():
                 shutil.copy(localname, self.dsptk.xmlfile)
                 print("Stored profile {} as {}".format(
                     localname, defaultname))
-                f = localname
+                filename = localname
             except IOError:
-                print("Couldn't download {}".format(f))
+                print("Couldn't download {}".format(filename))
                 sys.exit(1)
-        self.dsptk.xmlfile = f
+        self.dsptk.xmlfile = filename
         res = self.dsptk.install_profile()
         if res:
-            print("DSP profile {} installed".format(f))
-            shutil.copy(f, default_location)
-            print("Copied {} to {}".format(f, default_location))
+            print("DSP profile {} installed".format(filename))
         else:
             print("Failed to install DSP profile {}".format(self.dsptk.xmlfile))
 
@@ -624,7 +590,7 @@ class CommandLine():
                             type=int,
                             default=1000)
         parser.add_argument('command',
-                            choices=self.command_map.keys())
+                            choices=sorted(self.command_map.keys()))
         parser.add_argument('parameters', nargs='*')
 
         self.args = parser.parse_args()

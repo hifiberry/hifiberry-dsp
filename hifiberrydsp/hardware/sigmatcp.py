@@ -27,6 +27,7 @@ import logging
 import hashlib
 import tempfile
 import shutil
+import getpass
 
 from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
@@ -46,15 +47,16 @@ COMMAND_CHECKSUM_RESPONSE = 0xf2
 COMMAND_WRITE_EEPROM_CONTENT = 0xf3
 COMMAND_XML = 0xf4
 COMMAND_XML_RESPONSE = 0xf5
+COMMAND_STORE_DATA = 0xf6
+COMMAND_RESTORE_DATA = 0xf6
+COMMAND_GET_META = 0xf7
+COMMAND_META_RESULT = 0xf7
 
 HEADER_SIZE = 14
 
 DEFAULT_PORT = 8086
 
 MAX_READ_SIZE = 1024 * 2
-
-DSP_PROGRAM_FILE = "/etc/dspprogram.xml"
-DSP_PARAMETER_FILE = "/etc/dspdata.dat"
 
 
 class SigmaTCPException(IOError):
@@ -194,7 +196,18 @@ class SigmaTCP():
 
         return packet
 
-    def write_request(self, addr, data):
+    @staticmethod
+    def metadata_request(attribute):
+        attribute = attribute.encode("utf-8")
+        length = 14 + len(attribute)
+        packet = bytearray(HEADER_SIZE)
+        packet[0] = COMMAND_GET_META
+        packet[3] = (length >> 8) & 0xff
+        packet[4] = length & 0xff
+        return packet + attribute
+
+    @staticmethod
+    def write_request(addr, data):
         length = len(data)
         packet = bytearray(HEADER_SIZE)
         packet[0] = COMMAND_WRITE
@@ -211,7 +224,7 @@ class SigmaTCP():
 
         return packet
 
-    def read_generic(self, request_code, response_code):
+    def request_generic(self, request_code, response_code=None):
         if self.socket is None:
             if self.autoconnect:
                 self.connect()
@@ -220,14 +233,43 @@ class SigmaTCP():
 
         packet = self.generic_request(request_code)
         self.socket.send(packet)
-        # read header and get length field
+
+        if response_code is not None:
+            # read header and get length field
+            data = self.socket.recv(HEADER_SIZE)
+            length = int.from_bytes(data[6:10], byteorder='big')
+
+            if (data[0] != response_code):
+                logging.error("Expected response code %s, but got %s",
+                              response_code,
+                              data[0])
+
+            # read data
+            data = bytearray()
+            while (len(data) < length):
+                packet = self.socket.recv(length - len(data))
+                data = data + packet
+
+            return data
+
+    def request_metadata(self, attribute):
+        if self.socket is None:
+            if self.autoconnect:
+                self.connect()
+            else:
+                raise SigmaTCPException("Not connected")
+
+        packet = self.metadata_request(attribute)
+        self.socket.send(packet)
+
         data = self.socket.recv(HEADER_SIZE)
         length = int.from_bytes(data[6:10], byteorder='big')
 
-        if (data[0] != response_code):
+        if (data[0] != COMMAND_META_RESULT):
             logging.error("Expected response code %s, but got %s",
-                          response_code,
+                          COMMAND_META_RESULT,
                           data[0])
+            return
 
         # read data
         data = bytearray()
@@ -237,7 +279,8 @@ class SigmaTCP():
 
         return data
 
-    def write_eeprom_request(self, filename):
+    @staticmethod
+    def write_eeprom_request(filename):
         packet = bytearray(HEADER_SIZE)
         packet[0] = COMMAND_EEPROM_FILE
         packet[1] = len(filename)
@@ -245,7 +288,8 @@ class SigmaTCP():
         packet.extend([0])
         return packet
 
-    def generic_request(self, request_type):
+    @staticmethod
+    def generic_request(request_type):
         packet = bytearray(HEADER_SIZE)
         packet[0] = request_type
         return packet
@@ -287,10 +331,17 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
-        BaseRequestHandler.__init__(self, request, client_address, server)
 
-        self.dspprogramfile = "/etc/dspprogram.xml"
-        self.paramaterfile = "/etc/dspparameters.dat"
+        if (getpass.getuser() == 0):
+            self.dspprogramfile = "/etc/dspprogram.xml"
+            self.paramaterfile = "/etc/dspparameters.dat"
+        else:
+            self.dspprogramfile = os.path.expanduser(
+                "~/.dsptoolkit/dspprogram.xml")
+            self.paramaterfile = os.path.expanduser(
+                "~/.dsptoolkit/dspparameters.dat")
+
+        BaseRequestHandler.__init__(self, request, client_address, server)
 
     def setup(self):
         import spidev
@@ -372,6 +423,12 @@ class SigmaTCPHandler(BaseRequestHandler):
                     filename = "".join(map(chr, data[14:14 + filename_length]))
                     result = self.write_eeprom_file(filename)
 
+                elif data[0] == COMMAND_STORE_DATA:
+                    self.save_data_memory()
+
+                elif data[0] == COMMAND_RESTORE_DATA:
+                    self.restore_data_memory()
+
                 elif data[0] == COMMAND_EEPROM_FILE:
                     filename_length = data[1]
                     filename = "".join(map(chr, data[14:14 + filename_length]))
@@ -384,8 +441,9 @@ class SigmaTCPHandler(BaseRequestHandler):
                 elif data[0] == COMMAND_XML:
                     try:
                         data = self.get_and_check_xml()
+                        print(data)
                     except IOError:
-                        data = bytearray()  # empty response
+                        data = ""  # empty response
 
                     if data is not None:
                         result = self._response_packet(
@@ -393,6 +451,27 @@ class SigmaTCPHandler(BaseRequestHandler):
                     else:
                         result = self._response_packet(
                             COMMAND_XML_RESPONSE, 0, 0)
+
+                elif data[0] == COMMAND_GET_META:
+                    length = int.from_bytes(data[1:5], byteorder='big')
+
+                    if length < len(data):
+                        buffer = data[command_length:]
+                        data = data[0:command_length]
+
+                    attribute = data[14:length].decode("utf-8")
+                    value = self.get_meta(attribute)
+                    logging.debug("metadata request for %s = %s",
+                                  attribute, value)
+
+                    if value is None:
+                        value = ""
+
+                    value = value.encode('utf-8')
+
+                    result = self._response_packet(
+                        COMMAND_META_RESULT, 0, len(value))
+                    result += value
 
                 elif data[0] == COMMAND_WRITE_EEPROM_CONTENT:
                     command_length = int.from_bytes(
@@ -437,7 +516,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                 pass
 
         res = Foo()
-        parse_xml(res, DSP_PROGRAM_FILE)
+        logging.debug("reading profile %s", self.dspprogramfile)
+        parse_xml(res, self.dspprogramfile)
 
         try:
             cs = res.checksum
@@ -454,10 +534,10 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         checksum_mem = self.program_checksum()
         logging.debug("checksum memory: %s, xmlfile: %s",
-                      checksum_xml,
-                      checksum_mem)
+                      checksum_mem,
+                      checksum_xml)
 
-        if (checksum_xml is not None):
+        if (checksum_xml is not None) and (checksum_xml != 0):
             if (checksum_xml != checksum_mem):
                 logging.error("checksums do not match, aborting")
                 return None
@@ -465,9 +545,20 @@ class SigmaTCPHandler(BaseRequestHandler):
             logging.info("DSP profile doesn't have a checksum, "
                          "might be different from the program running now")
 
-        data = open(DSP_PROGRAM_FILE, "rb").read()
+        data = open(self.dspprogramfile, "rb").read()
 
         return data
+
+    def get_meta(self, attribute):
+        xml = self.get_and_check_xml()
+        doc = xmltodict.parse(xml)
+        for metadata in doc["ROM"]["beometa"]["metadata"]:
+            t = metadata["@type"]
+            logging.debug(t)
+            if (t == attribute):
+                return metadata["#text"]
+
+        return None
 
     def handle_read(self, data):
         addr = int.from_bytes(data[10:12], byteorder='big')
@@ -521,22 +612,22 @@ class SigmaTCPHandler(BaseRequestHandler):
     def write_eeprom_content(self, data):
         tempfile = tempfile.NamedTemporaryFile(mode='w+b',
                                                delete=False)
+        filename = tempfile.name
         try:
             tempfile.write(data)
             tempfile.close()
-            result = self.write_eeprom_file(tempfile.name)
+            result = self.write_eeprom_file(filename)
         except IOError:
             result = b'\00'
 
         try:
-            os.remove(tempfile.name)
+            os.remove(filename)
         except:
             pass
 
         return result
 
     def write_eeprom_file(self, filename):
-
         try:
             with open(filename) as fd:
                 doc = xmltodict.parse(fd.read())
@@ -562,10 +653,10 @@ class SigmaTCPHandler(BaseRequestHandler):
                     time.sleep(1)
 
             if (filename != self.dspprogramfile):
+                shutil.copy(filename, self.dspprogramfile)
                 logging.debug("copied %s to %s",
                               filename,
                               self.dspprogramfile)
-                shutil.copy(tempfile.name, self.dspprogramfile)
 
         except IOError:
             return b'\00'
@@ -614,12 +705,40 @@ class SigmaTCPHandler(BaseRequestHandler):
         return data
 
     def save_data_memory(self):
-        pass
+        checksum = self.program_checksum()
+        memory = self.get_memory_block(self.dsp.DATA_ADDR,
+                                       self.dsp.DATA_LENGTH)
+        with open(self.paramaterfile, "w") as datafile:
+            datafile.write(checksum)
+            datafile.write(memory)
+
+    def restore_data_memory(self):
+        with open(self.paramaterfile, "r") as datafile:
+            checksum1 = datafile.read(16)
+            checksum2 = self.program_checksum()
+            logging.debug("Checking checksum %s/%s",
+                          checksum1, checksum2)
+            if checksum1 != checksum2:
+                logging.error("checksums do not match, aborting")
+                return
+
+            memory = datafile.read()
+
+        if (len(memory) > self.dsp.DATA_LENGTH * self.dsp.WORD_LENGTH):
+            logging.error("Got %s bytes to restore, but memory is only %s",
+                          len(memory),
+                          self.dsp.DATA_LENGTH * self.dsp.WORD_LENGTH)
+
+        # Make sure DSP isn't running for this operation
+        self._kill_dsp()
+        self.write_data(self.dsp.DATA_ADDR, memory)
+        # Restart the core
+        self._start_dsp()
 
     def get_memory_block(self, addr, length):
         block_size = 2048
 
-        logging.debug("reading %s bytes program code",
+        logging.debug("reading %s bytes from memory",
                       length * self.dsp.WORD_LENGTH)
 
         # Must kill the core to read program memory, but it doesn't
@@ -723,3 +842,11 @@ class SigmaTCPServer(ThreadingMixIn, TCPServer):
         self.allow_reuse_address = True
 
         TCPServer.__init__(self, server_address, RequestHandlerClass)
+
+    def server_activate(self):
+        # TODO: read memory
+        TCPServer.server_activate(self)
+
+    def server_close(self):
+        # TODO: Store RAM
+        TCPServer.server_close(self)

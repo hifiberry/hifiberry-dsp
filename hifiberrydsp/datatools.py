@@ -23,6 +23,17 @@ SOFTWARE.
 import logging
 import xmltodict
 
+ATTRIBUTE_CHECKSUM = "checksum"
+ATTRIBUTE_VOL_CTL = "volumeControlRegister"
+ATTRIBUTE_VOL_LIMIT = "volumeLimitRegister"
+ATTRIBUTE_BALANCE = "balanceRegister"
+ATTRIBUTE_VOL_RANGE = "volumeControlRangeDb"
+ATTRIBUTE_IIR_FILTER_LEFT = "customFilterBankLeft"
+ATTRIBUTE_IIR_FILTER_RIGHT = "customFilterBankRight"
+ATTRIBUTE_FIR_FILTER_LEFT = "customFirFilterLeft"
+ATTRIBUTE_FIR_FILTER_RIGHT = "customFirFilterRight"
+ATTRIBUTE_MUTE_REG = "muteRegister"
+
 
 def parse_int(val):
     if val.startswith("0x"):
@@ -93,38 +104,38 @@ def parse_xml(resultObject, xmlfile):
     for metadata in doc["ROM"]["beometa"]["metadata"]:
         t = metadata["@type"]
 
-        if (t == "checksum"):
+        if (t == ATTRIBUTE_CHECKSUM):
             resultObject.checksum = metadata["#text"]
 
-        if (t == "volumeControlRegister"):
+        if (t == ATTRIBUTE_VOL_CTL):
             resultObject.volumectl = parse_meta_int(metadata)
 
-        if (t == "volumeLimitRegister"):
+        if (t == ATTRIBUTE_VOL_LIMIT):
             resultObject.volumelimit = parse_meta_int(metadata)
 
-        if (t == "balanceRegister"):
+        if (t == ATTRIBUTE_BALANCE):
             resultObject.balancectl = parse_meta_int(metadata)
 
-        if (t == "volumeControlRangeDb"):
+        if (t == ATTRIBUTE_VOL_RANGE):
             try:
                 strval = metadata["#text"]
                 resultObject.volctlrange = float(strval)
             except:
                 logging.error("Can't parse metadata volumeControlRangeDb")
 
-        if (t == "customFilterBankLeft"):
+        if (t == ATTRIBUTE_IIR_FILTER_LEFT):
             resultObject.filterleft = parse_int_list(metadata)
 
-        if (t == "customFilterBankRight"):
+        if (t == ATTRIBUTE_IIR_FILTER_RIGHT):
             resultObject.filterright = parse_int_list(metadata)
 
-        if (t == "customFirFilterLeft"):
+        if (t == ATTRIBUTE_FIR_FILTER_LEFT):
             (resultObject.firleft,
              resultObject.firleft_len) = parse_meta_int_length(metadata)
 
-        if (t == "customFirFilterRight"):
+        if (t == ATTRIBUTE_FIR_FILTER_RIGHT):
             (resultObject.firright,
              resultObject.firright_len) = parse_meta_int_length(metadata)
 
-        if (t == "muteRegister"):
+        if (t == ATTRIBUTE_MUTE_REG):
             resultObject.muteRegister = resultObject.parse_meta_int(metadata)
