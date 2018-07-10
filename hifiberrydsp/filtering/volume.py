@@ -28,7 +28,10 @@ def decibel2amplification(db):
 
 
 def amplification2decibel(amplification):
-    return math.log10(amplification) * 20
+    if (amplification > 0):
+        return math.log10(amplification) * 20
+    else:
+        return float('-inf')
 
 
 def log_coefficients(dbrange):

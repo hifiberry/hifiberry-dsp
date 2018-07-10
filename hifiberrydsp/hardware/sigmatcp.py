@@ -50,7 +50,9 @@ COMMAND_XML_RESPONSE = 0xf5
 COMMAND_STORE_DATA = 0xf6
 COMMAND_RESTORE_DATA = 0xf6
 COMMAND_GET_META = 0xf7
-COMMAND_META_RESULT = 0xf7
+COMMAND_META_RESPONSE = 0xf8
+COMMAND_PROGMEM = 0xf9
+COMMAND_PROGMEM_RESPONSE = 0xfa
 
 HEADER_SIZE = 14
 
@@ -265,9 +267,9 @@ class SigmaTCP():
         data = self.socket.recv(HEADER_SIZE)
         length = int.from_bytes(data[6:10], byteorder='big')
 
-        if (data[0] != COMMAND_META_RESULT):
+        if (data[0] != COMMAND_META_RESPONSE):
             logging.error("Expected response code %s, but got %s",
-                          COMMAND_META_RESULT,
+                          COMMAND_META_RESPONSE,
                           data[0])
             return
 
@@ -372,7 +374,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             SigmaTCPHandler.spi = spidev.SpiDev()
             SigmaTCPHandler.spi.open(0, 0)
             SigmaTCPHandler.spi.bits_per_word = 8
-            SigmaTCPHandler.spi.max_speed_hz = 10000000
+            SigmaTCPHandler.spi.max_speed_hz = 1000000
             SigmaTCPHandler.spi.mode = 0
             logging.debug("spi initialized %s", self.spi)
 
@@ -467,7 +469,6 @@ class SigmaTCPHandler(BaseRequestHandler):
                 elif data[0] == COMMAND_XML:
                     try:
                         data = self.get_and_check_xml()
-                        print(data)
                     except IOError:
                         data = ""  # empty response
 
@@ -477,6 +478,23 @@ class SigmaTCPHandler(BaseRequestHandler):
                     else:
                         result = self._response_packet(
                             COMMAND_XML_RESPONSE, 0, 0)
+
+                elif data[0] == COMMAND_PROGMEM:
+                    try:
+                        data = self.get_program_memory()
+                        print(data)
+                    except IOError:
+                        data = []  # empty response
+
+                    # format program memory dump
+                    dump = ""
+                    for i in range(0, len(data), 4):
+                        dump += "{:02X}{:02X}{:02X}{:02X}\n".format(
+                            data[i], data[i + 1], data[i + 2], data[i + 3])
+
+                    result = self._response_packet(
+                        COMMAND_PROGMEM_RESPONSE, 0, len(dump)) + \
+                        dump.encode('ascii')
 
                 elif data[0] == COMMAND_GET_META:
                     length = int.from_bytes(data[1:5], byteorder='big')
@@ -496,7 +514,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                     value = value.encode('utf-8')
 
                     result = self._response_packet(
-                        COMMAND_META_RESULT, 0, len(value))
+                        COMMAND_META_RESPONSE, 0, len(value))
                     result += value
 
                 elif data[0] == COMMAND_WRITE_EEPROM_CONTENT:
@@ -794,7 +812,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                           "something is wrong with the DSP program memory")
             return None
         else:
-            end_index = end_index + self.dsp.WORD_LENGTH
+            end_index = end_index + len(self.dsp.PROGRAM_END_SIGNATURE)
 
         logging.debug("Program lengths = %s words",
                       end_index / self.dsp.WORD_LENGTH)

@@ -160,6 +160,10 @@ class DSPToolkit():
         if self.volumectl:
             return self.sigmatcp.read_decimal(self.volumectl)
 
+    def get_limit(self):
+        if self.volumelimit:
+            return self.sigmatcp.read_decimal(self.volumelimit)
+
     def set_balance(self, value):
         '''
         Sets the balance of left/right channels.
@@ -304,7 +308,7 @@ class CommandLine():
             "set-volume": self.cmd_set_volume,
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
-            "get_limit": self.cmd_get_limit,
+            "get-limit": self.cmd_get_limit,
             "set-rew-filters": self.cmd_set_rew_filters,
             "set-rew-filters-left": self.cmd_set_rew_filters_left,
             "set-rew-filters-right": self.cmd_set_rew_filters_right,
@@ -323,7 +327,9 @@ class CommandLine():
             "loop-read-reg": self.cmd_loop_read_reg,
             "get-checksum": self.cmd_checksum,
             "write-reg": self.cmd_write_reg,
+            "write-mem": self.cmd_write_mem,
             "get-xml": self.cmd_get_xml,
+            "get-prog": self.cmd_get_prog,
             "get-meta": self.cmd_get_meta
         }
         self.dsptk = DSPToolkit()
@@ -527,6 +533,11 @@ class CommandLine():
                                          sigmatcp.COMMAND_XML_RESPONSE)
         print(xml.decode("utf-8", errors="replace"))
 
+    def cmd_get_prog(self):
+        mem = self.dsptk.generic_request(sigmatcp.COMMAND_PROGMEM,
+                                         sigmatcp.COMMAND_PROGMEM_RESPONSE)
+        print(mem.decode("utf-8", errors="replace"))
+
     def cmd_get_meta(self):
         if len(self.args.parameters) > 0:
             attribute = self.args.parameters[0]
@@ -578,6 +589,20 @@ class CommandLine():
             print("parameter missing, need addr value")
 
         data = [(value >> 8) & 0xff, value & 0xff]
+        self.dsptk.sigmatcp.write_memory(reg, data)
+        sys.exit(1)
+
+    def cmd_write_mem(self):
+        if len(self.args.parameters) > 1:
+            reg = parse_int(self.args.parameters[0])
+            value = parse_int(self.args.parameters[1])
+        else:
+            print("parameter missing, need addr value")
+
+        data = [(value >> 24) & 0xff,
+                (value >> 16) & 0xff,
+                (value >> 8) & 0xff,
+                value & 0xff]
         self.dsptk.sigmatcp.write_memory(reg, data)
         sys.exit(1)
 
