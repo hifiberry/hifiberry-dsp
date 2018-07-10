@@ -325,13 +325,9 @@ class SigmaTCP():
         return res
 
 
-class SigmaTCPHandler(BaseRequestHandler):
+class DSPFileStore():
 
-    spi = None
-
-    def __init__(self, request, client_address, server):
-        logging.debug("__init__")
-
+    def __init__(self):
         if (getpass.getuser() == 0):
             self.dspprogramfile = "/etc/dspprogram.xml"
             self.paramaterfile = "/etc/dspparameters.dat"
@@ -340,6 +336,31 @@ class SigmaTCPHandler(BaseRequestHandler):
                 "~/.dsptoolkit/dspprogram.xml")
             self.paramaterfile = os.path.expanduser(
                 "~/.dsptoolkit/dspparameters.dat")
+
+    def store_parameters(self, checksum, memory):
+        with open(self.paramaterfile, "wb") as datafile:
+            datafile.write(checksum)
+            datafile.write(memory)
+
+    def restore_parameters(self, checksum):
+        with open(self.paramaterfile, "rb") as datafile:
+            file_checksum = datafile.read(16)
+            logging.debug("Checking checksum %s/%s",
+                          checksum, file_checksum)
+            if checksum != file_checksum:
+                logging.error("checksums do not match, aborting")
+                return
+
+            return datafile.read()
+
+
+class SigmaTCPHandler(BaseRequestHandler):
+
+    spi = None
+
+    def __init__(self, request, client_address, server):
+        logging.debug("__init__")
+        self.filestore = DSPFileStore()
 
         BaseRequestHandler.__init__(self, request, client_address, server)
 
@@ -360,6 +381,11 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.debug("setup finished")
 
     def handle(self):
+
+        if self.request is None:
+            # Not a real request to handle:
+            return
+
         logging.debug('handle')
         finished = False
         data = None
@@ -516,8 +542,9 @@ class SigmaTCPHandler(BaseRequestHandler):
                 pass
 
         res = Foo()
-        logging.debug("reading profile %s", self.dspprogramfile)
-        parse_xml(res, self.dspprogramfile)
+        logging.debug("reading profile %s",
+                      self.filestore.dspprogramfile)
+        parse_xml(res, self.filestore.dspprogramfile)
 
         try:
             cs = res.checksum
@@ -545,7 +572,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             logging.info("DSP profile doesn't have a checksum, "
                          "might be different from the program running now")
 
-        data = open(self.dspprogramfile, "rb").read()
+        data = open(self.filestore.dspprogramfile, "rb").read()
 
         return data
 
@@ -652,11 +679,11 @@ class SigmaTCPHandler(BaseRequestHandler):
                 if instr == "delay":
                     time.sleep(1)
 
-            if (filename != self.dspprogramfile):
-                shutil.copy(filename, self.dspprogramfile)
+            if (filename != self.filestore.dspprogramfile):
+                shutil.copy(filename, self.filestore.dspprogramfile)
                 logging.debug("copied %s to %s",
                               filename,
-                              self.dspprogramfile)
+                              self.filestore.dspprogramfile)
 
         except IOError:
             return b'\00'
@@ -708,21 +735,15 @@ class SigmaTCPHandler(BaseRequestHandler):
         checksum = self.program_checksum()
         memory = self.get_memory_block(self.dsp.DATA_ADDR,
                                        self.dsp.DATA_LENGTH)
-        with open(self.paramaterfile, "w") as datafile:
-            datafile.write(checksum)
-            datafile.write(memory)
+        self.filestore.store_parameters(checksum, memory)
 
     def restore_data_memory(self):
-        with open(self.paramaterfile, "r") as datafile:
-            checksum1 = datafile.read(16)
-            checksum2 = self.program_checksum()
-            logging.debug("Checking checksum %s/%s",
-                          checksum1, checksum2)
-            if checksum1 != checksum2:
-                logging.error("checksums do not match, aborting")
-                return
 
-            memory = datafile.read()
+        checksum = self.program_checksum()
+        memory = self.filestore.restore_parameters(checksum)
+
+        if memory is None:
+            return
 
         if (len(memory) > self.dsp.DATA_LENGTH * self.dsp.WORD_LENGTH):
             logging.error("Got %s bytes to restore, but memory is only %s",
@@ -816,9 +837,10 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.debug("killing DSP core")
         self.write_data(self.dsp.HIBERNATE_REGISTER,
                         SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.001)
+        time.sleep(0.0001)
         self.write_data(self.dsp.KILLCORE_REGISTER,
                         SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
         self.write_data(self.dsp.KILLCORE_REGISTER,
                         SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
 
@@ -826,12 +848,15 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.debug("starting DSP core")
         self.write_data(self.dsp.KILLCORE_REGISTER,
                         SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
-        self.write_data(self.dsp.HIBERNATE_REGISTER,
-                        SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
         self.write_data(self.dsp.STARTCORE_REGISTER,
                         SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
         self.write_data(self.dsp.STARTCORE_REGISTER,
                         SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        self.write_data(self.dsp.HIBERNATE_REGISTER,
+                        SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
@@ -845,8 +870,17 @@ class SigmaTCPServer(ThreadingMixIn, TCPServer):
 
     def server_activate(self):
         # TODO: read memory
+        rh = SigmaTCPHandler(None, None, None)
+        logging.debug("restoring saved data memory")
+        try:
+            rh.restore_data_memory()
+        except IOError:
+            logging.debug("no saved data found")
         TCPServer.server_activate(self)
 
     def server_close(self):
         # TODO: Store RAM
+        rh = SigmaTCPHandler(None, None, None)
+        logging.debug("saving DSP data memory")
+        rh.save_data_memory()
         TCPServer.server_close(self)

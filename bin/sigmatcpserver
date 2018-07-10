@@ -16,4 +16,7 @@ if __name__ == "__main__":
 	
     server = SigmaTCPServer()
     logging.info("Starting TCP server")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.server_close()
