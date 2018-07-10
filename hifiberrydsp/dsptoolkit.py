@@ -291,7 +291,7 @@ class DSPToolkit():
 
     def hibernate(self, hibernate=True):
         self.sigmatcp.hibernate(hibernate)
-        time.sleep(0.5)
+        time.sleep(0.001)
 
 
 class CommandLine():

@@ -372,7 +372,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             SigmaTCPHandler.spi = spidev.SpiDev()
             SigmaTCPHandler.spi.open(0, 0)
             SigmaTCPHandler.spi.bits_per_word = 8
-            SigmaTCPHandler.spi.max_speed_hz = 1000000
+            SigmaTCPHandler.spi.max_speed_hz = 10000000
             SigmaTCPHandler.spi.mode = 0
             logging.debug("spi initialized %s", self.spi)
 
