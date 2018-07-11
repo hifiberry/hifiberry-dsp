@@ -117,6 +117,11 @@ the command won't have any effect.
   The value can be given as an integer or hex value. 
   When using this command on register addresses, the command will write to
   2 consecutive register addresses as addresses have a length of only 2 bytes.
+  
+ * mute|unmute
+ 
+  Mutes/unmutes the output. This only works if the profile supports
+  a mute register
 
 
 REW integration
