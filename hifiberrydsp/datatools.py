@@ -21,7 +21,6 @@ SOFTWARE.
 '''
 
 import logging
-import xmltodict
 
 ATTRIBUTE_CHECKSUM = "checksum"
 ATTRIBUTE_VOL_CTL = "volumeControlRegister"
@@ -33,6 +32,7 @@ ATTRIBUTE_IIR_FILTER_RIGHT = "customFilterBankRight"
 ATTRIBUTE_FIR_FILTER_LEFT = "customFirFilterLeft"
 ATTRIBUTE_FIR_FILTER_RIGHT = "customFirFilterRight"
 ATTRIBUTE_MUTE_REG = "muteRegister"
+ATTRIBUTE_SAMPLERATE = "samplerate"
 
 
 def parse_int(val):

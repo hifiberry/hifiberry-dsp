@@ -36,7 +36,7 @@ from hifiberrydsp.hardware import sigmatcp
 
 from hifiberrydsp.datatools import parse_int, \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
-    ATTRIBUTE_BALANCE, ATTRIBUTE_VOL_RANGE, \
+    ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
     ATTRIBUTE_MUTE_REG
@@ -240,7 +240,6 @@ class DSPToolkit():
         filters_right = datatools.parse_int_list(
             self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_RIGHT))
 
-        index = 0
         l1 = len(filters_left)
         l2 = len(filters_right)
 
@@ -299,13 +298,19 @@ class DSPToolkit():
         return self.sigmatcp.write_eeprom(xmlfile)
 
     def mute(self, mute=True):
-        if self.muteRegister is not None:
+        mutereg = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_MUTE_REG))
+
+        if mutereg is not None:
             if mute:
                 self.sigmatcp.write_memory(
-                    self.muteRegister, self.sigmatcp.int_data(1))
+                    mutereg, self.sigmatcp.int_data(1))
             else:
                 self.sigmatcp.write_memory(
-                    self.muteRegister, self.sigmatcp.int_data(0))
+                    mutereg, self.sigmatcp.int_data(0))
+            return True
+        else:
+            return False
 
     def reset(self):
         self.sigmatcp.reset()
@@ -313,6 +318,18 @@ class DSPToolkit():
     def hibernate(self, hibernate=True):
         self.sigmatcp.hibernate(hibernate)
         time.sleep(0.001)
+
+    def get_meta(self, attribute):
+        return self.sigmatcp.request_metadata(attribute)
+
+    def get_samplerate(self):
+        sr = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_SAMPLERATE))
+
+        if sr is None or sr == 0:
+            return 48000
+        else:
+            return sr
 
 
 class CommandLine():
@@ -347,7 +364,10 @@ class CommandLine():
             "write-mem": self.cmd_write_mem,
             "get-xml": self.cmd_get_xml,
             "get-prog": self.cmd_get_prog,
-            "get-meta": self.cmd_get_meta
+            "get-meta": self.cmd_get_meta,
+            "mute": self.cmd_mute,
+            "unmute": self.cmd_unmute,
+            "get-samplerate": self.cmd_samplerate,
         }
         self.dsptk = DSPToolkit()
 
@@ -492,7 +512,8 @@ class CommandLine():
             print("Missing filename argument")
             sys.exit(1)
 
-        filters = REW.readfilters(self.args.parameters[0])
+        filters = REW.readfilters(self.args.parameters[0],
+                                  self.dsptk.get_samplerate())
 
         self.dsptk.clear_iir_filters(mode)
         try:
@@ -558,13 +579,28 @@ class CommandLine():
         if len(self.args.parameters) > 0:
             attribute = self.args.parameters[0]
         value = self.dsptk.sigmatcp.request_metadata(attribute)
-        print(value.decode("utf-8"))
+        print(value)
+
+    def cmd_mute(self):
+        if self.dsptk.mute(True):
+            print("Muted")
+        else:
+            print("Mute not supported")
+
+    def cmd_unmute(self):
+        if self.dsptk.mute(False):
+            print("Unmuted")
+        else:
+            print("Mute not supported")
 
     def cmd_store(self):
         self.dsptk.generic_request(sigmatcp.COMMAND_STORE_DATA)
 
     def cmd_restore(self):
         self.dsptk.generic_request(sigmatcp.COMMAND_RESTORE_DATA)
+
+    def cmd_samplerate(self):
+        print("{}Hz".format(self.dsptk.get_samplerate()))
 
     def cmd_install_profile(self):
         if len(self.args.parameters) > 0:
