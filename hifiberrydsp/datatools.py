@@ -36,13 +36,37 @@ ATTRIBUTE_MUTE_REG = "muteRegister"
 
 
 def parse_int(val):
+    if val is None or len(val) == 0:
+        return
+
     if val.startswith("0x"):
         return int(val, 16)
     else:
         return int(val)
 
 
+def parse_int_length(val):
+    if val is None or len(val) == 0:
+        return (None, 0)
+
+    try:
+        (addr, length) = val.split("/")
+
+        addr = parse_int(addr)
+        length = parse_int(length)
+
+    except:
+        addr = None
+        length = 0
+        logging.error("can't parse metadata %s", val)
+
+    return (addr, length)
+
+
 def parse_meta_int(metadata):
+    if metadata is None:
+        return None
+
     try:
         return parse_int(metadata["#text"])
     except:
@@ -51,6 +75,9 @@ def parse_meta_int(metadata):
 
 
 def parse_meta_int_length(metadata):
+    if metadata is None:
+        return None
+
     try:
         strval = metadata["#text"]
         (addr, length) = strval.split("/")
@@ -66,7 +93,27 @@ def parse_meta_int_length(metadata):
     return (addr, length)
 
 
-def parse_int_list(metadata):
+def parse_int_list(val):
+    if val is None or val == "":
+        return []
+
+    try:
+        res = []
+        for v in val.split(","):
+            if v.startswith("0x"):
+                res.append(int(v, 16))
+            else:
+                res.append(int(v))
+        return res
+    except:
+        logging.error("can't parse list %s", val)
+        return None
+
+
+def parse_meta_int_list(metadata):
+    if metadata is None:
+        return None
+
     try:
         res = []
         vals = metadata["#text"].split(",")
@@ -124,10 +171,10 @@ def parse_xml(resultObject, xmlfile):
                 logging.error("Can't parse metadata volumeControlRangeDb")
 
         if (t == ATTRIBUTE_IIR_FILTER_LEFT):
-            resultObject.filterleft = parse_int_list(metadata)
+            resultObject.filterleft = parse_meta_int_list(metadata)
 
         if (t == ATTRIBUTE_IIR_FILTER_RIGHT):
-            resultObject.filterright = parse_int_list(metadata)
+            resultObject.filterright = parse_meta_int_list(metadata)
 
         if (t == ATTRIBUTE_FIR_FILTER_LEFT):
             (resultObject.firleft,

@@ -35,7 +35,14 @@ from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
 from hifiberrydsp.hardware import sigmatcp
 
-from hifiberrydsp.datatools import parse_int, parse_xml
+from hifiberrydsp.datatools import parse_int, parse_xml, \
+    ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, ATTRIBUTE_CHECKSUM, \
+    ATTRIBUTE_BALANCE, ATTRIBUTE_VOL_RANGE, \
+    ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
+    ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
+    ATTRIBUTE_MUTE_REG
+
+from hifiberrydsp import datatools
 
 
 MODE_BOTH = 0
@@ -96,24 +103,8 @@ class DSPToolkit():
                  ip="127.0.0.1",
                  dsp=Adau145x()):
         self.dsp = dsp
-        self.xmlfile = xmlfile
         self.ip = ip
-        self.volumectl = None
-        self.volumelimit = None
-        self.volctlrange = 60
-        self.filterleft = []
-        self.filterright = []
-        self.firleft = None
-        self.firright = None
-        self.firleft_len = 0
-        self.firright_len = 0
-        self.checksum = 0
-
-        self.mutegio = None
-        self.muteRegister = None
-        self.invertmute = False
         self.sigmatcp = SigmaTCP(self.dsp, self.ip)
-        parse_xml(self, xmlfile)
         self.resetgpio = None
 
     def read_config(self, configfile="~/.dsptoolkit/dsptoolkit.conf"):
@@ -136,33 +127,49 @@ class DSPToolkit():
         except:
             logging.info("Config: Reset GPIO not defined")
 
-        try:
-            self.xmlfile = os.path.expanduser(config["dsp"].get("program"))
-            # If there is an program defined, parse it
-            parse_xml(self, self.xmlfile)
-
-        except:
-            logging.info("Config: Can't read DSP program")
-
     def set_ip(self, ip):
         self.ip = ip
         self.sigmatcp = SigmaTCP(self.dsp, self.ip)
 
     def set_volume(self, volume):
-        if self.volumectl is not None:
-            self.sigmatcp.write_decimal(self.volumectl, volume)
+        volctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_VOL_CTL))
+
+        if volctl is not None:
+            self.sigmatcp.write_decimal(volctl, volume)
+            return True
+        else:
+            logging.info("%s is undefined", ATTRIBUTE_VOL_CTL)
+            return False
 
     def set_limit(self, volume):
-        if self.volumelimit is not None:
-            self.sigmatcp.write_decimal(self.volumelimit, volume)
+        volctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_VOL_LIMIT))
+
+        if volctl is not None:
+            self.sigmatcp.write_decimal(volctl, volume)
+            return True
+        else:
+            logging.info("%s is undefined", ATTRIBUTE_VOL_LIMIT)
+            return False
 
     def get_volume(self):
-        if self.volumectl:
-            return self.sigmatcp.read_decimal(self.volumectl)
+        volctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_VOL_CTL))
+
+        if volctl:
+            return self.sigmatcp.read_decimal(volctl)
+        else:
+            logging.info("%s is undefined", ATTRIBUTE_VOL_CTL)
 
     def get_limit(self):
-        if self.volumelimit:
-            return self.sigmatcp.read_decimal(self.volumelimit)
+        volctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_VOL_LIMIT))
+
+        if volctl:
+            return self.sigmatcp.read_decimal(volctl)
+        else:
+            logging.info("%s is undefined", ATTRIBUTE_VOL_LIMIT)
 
     def set_balance(self, value):
         '''
@@ -173,34 +180,39 @@ class DSPToolkit():
         if (value < 0) or (value > 2):
             raise RuntimeError("Balance value must be between 0 and 2")
 
-        if self.balancectl is not None:
-            self.sigmatcp.write_decimal(self.balancectl, value)
+        balctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_BALANCE))
 
-    def write_biquad(self, index, bq_params, mode=MODE_BOTH):
-        if mode == MODE_BOTH or mode == MODE_LEFT:
-            addr = self.filterleft[index]
-            self.sigmatcp.write_biquad(addr, bq_params)
+        if balctl is not None:
+            self.sigmatcp.write_decimal(balctl, value)
 
-        if mode == MODE_BOTH or mode == MODE_RIGHT:
-            addr = self.filterright[index]
-            self.sigmatcp.write_biquad(addr, bq_params)
+    def write_biquad(self, addr, bq_params):
+        self.sigmatcp.write_biquad(addr, bq_params)
 
     def write_fir(self, coefficients, mode=MODE_BOTH):
+
+        (firleft, len_left) = datatools.parse_int_length(
+            self.sigmatcp.request_metadata(ATTRIBUTE_FIR_FILTER_LEFT))
+        (firright, len_right) = datatools.parse_int_length(
+            self.sigmatcp.request_metadata(ATTRIBUTE_FIR_FILTER_RIGHT))
+
         if mode == MODE_BOTH or mode == MODE_LEFT:
-            self.write_coefficients(self.firleft,
-                                    self.firleft_len,
-                                    coefficients)
+            result = self.write_coefficients(firleft,
+                                             len_left,
+                                             coefficients)
 
         if mode == MODE_BOTH or mode == MODE_RIGHT:
-            self.write_coefficients(self.firright,
-                                    self.firright_len,
-                                    coefficients)
+            result = self.write_coefficients(firright,
+                                             len_right,
+                                             coefficients)
 
-    def write_coefficients(self, addr, length, coefficients, fill_zero=True):
+        return result
+
+    def write_coefficients(self, addr, length, coefficients):
         if len(coefficients) > length:
-            logging.error("Can't deploy coefficients {} > {}",
+            logging.error("can't deploy coefficients %s > %s",
                           len(coefficients), length)
-            return
+            return False
 
         data = []
         for coeff in coefficients:
@@ -214,24 +226,24 @@ class DSPToolkit():
 
         self.sigmatcp.write_memory(addr, data)
 
+        return True
+
     def get_checksum(self):
         return self.sigmatcp.program_checksum()
 
-    def generic_request(self, request_code, response_code):
+    def generic_request(self, request_code, response_code=None):
         return self.sigmatcp.request_generic(request_code, response_code)
 
     def set_filters(self, filters, mode=MODE_BOTH):
 
-        index = 0
-        if self.filterleft is None:
-            l1 = 0
-        else:
-            l1 = len(self.filterleft)
+        filters_left = datatools.parse_int_list(
+            self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_LEFT))
+        filters_right = datatools.parse_int_list(
+            self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_RIGHT))
 
-        if self.filterright is None:
-            l2 = 0
-        else:
-            l2 = len(self.filterright)
+        index = 0
+        l1 = len(filters_left)
+        l2 = len(filters_right)
 
         if mode == MODE_LEFT:
             maxlen = l1
@@ -246,28 +258,34 @@ class DSPToolkit():
 
         self.hibernate(True)
 
+        logging.debug("deploying filters %s", filters)
+
+        i = 0
         for f in filters:
             logging.debug(f)
-            self.write_biquad(index, f, mode)
-            index += 1
+            if mode == MODE_LEFT or mode == MODE_BOTH:
+                self.sigmatcp.write_biquad(filters_left[i], f)
+            if mode == MODE_RIGHT or mode == MODE_BOTH:
+                self.sigmatcp.write_biquad(filters_right[i], f)
+            i += 1
 
         self.hibernate(False)
 
-    def clear_filters(self, mode=MODE_BOTH):
+    def clear_iir_filters(self, mode=MODE_BOTH):
+
+        filters_left = datatools.parse_int_list(
+            self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_LEFT))
+        filters_right = datatools.parse_int_list(
+            self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_RIGHT))
 
         self.hibernate(True)
 
         if mode == MODE_BOTH:
-            if (self.filterleft) is None:
-                regs = self.filterright
-            elif (self.filterright) is None:
-                regs = self.filterleft
-            else:
-                regs = self.filterleft + self.filterright
+            regs = filters_left + filters_right
         elif mode == MODE_LEFT:
-            regs = self.filterleft
+            regs = filters_left
         elif mode == MODE_RIGHT:
-            regs = self.filterright
+            regs = filters_right
 
         if regs is None:
             return
@@ -278,8 +296,8 @@ class DSPToolkit():
 
         self.hibernate(False)
 
-    def install_profile(self):
-        return self.sigmatcp.write_eeprom(self.xmlfile)
+    def install_profile(self, xmlfile):
+        return self.sigmatcp.write_eeprom(xmlfile)
 
     def mute(self, mute=True):
         if self.muteRegister is not None:
@@ -315,7 +333,7 @@ class CommandLine():
             "set-fir-filters": self.cmd_set_fir_filters,
             "set-fir-filter-right": self.cmd_set_fir_filter_right,
             "set-fir-filter-left": self.cmd_set_fir_filter_left,
-            "clear-filters": self.cmd_clear_filters,
+            "clear-iir-filters": self.cmd_clear_iir_filters,
             "reset": self.cmd_reset,
             "read-dec": self.cmd_read,
             "loop-read-dec": self.cmd_loop_read_dec,
@@ -360,15 +378,7 @@ class CommandLine():
 
         return vol
 
-    def read_and_parse_xml(self):
-        try:
-            parse_xml(self.dsptk, self.dsptk.xmlfile)
-        except IOError:
-            print("Can't read or parse {}".format(self.dsptk.xmlfile))
-            sys.exit(1)
-
     def cmd_set_volume(self):
-        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             vol = self.string_to_volume(self.args.parameters[0])
         else:
@@ -376,15 +386,13 @@ class CommandLine():
             sys.exit(1)
 
         if vol is not None:
-            if self.dsptk.volumectl is None:
-                print("Profile doesn't support volume control")
-            else:
-                self.dsptk.set_volume(vol)
+            if self.dsptk.set_volume(vol):
                 print("Volume set to {}dB".format(
                     amplification2decibel(vol)))
+            else:
+                print("Profile doesn't support volume control")
 
     def cmd_set_limit(self):
-        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             vol = self.string_to_volume(self.args.parameters[0])
         else:
@@ -392,32 +400,33 @@ class CommandLine():
             sys.exit(1)
 
         if vol is not None:
-            if self.dsptk.volumelimit is None:
-                print("Profile doesn't support volume control")
+            if self.dsptk.set_limit(vol):
+                print("Limit set to {}dB".format(
+                    amplification2decibel(vol)))
             else:
-                self.dsptk.set_limit(vol)
-            print("Limit set to {}dB".format(amplification2decibel(vol)))
+                print("Profile doesn't support volume control")
 
     def cmd_get_volume(self):
-        self.read_and_parse_xml()
         vol = self.dsptk.get_volume()
         if vol is not None:
             print("Volume: {:.4f} / {:.0f}% / {:.0f}db".format(
                 vol,
                 amplification2percent(vol),
                 amplification2decibel(vol)))
+        else:
+            print("Profile doesn't support volume control")
 
     def cmd_get_limit(self):
-        self.read_and_parse_xml()
         vol = self.dsptk.get_limit()
         if vol is not None:
             print("Limit: {:.4f} / {:.0f}% / {:.0f}db".format(
                 vol,
                 amplification2percent(vol),
                 amplification2decibel(vol)))
+        else:
+            print("Profile doesn't support volume limit")
 
     def cmd_read(self, display=DISPLAY_FLOAT, loop=False, length=None):
-        self.read_and_parse_xml()
         try:
             addr = parse_int(self.args.parameters[0])
         except:
@@ -472,19 +481,21 @@ class CommandLine():
                       self.dsptk.dsp.REGISTER_WORD_LENGTH)
 
     def cmd_reset(self):
-        self.read_and_parse_xml()
         self.dsptk.reset()
         print("Resetting DSP")
 
-    def cmd_clear_filters(self):
-        self.read_and_parse_xml()
-        self.dsptk.clear_filters(MODE_BOTH)
+    def cmd_clear_iir_filters(self):
+        self.dsptk.clear_iir_filters(MODE_BOTH)
         print("Filters removed")
 
     def cmd_set_rew_filters(self, mode=MODE_BOTH):
-        self.read_and_parse_xml()
-        filters = REW.readfilters(self.args.value)
-        self.dsptk.clear_filters(mode)
+        if len(self.args.parameters) == 0:
+            print("Missing filename argument")
+            sys.exit(1)
+
+        filters = REW.readfilters(self.args.parameters[0])
+
+        self.dsptk.clear_iir_filters(mode)
         try:
             self.dsptk.set_filters(filters, mode)
             print("Filters configured on both channels:")
@@ -500,7 +511,6 @@ class CommandLine():
         self.set_rew_filters(mode=MODE_RIGHT)
 
     def cmd_set_fir_filters(self, mode=MODE_BOTH):
-        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             filename = self.args.parameters[0]
         else:
@@ -508,13 +518,20 @@ class CommandLine():
             sys.exit(1)
 
         coefficients = []
-        with open(filename) as firfile:
-            for line in firfile:
-                coeff = float(line)
-                coefficients.append(coeff)
+        try:
+            with open(filename) as firfile:
+                for line in firfile:
+                    coeff = float(line)
+                    coefficients.append(coeff)
+        except Exception as e:
+            print("can't read filter file (%s)", e)
 
         self.dsptk.hibernate(True)
-        self.dsptk.write_fir(coefficients, mode)
+        if self.dsptk.write_fir(coefficients, mode):
+            print("deployed filters")
+        else:
+            print("can't deploy FIR filters "
+                  "(not FIR filter in profile or filters in file too long)")
         self.dsptk.hibernate(False)
 
     def cmd_set_fir_filter_left(self):
@@ -551,14 +568,12 @@ class CommandLine():
         self.dsptk.generic_request(sigmatcp.COMMAND_RESTORE_DATA)
 
     def cmd_install_profile(self):
-        self.read_and_parse_xml()
         if len(self.args.parameters) > 0:
             filename = self.args.parameters[0]
         else:
             print("profile filename missing")
             sys.exit(1)
 
-        default_location = self.dsptk.xmlfile
         if (filename.startswith("http://") or
                 filename.startswith("https://")):
             # Download and store a local copy
@@ -566,20 +581,17 @@ class CommandLine():
                 localname = os.path.expanduser(
                     "~/.dsptoolkit/" + os.path.basename(filename))
                 urllib.request.urlretrieve(filename, localname)
-                defaultname = self.dsptk.xmlfile
-                shutil.copy(localname, self.dsptk.xmlfile)
-                print("Stored profile {} as {}".format(
-                    localname, defaultname))
+                print("Stored profile {}".format(localname))
                 filename = localname
             except IOError:
                 print("Couldn't download {}".format(filename))
                 sys.exit(1)
-        self.dsptk.xmlfile = filename
-        res = self.dsptk.install_profile()
+
+        res = self.dsptk.install_profile(filename)
         if res:
             print("DSP profile {} installed".format(filename))
         else:
-            print("Failed to install DSP profile {}".format(self.dsptk.xmlfile))
+            print("Failed to install DSP profile {}".format(filename))
 
     def cmd_write_reg(self):
         if len(self.args.parameters) > 1:
@@ -619,12 +631,7 @@ class CommandLine():
         parser.add_argument('parameters', nargs='*')
 
         self.args = parser.parse_args()
-
         self.dsptk.read_config()
-
-        if self.dsptk.xmlfile is None:
-            self.dsptk.xmlfile = os.path.expanduser(
-                "~/.dsptoolkit/dspprogram.xml")
 
         self.command_map[self.args.command]()
 

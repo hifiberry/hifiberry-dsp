@@ -48,11 +48,11 @@ COMMAND_WRITE_EEPROM_CONTENT = 0xf3
 COMMAND_XML = 0xf4
 COMMAND_XML_RESPONSE = 0xf5
 COMMAND_STORE_DATA = 0xf6
-COMMAND_RESTORE_DATA = 0xf6
-COMMAND_GET_META = 0xf7
-COMMAND_META_RESPONSE = 0xf8
-COMMAND_PROGMEM = 0xf9
-COMMAND_PROGMEM_RESPONSE = 0xfa
+COMMAND_RESTORE_DATA = 0xf7
+COMMAND_GET_META = 0xf8
+COMMAND_META_RESPONSE = 0xf9
+COMMAND_PROGMEM = 0xfa
+COMMAND_PROGMEM_RESPONSE = 0xfb
 
 HEADER_SIZE = 14
 
@@ -279,7 +279,7 @@ class SigmaTCP():
             packet = self.socket.recv(length - len(data))
             data = data + packet
 
-        return data
+        return data.decode("utf-8")
 
     @staticmethod
     def write_eeprom_request(filename):
@@ -359,6 +359,7 @@ class DSPFileStore():
 class SigmaTCPHandler(BaseRequestHandler):
 
     spi = None
+    checksum = None
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
@@ -397,6 +398,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             # Read dara
             try:
                 buffer = None
+                result = None
 
                 if data is None:
                     data = self.request.recv(65536)
@@ -414,6 +416,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                 if len(data) > 0 and len(data) < 14:
                     read_more = True
                     continue
+
+                logging.debug("received request type %s", data[0])
 
                 if data[0] == COMMAND_READ:
                     command_length = int.from_bytes(
@@ -464,7 +468,8 @@ class SigmaTCPHandler(BaseRequestHandler):
 
                 elif data[0] == COMMAND_CHECKSUM:
                     result = self._response_packet(
-                        COMMAND_CHECKSUM_RESPONSE, 0, 16) + self.program_checksum()
+                        COMMAND_CHECKSUM_RESPONSE, 0, 16) + \
+                        self.program_checksum(cached=False)
 
                 elif data[0] == COMMAND_XML:
                     try:
@@ -562,10 +567,14 @@ class SigmaTCPHandler(BaseRequestHandler):
         res = Foo()
         logging.debug("reading profile %s",
                       self.filestore.dspprogramfile)
-        parse_xml(res, self.filestore.dspprogramfile)
+        try:
+            parse_xml(res, self.filestore.dspprogramfile)
+        except IOError:
+            return bytearray()
 
         try:
             cs = res.checksum
+            logging.debug("checksum from XML: %s", cs)
             if cs is not None:
                 checksum_xml = bytearray()
                 for i in range(0, len(cs), 2):
@@ -596,12 +605,15 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     def get_meta(self, attribute):
         xml = self.get_and_check_xml()
-        doc = xmltodict.parse(xml)
-        for metadata in doc["ROM"]["beometa"]["metadata"]:
-            t = metadata["@type"]
-            logging.debug(t)
-            if (t == attribute):
-                return metadata["#text"]
+        try:
+            doc = xmltodict.parse(xml)
+            for metadata in doc["ROM"]["beometa"]["metadata"]:
+                t = metadata["@type"]
+                logging.debug(t)
+                if (t == attribute):
+                    return metadata["#text"]
+        except Exception as e:
+            logging.info("can't parse XML metadata (%s)", e)
 
         return None
 
@@ -649,7 +661,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             # it empty
             length = length(data) - 14
 
-        safeload = data[1]  # TODO: use this
+        _safeload = data[1]  # TODO: use this
 
         logging.debug("writing {} bytes to {}".format(length, addr))
         return self.write_data(addr, data[14:])
@@ -662,6 +674,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             tempfile.write(data)
             tempfile.close()
             result = self.write_eeprom_file(filename)
+            self.program_checksum(cached=False)  # calculte new checksum
         except IOError:
             result = b'\00'
 
@@ -750,18 +763,23 @@ class SigmaTCPHandler(BaseRequestHandler):
         return data
 
     def save_data_memory(self):
+        logging.debug("restore: checking checksum")
         checksum = self.program_checksum()
         memory = self.get_memory_block(self.dsp.DATA_ADDR,
                                        self.dsp.DATA_LENGTH)
+        logging.debug("restore: writing memory dump to file")
         self.filestore.store_parameters(checksum, memory)
 
     def restore_data_memory(self):
 
-        checksum = self.program_checksum()
+        logging.debug("restore: checking checksum")
+        checksum = self.program_checksum(cached=False)
         memory = self.filestore.restore_parameters(checksum)
 
         if memory is None:
             return
+
+        logging.debug("restore: writing to memory")
 
         if (len(memory) > self.dsp.DATA_LENGTH * self.dsp.WORD_LENGTH):
             logging.error("Got %s bytes to restore, but memory is only %s",
@@ -820,13 +838,21 @@ class SigmaTCPHandler(BaseRequestHandler):
         # logging.debug("%s", memory[0:end_index])
         return memory[0:end_index]
 
-    def program_checksum(self):
+    def program_checksum(self, cached=True):
+        if cached and SigmaTCPHandler.checksum is not None:
+            logging.debug("using cached program checksum, "
+                          "might not always be correct")
+            return SigmaTCPHandler.checksum
+
         data = self.get_program_memory()
         m = hashlib.md5()
         m.update(data)
 
         logging.debug("length: %s, digest: %s", len(data), m.digest())
-        return m.digest()
+
+        logging.debug("caching program memory checksum")
+        SigmaTCPHandler.checksum = m.digest()
+        return SigmaTCPHandler.checksum
 
     def finish(self):
         logging.debug('finish')
@@ -891,6 +917,7 @@ class SigmaTCPServer(ThreadingMixIn, TCPServer):
         rh = SigmaTCPHandler(None, None, None)
         logging.debug("restoring saved data memory")
         try:
+            rh.program_checksum()  # cache checksum
             rh.restore_data_memory()
         except IOError:
             logging.debug("no saved data found")
