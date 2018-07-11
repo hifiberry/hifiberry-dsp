@@ -356,9 +356,90 @@ class DSPFileStore():
             return datafile.read()
 
 
-class SigmaTCPHandler(BaseRequestHandler):
+class SpiHandler():
+    '''
+    Implements acces to the SPI bus. Can be used by multiple threads.
+
+    We assume that the SPI library is thread-safe and do not use 
+    additional locking here.
+
+    Data is passed in bytearrays, not string or lists
+    '''
 
     spi = None
+
+    def __init__(self):
+
+        import spidev
+        if SpiHandler.spi is None:
+            SpiHandler.spi = spidev.SpiDev()
+            SpiHandler.spi.open(0, 0)
+            SpiHandler.spi.bits_per_word = 8
+            SpiHandler.spi.max_speed_hz = 1000000
+            SpiHandler.spi.mode = 0
+            logging.debug("spi initialized %s", self.spi)
+
+    def read(self, addr, length):
+
+        spi_request = []
+        a0 = addr & 0xff
+        a1 = (addr >> 8) & 0xff
+
+        spi_request.append(1)
+        spi_request.append(a1)
+        spi_request.append(a0)
+
+        for _i in range(0, length):
+            spi_request.append(0)
+
+        spi_response = SpiHandler.spi.xfer(spi_request)  # SPI read
+        logging.debug("spi read %s bytes from %s", len(spi_request), addr)
+        return bytearray(spi_response[3:])
+
+    def write(self, addr, data):
+
+        a0 = addr & 0xff
+        a1 = (addr >> 8) & 0xff
+
+        spi_request = []
+        spi_request.append(0)
+        spi_request.append(a1)
+        spi_request.append(a0)
+        for d in data:
+            spi_request.append(d)
+
+        if len(spi_request) < 4096:
+            SpiHandler.spi.xfer(spi_request)
+            logging.debug("spi write %s bytes",  len(spi_request) - 3)
+        else:
+            finished = False
+            while not finished:
+                if len(spi_request) < 4096:
+                    SpiHandler.spi.xfer(spi_request)
+                    logging.debug("spi write %s bytes", len(spi_request) - 3)
+                    finished = True
+                else:
+                    short_request = spi_request[:4003]
+                    SpiHandler.spi.xfer(short_request)
+                    logging.debug("spi write %s bytes", len(short_request) - 3)
+
+                    # skip forward 1000 cells
+                    addr = addr + 1000  # each memory cell is 4 bytes long
+                    a0 = addr & 0xff
+                    a1 = (addr >> 8) & 0xff
+                    new_request = []
+                    new_request.append(0)
+                    new_request.append(a1)
+                    new_request.append(a0)
+                    new_request.extend(spi_request[4003:])
+
+                    spi_request = new_request
+
+        return data
+
+
+class SigmaTCPHandler(BaseRequestHandler):
+
     checksum = None
 
     def __init__(self, request, client_address, server):
@@ -368,17 +449,10 @@ class SigmaTCPHandler(BaseRequestHandler):
         BaseRequestHandler.__init__(self, request, client_address, server)
 
     def setup(self):
-        import spidev
 
         logging.debug("setup")
-        if SigmaTCPHandler.spi is None:
-            SigmaTCPHandler.spi = spidev.SpiDev()
-            SigmaTCPHandler.spi.open(0, 0)
-            SigmaTCPHandler.spi.bits_per_word = 8
-            SigmaTCPHandler.spi.max_speed_hz = 1000000
-            SigmaTCPHandler.spi.mode = 0
-            logging.debug("spi initialized %s", self.spi)
 
+        self.spi = SpiHandler()
         self.dsp = adau145x.Adau145x
 
         logging.debug("setup finished")
@@ -615,36 +689,12 @@ class SigmaTCPHandler(BaseRequestHandler):
         addr = int.from_bytes(data[10:12], byteorder='big')
         length = int.from_bytes(data[6:10], byteorder='big')
 
+        spi_response = self.spi.read(addr, length)
         logging.debug("read {} bytes from {}".format(length, addr))
 
-        return self.spi_read(addr, length)
-
-    def spi_read(self, addr, length, add_header=True):
-
-        spi_request = []
-        a0 = addr & 0xff
-        a1 = (addr >> 8) & 0xff
-
-        spi_request.append(1)
-        spi_request.append(a1)
-        spi_request.append(a0)
-
-        for _i in range(0, length):
-            spi_request.append(0)
-
-        spi_response = SigmaTCPHandler.spi.xfer(spi_request)  # SPI read
-        logging.debug("spi read %s bytes from %s", len(spi_request), addr)
-
-        if add_header:
-            res = self._response_packet(COMMAND_READRESPONSE,
-                                        addr,
-                                        len(spi_response[3:]))
-        else:
-            res = bytearray()
-
-        for b in spi_response[3:]:
-            res.append(b)
-
+        res = self._response_packet(COMMAND_READRESPONSE,
+                                    addr,
+                                    len(spi_response)) + spi_response
         return res
 
     def handle_write(self, data):
@@ -658,7 +708,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         _safeload = data[1]  # TODO: use this
 
         logging.debug("writing {} bytes to {}".format(length, addr))
-        return self.write_data(addr, data[14:])
+        return self.spi.write(addr, data[14:])
 
     def write_eeprom_content(self, data):
         tempfile = tempfile.NamedTemporaryFile(mode='w+b',
@@ -695,7 +745,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                         value = int(d, 16)
                         data.append(value)
 
-                    self.write_data(addr, data)
+                    self.spi.write(addr, data)
 
                     # Sleep after erase operations
                     if ("g_Erase" in paramname):
@@ -714,47 +764,6 @@ class SigmaTCPHandler(BaseRequestHandler):
             return b'\00'
 
         return b'\01'
-
-    def write_data(self, addr, data):
-
-        a0 = addr & 0xff
-        a1 = (addr >> 8) & 0xff
-
-        spi_request = []
-        spi_request.append(0)
-        spi_request.append(a1)
-        spi_request.append(a0)
-        for d in data:
-            spi_request.append(d)
-
-        if len(spi_request) < 4096:
-            SigmaTCPHandler.spi.xfer(spi_request)
-            logging.debug("spi write %s bytes",  len(spi_request) - 3)
-        else:
-            finished = False
-            while not finished:
-                if len(spi_request) < 4096:
-                    SigmaTCPHandler.spi.xfer(spi_request)
-                    logging.debug("spi write %s bytes", len(spi_request) - 3)
-                    finished = True
-                else:
-                    short_request = spi_request[:4003]
-                    SigmaTCPHandler.spi.xfer(short_request)
-                    logging.debug("spi write %s bytes", len(short_request) - 3)
-
-                    # skip forward 1000 cells
-                    addr = addr + 1000  # each memory cell is 4 bytes long
-                    a0 = addr & 0xff
-                    a1 = (addr >> 8) & 0xff
-                    new_request = []
-                    new_request.append(0)
-                    new_request.append(a1)
-                    new_request.append(a0)
-                    new_request.extend(spi_request[4003:])
-
-                    spi_request = new_request
-
-        return data
 
     def save_data_memory(self):
         logging.debug("restore: checking checksum")
@@ -782,7 +791,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         # Make sure DSP isn't running for this operation
         self._kill_dsp()
-        self.write_data(self.dsp.DATA_ADDR, memory)
+        self.spi.write(self.dsp.DATA_ADDR, memory)
         # Restart the core
         self._start_dsp()
 
@@ -800,7 +809,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         while len(memory) < length * self.dsp.WORD_LENGTH:
             logging.debug("reading program code block from addr %s", addr)
-            data = self.spi_read(addr, block_size, add_header=False)
+            data = self.spi.read(addr, block_size)
             # logging.debug("%s", data)
             memory += data
             addr = addr + int(block_size / self.dsp.WORD_LENGTH)
@@ -873,28 +882,28 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     def _kill_dsp(self):
         logging.debug("killing DSP core")
-        self.write_data(self.dsp.HIBERNATE_REGISTER,
-                        SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.HIBERNATE_REGISTER,
+                       SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.write_data(self.dsp.KILLCORE_REGISTER,
-                        SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.KILLCORE_REGISTER,
+                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.write_data(self.dsp.KILLCORE_REGISTER,
-                        SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.KILLCORE_REGISTER,
+                       SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
 
     def _start_dsp(self):
         logging.debug("starting DSP core")
-        self.write_data(self.dsp.KILLCORE_REGISTER,
-                        SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.KILLCORE_REGISTER,
+                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.write_data(self.dsp.STARTCORE_REGISTER,
-                        SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.STARTCORE_REGISTER,
+                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.write_data(self.dsp.STARTCORE_REGISTER,
-                        SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.STARTCORE_REGISTER,
+                       SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.write_data(self.dsp.HIBERNATE_REGISTER,
-                        SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        self.spi.write(self.dsp.HIBERNATE_REGISTER,
+                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
