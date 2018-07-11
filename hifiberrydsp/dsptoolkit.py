@@ -25,7 +25,6 @@ import logging
 import argparse
 import os
 import time
-import shutil
 import sys
 import urllib.request
 
@@ -35,8 +34,8 @@ from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
 from hifiberrydsp.hardware import sigmatcp
 
-from hifiberrydsp.datatools import parse_int, parse_xml, \
-    ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, ATTRIBUTE_CHECKSUM, \
+from hifiberrydsp.datatools import parse_int, \
+    ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
     ATTRIBUTE_BALANCE, ATTRIBUTE_VOL_RANGE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \

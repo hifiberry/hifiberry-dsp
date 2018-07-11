@@ -33,7 +33,7 @@ from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
 import xmltodict
 from hifiberrydsp.hardware import adau145x
-from hifiberrydsp.datatools import parse_xml
+from hifiberrydsp.datatools import ATTRIBUTE_CHECKSUM
 
 # Original SigmaDSP operations
 COMMAND_READ = 0x0a
@@ -559,32 +559,26 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     def get_and_check_xml(self):
 
-        class Foo(object):
-
-            def __init__(self):
-                pass
-
-        res = Foo()
         logging.debug("reading profile %s",
                       self.filestore.dspprogramfile)
         try:
-            parse_xml(res, self.filestore.dspprogramfile)
+            checksum_xml = bytearray()
+            with open(self.filestore.dspprogramfile) as fd:
+                doc = xmltodict.parse(fd.read())
+                for metadata in doc["ROM"]["beometa"]["metadata"]:
+                    t = metadata["@type"]
+
+                    if (t == ATTRIBUTE_CHECKSUM):
+                        cs = metadata["#text"]
+                        logging.debug("checksum from XML: %s", cs)
+                        if cs is not None:
+                            for i in range(0, len(cs), 2):
+                                octet = int(cs[i:i + 2], 16)
+                                checksum_xml.append(octet)
+
         except IOError:
-            return bytearray()
-
-        try:
-            cs = res.checksum
-            logging.debug("checksum from XML: %s", cs)
-            if cs is not None:
-                checksum_xml = bytearray()
-                for i in range(0, len(cs), 2):
-                    octet = int(cs[i:i + 2], 16)
-                    checksum_xml.append(octet)
-            else:
-                checksum_xml = None
-
-        except AttributeError:
-            checksum_xml = 0
+            logging.error("can't read file %s",
+                          self.filestore.dspprogramfile)
 
         checksum_mem = self.program_checksum()
         logging.debug("checksum memory: %s, xmlfile: %s",
