@@ -1,6 +1,13 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.7 (20180712)
+ - cache program checksum
+ - dsptoolkit client program now used XML file provided by sigmatcpserver
+   (required major code cleanup)
+ - added mute/unmute function
+ - added samplerate function
+
 0.6.1 (20180710)
  - bugfix reading and writing volume levels
  - implemented read-prog command
