@@ -61,6 +61,20 @@ DEFAULT_PORT = 8086
 MAX_READ_SIZE = 1024 * 2
 
 
+def parameterfile():
+    if (getpass.getuser() == 0):
+        return "/etc/dspparameters.dat"
+    else:
+        return os.path.expanduser("~/.dsptoolkit/dspparameters.dat")
+
+
+def dspprogramfile():
+    if (getpass.getuser() == 0):
+        return "/etc/dspprogram.xml"
+    else:
+        return os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
+
+
 class SigmaTCPException(IOError):
 
     def __init__(self, message):
@@ -327,35 +341,6 @@ class SigmaTCP():
         return res
 
 
-class DSPFileStore():
-
-    def __init__(self):
-        if (getpass.getuser() == 0):
-            self.dspprogramfile = "/etc/dspprogram.xml"
-            self.paramaterfile = "/etc/dspparameters.dat"
-        else:
-            self.dspprogramfile = os.path.expanduser(
-                "~/.dsptoolkit/dspprogram.xml")
-            self.paramaterfile = os.path.expanduser(
-                "~/.dsptoolkit/dspparameters.dat")
-
-    def store_parameters(self, checksum, memory):
-        with open(self.paramaterfile, "wb") as datafile:
-            datafile.write(checksum)
-            datafile.write(memory)
-
-    def restore_parameters(self, checksum):
-        with open(self.paramaterfile, "rb") as datafile:
-            file_checksum = datafile.read(16)
-            logging.debug("Checking checksum %s/%s",
-                          checksum, file_checksum)
-            if checksum != file_checksum:
-                logging.error("checksums do not match, aborting")
-                return
-
-            return datafile.read()
-
-
 class SpiHandler():
     '''
     Implements acces to the SPI bus. Can be used by multiple threads.
@@ -443,20 +428,20 @@ class SigmaTCPHandler(BaseRequestHandler):
     checksum = None
     spi = SpiHandler()
     dsp = adau145x.Adau145x
+    dspprogramfile = dspprogramfile()
+    parameterfile = parameterfile()
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
-        self.filestore = DSPFileStore()
         BaseRequestHandler.__init__(self, request, client_address, server)
 
     def setup(self):
-        pass
+        logging.debug('setup')
+
+    def finish(self):
+        logging.debug('finish')
 
     def handle(self):
-        if self.request is None:
-            # Not a real request to handle:
-            return
-
         logging.debug('handle')
         finished = False
         data = None
@@ -625,13 +610,14 @@ class SigmaTCPHandler(BaseRequestHandler):
             except BrokenPipeError:
                 finished = True
 
-    def get_and_check_xml(self):
+    @staticmethod
+    def get_and_check_xml():
 
         logging.debug("reading profile %s",
-                      self.filestore.dspprogramfile)
+                      SigmaTCPHandler.dspprogramfile)
         try:
             checksum_xml = bytearray()
-            with open(self.filestore.dspprogramfile) as fd:
+            with open(SigmaTCPHandler.dspprogramfile) as fd:
                 doc = xmltodict.parse(fd.read())
                 for metadata in doc["ROM"]["beometa"]["metadata"]:
                     t = metadata["@type"]
@@ -646,9 +632,9 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         except IOError:
             logging.error("can't read file %s",
-                          self.filestore.dspprogramfile)
+                          SigmaTCPHandler.dspprogramfile)
 
-        checksum_mem = self.program_checksum()
+        checksum_mem = SigmaTCPHandler.program_checksum()
         logging.debug("checksum memory: %s, xmlfile: %s",
                       checksum_mem,
                       checksum_xml)
@@ -661,12 +647,13 @@ class SigmaTCPHandler(BaseRequestHandler):
             logging.info("DSP profile doesn't have a checksum, "
                          "might be different from the program running now")
 
-        data = open(self.filestore.dspprogramfile, "rb").read()
+        data = open(SigmaTCPHandler.dspprogramfile, "rb").read()
 
         return data
 
-    def get_meta(self, attribute):
-        xml = self.get_and_check_xml()
+    @staticmethod
+    def get_meta(attribute):
+        xml = SigmaTCPHandler.get_and_check_xml()
         try:
             doc = xmltodict.parse(xml)
             for metadata in doc["ROM"]["beometa"]["metadata"]:
@@ -679,19 +666,21 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         return None
 
-    def handle_read(self, data):
+    @staticmethod
+    def handle_read(data):
         addr = int.from_bytes(data[10:12], byteorder='big')
         length = int.from_bytes(data[6:10], byteorder='big')
 
-        spi_response = self.spi.read(addr, length)
+        spi_response = SigmaTCPHandler.spi.read(addr, length)
         logging.debug("read {} bytes from {}".format(length, addr))
 
-        res = self._response_packet(COMMAND_READRESPONSE,
-                                    addr,
-                                    len(spi_response)) + spi_response
+        res = SigmaTCPHandler._response_packet(COMMAND_READRESPONSE,
+                                               addr,
+                                               len(spi_response)) + spi_response
         return res
 
-    def handle_write(self, data):
+    @staticmethod
+    def handle_write(data):
         addr = int.from_bytes(data[12:14], byteorder='big')
         length = int.from_bytes(data[8:12], byteorder='big')
         if (length == 0):
@@ -702,17 +691,19 @@ class SigmaTCPHandler(BaseRequestHandler):
         _safeload = data[1]  # TODO: use this
 
         logging.debug("writing {} bytes to {}".format(length, addr))
-        return self.spi.write(addr, data[14:])
+        return SigmaTCPHandler.spi.write(addr, data[14:])
 
-    def write_eeprom_content(self, data):
+    @staticmethod
+    def write_eeprom_content(data):
         tempfile = tempfile.NamedTemporaryFile(mode='w+b',
                                                delete=False)
         filename = tempfile.name
         try:
             tempfile.write(data)
             tempfile.close()
-            result = self.write_eeprom_file(filename)
-            self.program_checksum(cached=False)  # calculte new checksum
+            result = SigmaTCPHandler.write_eeprom_file(filename)
+            SigmaTCPHandler.program_checksum(
+                cached=False)  # calculate new checksum
         except IOError:
             result = b'\00'
 
@@ -723,7 +714,8 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         return result
 
-    def write_eeprom_file(self, filename):
+    @staticmethod
+    def write_eeprom_file(filename):
         try:
             with open(filename) as fd:
                 doc = xmltodict.parse(fd.read())
@@ -739,7 +731,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                         value = int(d, 16)
                         data.append(value)
 
-                    self.spi.write(addr, data)
+                    SigmaTCPHandler.spi.write(addr, data)
 
                     # Sleep after erase operations
                     if ("g_Erase" in paramname):
@@ -748,100 +740,110 @@ class SigmaTCPHandler(BaseRequestHandler):
                 if instr == "delay":
                     time.sleep(1)
 
-            if (filename != self.filestore.dspprogramfile):
-                shutil.copy(filename, self.filestore.dspprogramfile)
+            if (filename != SigmaTCPHandler.dspprogramfile):
+                shutil.copy(filename, SigmaTCPHandler.dspprogramfile)
                 logging.debug("copied %s to %s",
                               filename,
-                              self.filestore.dspprogramfile)
+                              SigmaTCPHandler.dspprogramfile)
 
         except IOError:
             return b'\00'
 
         return b'\01'
 
-    def save_data_memory(self):
+    @staticmethod
+    def save_data_memory():
         logging.debug("restore: checking checksum")
-        checksum = self.program_checksum()
-        memory = self.get_memory_block(self.dsp.DATA_ADDR,
-                                       self.dsp.DATA_LENGTH)
+        checksum = SigmaTCPHandler.program_checksum()
+        memory = SigmaTCPHandler.get_memory_block(SigmaTCPHandler.dsp.DATA_ADDR,
+                                                  SigmaTCPHandler.dsp.DATA_LENGTH)
         logging.debug("restore: writing memory dump to file")
-        self.filestore.store_parameters(checksum, memory)
+        SigmaTCPHandler.store_parameters(checksum, memory)
 
-    def restore_data_memory(self):
+    @staticmethod
+    def restore_data_memory():
 
         logging.debug("restore: checking checksum")
-        checksum = self.program_checksum(cached=False)
-        memory = self.filestore.restore_parameters(checksum)
+        checksum = SigmaTCPHandler.program_checksum(cached=False)
+        memory = SigmaTCPHandler.restore_parameters(checksum)
 
         if memory is None:
             return
 
         logging.debug("restore: writing to memory")
 
-        if (len(memory) > self.dsp.DATA_LENGTH * self.dsp.WORD_LENGTH):
+        dsp = SigmaTCPHandler.dsp
+
+        if (len(memory) > dsp.DATA_LENGTH * dsp.WORD_LENGTH):
             logging.error("Got %s bytes to restore, but memory is only %s",
                           len(memory),
-                          self.dsp.DATA_LENGTH * self.dsp.WORD_LENGTH)
+                          dsp.DATA_LENGTH * dsp.WORD_LENGTH)
 
         # Make sure DSP isn't running for this operation
-        self._kill_dsp()
-        self.spi.write(self.dsp.DATA_ADDR, memory)
+        SigmaTCPHandler._kill_dsp()
+        SigmaTCPHandler.spi.write(dsp.DATA_ADDR, memory)
         # Restart the core
-        self._start_dsp()
+        SigmaTCPHandler._start_dsp()
 
-    def get_memory_block(self, addr, length):
+    @staticmethod
+    def get_memory_block(addr, length):
         block_size = 2048
 
+        dsp = SigmaTCPHandler.dsp
+
         logging.debug("reading %s bytes from memory",
-                      length * self.dsp.WORD_LENGTH)
+                      length * dsp.WORD_LENGTH)
 
         # Must kill the core to read program memory, but it doesn't
         # hurt doing it also for other memory types :(
-        self._kill_dsp()
+        SigmaTCPHandler._kill_dsp()
 
         memory = bytearray()
 
-        while len(memory) < length * self.dsp.WORD_LENGTH:
+        while len(memory) < length * dsp.WORD_LENGTH:
             logging.debug("reading program code block from addr %s", addr)
-            data = self.spi.read(addr, block_size)
+            data = SigmaTCPHandler.spi.read(addr, block_size)
             # logging.debug("%s", data)
             memory += data
-            addr = addr + int(block_size / self.dsp.WORD_LENGTH)
+            addr = addr + int(block_size / dsp.WORD_LENGTH)
 
         # Restart the core
-        self._start_dsp()
+        SigmaTCPHandler._start_dsp()
 
-        return memory[0:length * self.dsp.WORD_LENGTH]
+        return memory[0:length * dsp.WORD_LENGTH]
 
-    def get_program_memory(self):
+    @staticmethod
+    def get_program_memory():
         '''
         Calculate a checksum of the program memory of the DSP
         '''
-        memory = self.get_memory_block(self.dsp.PROGRAM_ADDR,
-                                       self.dsp.PROGRAM_LENGTH)
+        dsp = SigmaTCPHandler.dsp
+        memory = SigmaTCPHandler.get_memory_block(dsp.PROGRAM_ADDR,
+                                                  dsp.PROGRAM_LENGTH)
 
-        end_index = memory.find(self.dsp.PROGRAM_END_SIGNATURE)
+        end_index = memory.find(dsp.PROGRAM_END_SIGNATURE)
 
         if end_index < 0:
             logging.error("couldn't find program end signature, "
                           "something is wrong with the DSP program memory")
             return None
         else:
-            end_index = end_index + len(self.dsp.PROGRAM_END_SIGNATURE)
+            end_index = end_index + len(dsp.PROGRAM_END_SIGNATURE)
 
         logging.debug("Program lengths = %s words",
-                      end_index / self.dsp.WORD_LENGTH)
+                      end_index / dsp.WORD_LENGTH)
 
         # logging.debug("%s", memory[0:end_index])
         return memory[0:end_index]
 
-    def program_checksum(self, cached=True):
+    @staticmethod
+    def program_checksum(cached=True):
         if cached and SigmaTCPHandler.checksum is not None:
             logging.debug("using cached program checksum, "
                           "might not always be correct")
             return SigmaTCPHandler.checksum
 
-        data = self.get_program_memory()
+        data = SigmaTCPHandler.get_program_memory()
         m = hashlib.md5()
         m.update(data)
 
@@ -851,14 +853,13 @@ class SigmaTCPHandler(BaseRequestHandler):
         SigmaTCPHandler.checksum = m.digest()
         return SigmaTCPHandler.checksum
 
-    def finish(self):
-        logging.debug('finish')
-
-    def _list_str(self, int_list):
+    @staticmethod
+    def _list_str(int_list):
         formatted_list = [str(item) for item in int_list]
         return "[" + ','.join(formatted_list) + "]"
 
-    def _response_packet(self, command, addr, data_length):
+    @staticmethod
+    def _response_packet(command, addr, data_length):
         packet = bytearray(HEADER_SIZE)
         packet[0] = command
         packet[4] = 14  # header length
@@ -874,30 +875,54 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         return packet
 
-    def _kill_dsp(self):
+    @staticmethod
+    def _kill_dsp():
         logging.debug("killing DSP core")
-        self.spi.write(self.dsp.HIBERNATE_REGISTER,
-                       SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        self.spi.write(self.dsp.KILLCORE_REGISTER,
-                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        self.spi.write(self.dsp.KILLCORE_REGISTER,
-                       SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+        dsp = SigmaTCPHandler.dsp
+        spi = SigmaTCPHandler.spi
 
-    def _start_dsp(self):
+        spi.write(dsp.HIBERNATE_REGISTER,
+                  SigmaTCP.int_data(1, dsp.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(dsp.KILLCORE_REGISTER,
+                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(dsp.KILLCORE_REGISTER,
+                  SigmaTCP.int_data(1, dsp.REGISTER_WORD_LENGTH))
+
+    @staticmethod
+    def _start_dsp():
         logging.debug("starting DSP core")
-        self.spi.write(self.dsp.KILLCORE_REGISTER,
-                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        dsp = SigmaTCPHandler.dsp
+        spi = SigmaTCPHandler.spi
+
+        spi.write(dsp.KILLCORE_REGISTER,
+                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.spi.write(self.dsp.STARTCORE_REGISTER,
-                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        spi.write(dsp.STARTCORE_REGISTER,
+                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.spi.write(self.dsp.STARTCORE_REGISTER,
-                       SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+        spi.write(dsp.STARTCORE_REGISTER,
+                  SigmaTCP.int_data(1, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
-        self.spi.write(self.dsp.HIBERNATE_REGISTER,
-                       SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+        spi.write(dsp.HIBERNATE_REGISTER,
+                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
+
+    @staticmethod
+    def store_parameters(checksum, memory):
+        with open(SigmaTCPHandler.parameterfile, "wb") as datafile:
+            datafile.write(checksum)
+            datafile.write(memory)
+
+    @staticmethod
+    def restore_parameters(checksum):
+        with open(SigmaTCPHandler.parameterfile, "rb") as datafile:
+            file_checksum = datafile.read(16)
+            logging.debug("Checking checksum %s/%s",
+                          checksum, file_checksum)
+            if checksum != file_checksum:
+                logging.error("checksums do not match, aborting")
+                return
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
@@ -920,14 +945,13 @@ class SigmaTCPServerMain():
 
     def __init__(self):
         self.server = SigmaTCPServer()
-        self.sigmahandler = SigmaTCPHandler(None, None, None)
 
     def run(self):
 
         logging.debug("restoring saved data memory")
         try:
-            self.sigmahandler.program_checksum()  # cache checksum
-            self.sigmahandler.restore_data_memory()
+            SigmaTCPHandler.program_checksum()  # cache checksum
+            SigmaTCPHandler.restore_data_memory()
         except IOError:
             logging.debug("no saved data found")
 
@@ -938,4 +962,4 @@ class SigmaTCPServerMain():
             self.server.server_close()
 
         logging.debug("saving DSP data memory")
-        self.sigmahandler.save_data_memory()
+        SigmaTCPHandler.save_data_memory()
