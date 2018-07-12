@@ -379,8 +379,8 @@ class SpiHandler():
             SpiHandler.spi.mode = 0
             logging.debug("spi initialized %s", self.spi)
 
-    def read(self, addr, length):
-
+    @staticmethod
+    def read(addr, length):
         spi_request = []
         a0 = addr & 0xff
         a1 = (addr >> 8) & 0xff
@@ -396,8 +396,8 @@ class SpiHandler():
         logging.debug("spi read %s bytes from %s", len(spi_request), addr)
         return bytearray(spi_response[3:])
 
-    def write(self, addr, data):
-
+    @staticmethod
+    def write(addr, data):
         a0 = addr & 0xff
         a1 = (addr >> 8) & 0xff
 
@@ -441,24 +441,18 @@ class SpiHandler():
 class SigmaTCPHandler(BaseRequestHandler):
 
     checksum = None
+    spi = SpiHandler()
+    dsp = adau145x.Adau145x
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
         self.filestore = DSPFileStore()
-
         BaseRequestHandler.__init__(self, request, client_address, server)
 
     def setup(self):
-
-        logging.debug("setup")
-
-        self.spi = SpiHandler()
-        self.dsp = adau145x.Adau145x
-
-        logging.debug("setup finished")
+        pass
 
     def handle(self):
-
         if self.request is None:
             # Not a real request to handle:
             return
@@ -916,19 +910,32 @@ class SigmaTCPServer(ThreadingMixIn, TCPServer):
         TCPServer.__init__(self, server_address, RequestHandlerClass)
 
     def server_activate(self):
-        # TODO: read memory
-        rh = SigmaTCPHandler(None, None, None)
-        logging.debug("restoring saved data memory")
-        try:
-            rh.program_checksum()  # cache checksum
-            rh.restore_data_memory()
-        except IOError:
-            logging.debug("no saved data found")
         TCPServer.server_activate(self)
 
     def server_close(self):
-        # TODO: Store RAM
-        rh = SigmaTCPHandler(None, None, None)
-        logging.debug("saving DSP data memory")
-        rh.save_data_memory()
         TCPServer.server_close(self)
+
+
+class SigmaTCPServerMain():
+
+    def __init__(self):
+        self.server = SigmaTCPServer()
+        self.sigmahandler = SigmaTCPHandler(None, None, None)
+
+    def run(self):
+
+        logging.debug("restoring saved data memory")
+        try:
+            self.sigmahandler.program_checksum()  # cache checksum
+            self.sigmahandler.restore_data_memory()
+        except IOError:
+            logging.debug("no saved data found")
+
+        logging.info("Starting TCP server")
+        try:
+            self.server.serve_forever()
+        except KeyboardInterrupt:
+            self.server.server_close()
+
+        logging.debug("saving DSP data memory")
+        self.sigmahandler.save_data_memory()
