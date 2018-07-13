@@ -18,22 +18,6 @@ ip=127.0.0.1
 program=~/.dsptoolkit/dspprogram.xml
 EOF
 
-# Create new systemd file
-cat <<EOT >/tmp/dsptoolkit.service
-[Unit]
-Description=DSP Toolkit, load defaults
-Wants=network-online.target sigmatcp.service
-After=network.target network-online.target sigmatcp.service
-[Service]
-Type=oneshot
-ExecStartPre=/bin/sleep 3
-ExecStart=$LOC restore-global
-StandardOutput=journal
-[Install]
-WantedBy=multi-user.target
-EOT
-
-sudo mv /tmp/dsptoolkit.service /lib/systemd/system/dsptoolkit.service
 
 # Create systemd config for the TCP server
 LOC=`which sigmatcpserver`
@@ -45,7 +29,7 @@ Wants=network-online.target
 After=network.target network-online.target
 [Service]
 Type=simple
-ExecStart=$LOC
+ExecStart=$LOC -v --alsa
 StandardOutput=journal
 [Install]
 WantedBy=multi-user.target
