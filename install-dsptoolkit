@@ -2,22 +2,13 @@
 sudo apt-get install -y python3-pip
 sudo pip3 install --upgrade hifiberrydsp
 
-for i in dsptoolkit sigmatcp; do
+for i in sigmatcp; do
  sudo systemctl stop $i
  sudo systemctl disable $i
 done
 
-
 LOC=`which dsptoolkit`
 mkdir ~/.dsptoolkit
-cat <<EOF >~/.dsptoolkit/dsptoolkit.conf
-[host]
-ip=127.0.0.1
-
-[dsp]
-program=~/.dsptoolkit/dspprogram.xml
-EOF
-
 
 # Create systemd config for the TCP server
 LOC=`which sigmatcpserver`
@@ -39,7 +30,7 @@ sudo mv /tmp/sigmatcp.service /lib/systemd/system/sigmatcp.service
 
 sudo systemctl daemon-reload
 
-for i in dsptoolkit sigmatcp; do
+for i in sigmatcp; do
  sudo systemctl start $i
  sudo systemctl enable $i
 done
