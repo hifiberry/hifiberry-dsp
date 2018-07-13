@@ -4,7 +4,7 @@ with open("README", "r") as fh:
     long_description = fh.read()
 
 setup(name='hifiberrydsp',
-      version='0.7.1',
+      version='0.8',
       description='A DSP Toolkit',
       long_description=long_description,
       url='http://github.com/hifiberry/hifiberry-dsp',
@@ -21,7 +21,7 @@ setup(name='hifiberrydsp',
           'Programming Language :: Python :: 3.5'
       ],
       packages=find_packages(),
-      install_requires=['xmltodict', 'lxml', 'spidev'],
+      install_requires=['xmltodict', 'lxml', 'spidev', 'pyalsaaudio'],
       scripts=['bin/dsptoolkit', 'bin/sigmatcpserver'],
       keywords='audio raspberrypi dsp',
       zip_safe=False)
