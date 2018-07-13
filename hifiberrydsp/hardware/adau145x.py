@@ -71,7 +71,16 @@ class Adau145x():
         converts an 32bit fixed point value used in SigmaDSP 
         processors to a float value
         '''
+        if isinstance(p, bytearray):
+            val = 0
+            for octet in p:
+                val *= 256
+                val += octet
+
+            p = val
+
         f = float(p) / pow(2, 24)
+
         if f >= 16:
             f = -32 + f
         return f

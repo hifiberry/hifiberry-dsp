@@ -78,3 +78,11 @@ def parse_int_list(val):
     except:
         logging.error("can't parse list %s", val)
         return None
+
+
+def int_data(intval, length=4):
+    octets = bytearray()
+    for i in range(length, 0, -1):
+        octets.append((intval >> (i - 1) * 8) & 0xff)
+
+    return octets

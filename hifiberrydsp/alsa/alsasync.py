@@ -1,0 +1,232 @@
+'''
+Copyright (c) 2018 Modul 9/HiFiBerry
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+'''
+import time
+import logging
+import tempfile
+import os
+
+from threading import Thread
+
+from hifiberrydsp.hardware.sigmatcp import SpiHandler
+from hifiberrydsp.hardware.adau145x import Adau145x
+from hifiberrydsp.filtering.volume import percent2amplification, amplification2percent
+from hifiberrydsp import datatools
+
+DIRECTION_TO_DSP = 1
+DIRECTION_TO_ALSA = 2
+DIRECTION_TWO_WAY = 3
+
+ALSA_STATE_FILE = """
+state.sndrpihifiberry {
+ control.99 {
+  iface MIXER
+  name %VOLUME%
+  value.0 230
+  comment {
+   access 'read write user'
+   type INTEGER
+   count 1
+   range '0 - 255'
+   dbmin -60
+   dbmax 0
+   dbvalue.0 -60
+  }
+ }
+}
+"""
+
+
+class AlsaSync(Thread):
+    '''
+    Synchronises a dummy ALSA mixer control with a volume control 
+    register of the DSP.
+    '''
+
+    def __init__(self):
+
+        self.alsa_control = None
+        self.volume_register = None
+        self.dsp = Adau145x
+        self.volume_register_length = self.dsp.WORD_LENGTH
+        self.finished = False
+        self.pollinterval = 0.1
+        self.spi = SpiHandler
+        self.dspdata = None
+        self.dspvol = None
+        self.alsavol = None
+        self.mixername = None
+
+        Thread.__init__(self)
+
+    def set_volume_register(self, volume_register):
+        self.volume_register = volume_register
+        # When setting a new Volume register, always update ALSA to
+        # state of the DSP
+        self.read_dsp_data()
+        self.update_alsa(self.dspvol)
+
+    def set_alsa_control(self, alsa_control):
+        from alsaaudio import Mixer
+        try:
+            self.mixer = Mixer(alsa_control)
+            logging.debug("using existing ALSA control %s", alsa_control)
+        except:
+            try:
+                logging.debug(
+                    "ALSA control %s does not exist, creating it", alsa_control)
+
+                self.mixer = self.create_control(alsa_control)
+            except Exception as e:
+                logging.error(
+                    "can't create ALSA mixer control %s (%s)",
+                    alsa_control, e)
+
+        if self.mixer == None:
+            logging.error("ALSA mixer %s not found", alsa_control)
+
+        self.mixername = alsa_control
+
+    def update_alsa(self, value):
+        if value is None:
+            return
+
+        from alsaaudio import MIXER_CHANNEL_ALL
+        vol = int(value)
+        self.mixer.setvolume(vol, MIXER_CHANNEL_ALL)
+        self.alsavol = vol
+
+    def update_dsp(self, value):
+        if value is None:
+            return
+
+        # convert percent to multiplier
+        volume = percent2amplification(value)
+
+        # write multiplier to DSP
+        dspdata = datatools.int_data(self.dsp.decimal_repr(volume),
+                                     self.volume_register_length)
+        self.spi.write(self.volume_register, dspdata)
+
+        self.dspdata = dspdata
+        self.dspvol = value
+
+    def read_alsa_data(self):
+        from alsaaudio import Mixer
+        volumes = Mixer(self.mixername).getvolume()
+        channels = 0
+        vol = 0
+        for i in range(len(volumes)):
+            channels += 1
+            vol += volumes[i]
+
+        if channels > 0:
+            vol = vol / channels
+
+        if vol != self.alsavol:
+            logging.debug(
+                "ALSA volume changed from {}% to {}%".format(self.alsavol, vol))
+            self.alsavol = vol
+            return True
+        else:
+            return False
+
+    def read_dsp_data(self):
+        if self.volume_register is None:
+            self.dspdata = None
+            self.dspvol = None
+            return False
+
+        dspdata = self.spi.read(
+            self.volume_register, self.volume_register_length)
+
+        if dspdata != self.dspdata:
+
+            # Convert to percent and round to full percent
+            vol = int(amplification2percent(self.dsp.decimal_val(dspdata)))
+
+            if vol < 0:
+                vol = 0
+            elif vol > 100:
+                vol = 100
+
+            logging.debug(
+                "DSP volume changed from {}% to {}%".format(self.dspvol, vol))
+            self.dspvol = vol
+
+            self.dspdata = dspdata
+            return True
+        else:
+            return False
+
+    def check_sync(self):
+        alsa_changed = self.read_alsa_data()
+        dsp_changed = self.read_dsp_data()
+
+        # Check if one of the control has changed and update the other
+        # one. If both have changed, ALSA takes precedence
+        if alsa_changed:
+            logging.debug("Updating DSP volume from ALSA")
+            self.update_dsp(self.alsavol)
+        elif dsp_changed:
+            logging.debug("Updating ALSA volume from DSP")
+            self.update_alsa(self.dspvol)
+
+    def run(self):
+        while not(self.finished):
+            if self.mixer is None:
+                logging.debug("ALSA mixer not defined, stopping")
+                time.sleep(1)
+                continue
+
+            if self.volume_register is None:
+                logging.debug("DSP volume register not defined, stopping")
+                time.sleep(1)
+                continue
+
+            self.check_sync()
+            time.sleep(self.pollinterval)
+
+    def finish(self):
+        self.finished = True
+
+    @staticmethod
+    def create_mixer(name):
+
+        with tempfile.NamedTemporaryFile(mode='w', dir="/tmp", delete=False) as asoundstate:
+            content = ALSA_STATE_FILE.replace("%VOLUME%", name)
+            logging.debug("asoundstate file %s", content)
+            asoundstate.write(content)
+            asoundstate.close()
+
+        try:
+            command = "/usr/sbin/alsactl -f {} restore".format(
+                asoundstate.name)
+            logging.debug("runnning %s", command)
+            os.system(command)
+        except:
+            logging.error("")
+
+        try:
+            from alsaaudio import Mixer
+            return Mixer(name)
+        except:
+            logging.error("can't create mixer named %s")

@@ -23,17 +23,23 @@ SOFTWARE.
 import socket
 import time
 import os
+import sys
 import logging
 import hashlib
 import tempfile
 import shutil
 import getpass
 
+from threading import Thread
+
 from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
 import xmltodict
 from hifiberrydsp.hardware import adau145x
-from hifiberrydsp.datatools import ATTRIBUTE_CHECKSUM
+from hifiberrydsp.hardware.spi import SpiHandler
+from hifiberrydsp.datatools import int_data, ATTRIBUTE_CHECKSUM, ATTRIBUTE_VOL_CTL
+from hifiberrydsp.alsa.alsasync import AlsaSync
+from hifiberrydsp import datatools
 
 # Original SigmaDSP operations
 COMMAND_READ = 0x0a
@@ -164,7 +170,7 @@ class SigmaTCP():
 
     def get_decimal_repr(self, value):
         data = self.dsp.decimal_repr(value)
-        return SigmaTCP.int_data(data, self.dsp.DECIMAL_LEN)
+        return int_data(data, self.dsp.DECIMAL_LEN)
 
     def write_decimal(self, addr, value):
         self.write_memory(addr, self.get_decimal_repr(value))
@@ -312,26 +318,18 @@ class SigmaTCP():
 
     def reset(self):
         self.write_memory(self.dsp.RESET_REGISTER,
-                          SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
+                          int_data(0, self.dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.5)
         self.write_memory(self.dsp.RESET_REGISTER,
-                          SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+                          int_data(1, self.dsp.REGISTER_WORD_LENGTH))
 
     def hibernate(self, onoff):
         if onoff:
             self.write_memory(self.dsp.HIBERNATE_REGISTER,
-                              SigmaTCP.int_data(1, self.dsp.REGISTER_WORD_LENGTH))
+                              int_data(1, self.dsp.REGISTER_WORD_LENGTH))
         else:
             self.write_memory(self.dsp.HIBERNATE_REGISTER,
-                              SigmaTCP.int_data(0, self.dsp.REGISTER_WORD_LENGTH))
-
-    @staticmethod
-    def int_data(intval, length=4):
-        octets = bytearray()
-        for i in range(length, 0, -1):
-            octets.append((intval >> (i - 1) * 8) & 0xff)
-
-        return octets
+                              int_data(0, self.dsp.REGISTER_WORD_LENGTH))
 
     def data_int(self, data):
         res = 0
@@ -341,88 +339,6 @@ class SigmaTCP():
         return res
 
 
-class SpiHandler():
-    '''
-    Implements acces to the SPI bus. Can be used by multiple threads.
-
-    We assume that the SPI library is thread-safe and do not use 
-    additional locking here.
-
-    Data is passed in bytearrays, not string or lists
-    '''
-
-    spi = None
-
-    def __init__(self):
-
-        import spidev
-        if SpiHandler.spi is None:
-            SpiHandler.spi = spidev.SpiDev()
-            SpiHandler.spi.open(0, 0)
-            SpiHandler.spi.bits_per_word = 8
-            SpiHandler.spi.max_speed_hz = 1000000
-            SpiHandler.spi.mode = 0
-            logging.debug("spi initialized %s", self.spi)
-
-    @staticmethod
-    def read(addr, length):
-        spi_request = []
-        a0 = addr & 0xff
-        a1 = (addr >> 8) & 0xff
-
-        spi_request.append(1)
-        spi_request.append(a1)
-        spi_request.append(a0)
-
-        for _i in range(0, length):
-            spi_request.append(0)
-
-        spi_response = SpiHandler.spi.xfer(spi_request)  # SPI read
-        logging.debug("spi read %s bytes from %s", len(spi_request), addr)
-        return bytearray(spi_response[3:])
-
-    @staticmethod
-    def write(addr, data):
-        a0 = addr & 0xff
-        a1 = (addr >> 8) & 0xff
-
-        spi_request = []
-        spi_request.append(0)
-        spi_request.append(a1)
-        spi_request.append(a0)
-        for d in data:
-            spi_request.append(d)
-
-        if len(spi_request) < 4096:
-            SpiHandler.spi.xfer(spi_request)
-            logging.debug("spi write %s bytes",  len(spi_request) - 3)
-        else:
-            finished = False
-            while not finished:
-                if len(spi_request) < 4096:
-                    SpiHandler.spi.xfer(spi_request)
-                    logging.debug("spi write %s bytes", len(spi_request) - 3)
-                    finished = True
-                else:
-                    short_request = spi_request[:4003]
-                    SpiHandler.spi.xfer(short_request)
-                    logging.debug("spi write %s bytes", len(short_request) - 3)
-
-                    # skip forward 1000 cells
-                    addr = addr + 1000  # each memory cell is 4 bytes long
-                    a0 = addr & 0xff
-                    a1 = (addr >> 8) & 0xff
-                    new_request = []
-                    new_request.append(0)
-                    new_request.append(a1)
-                    new_request.append(a0)
-                    new_request.extend(spi_request[4003:])
-
-                    spi_request = new_request
-
-        return data
-
-
 class SigmaTCPHandler(BaseRequestHandler):
 
     checksum = None
@@ -430,6 +346,8 @@ class SigmaTCPHandler(BaseRequestHandler):
     dsp = adau145x.Adau145x
     dspprogramfile = dspprogramfile()
     parameterfile = parameterfile()
+    alsasync = None
+    updating = False
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
@@ -540,7 +458,6 @@ class SigmaTCPHandler(BaseRequestHandler):
                 elif data[0] == COMMAND_PROGMEM:
                     try:
                         data = self.get_program_memory()
-                        print(data)
                     except IOError:
                         data = []  # empty response
 
@@ -681,6 +598,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def handle_write(data):
+
         addr = int.from_bytes(data[12:14], byteorder='big')
         length = int.from_bytes(data[8:12], byteorder='big')
         if (length == 0):
@@ -690,8 +608,22 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         _safeload = data[1]  # TODO: use this
 
+        if addr == SigmaTCPHandler.dsp.KILLCORE_REGISTER and not(SigmaTCPHandler.updating):
+            logging.debug(
+                "write to KILLCORE seen, guessing something is updating the DSP")
+            SigmaTCPHandler.prepare_update()
+
         logging.debug("writing {} bytes to {}".format(length, addr))
-        return SigmaTCPHandler.spi.write(addr, data[14:])
+        memdata = data[14:]
+        res = SigmaTCPHandler.spi.write(addr, memdata)
+
+        if addr == SigmaTCPHandler.dsp.HIBERNATE_REGISTER and \
+                SigmaTCPHandler.updating and memdata == b'\00\00':
+            logging.debug(
+                "set HIBERNATE to 0 seen, guessing update is done")
+            SigmaTCPHandler.finish_update()
+
+        return res
 
     @staticmethod
     def write_eeprom_content(data):
@@ -720,6 +652,7 @@ class SigmaTCPHandler(BaseRequestHandler):
             with open(filename) as fd:
                 doc = xmltodict.parse(fd.read())
 
+            SigmaTCPHandler.prepare_update()
             for action in doc["ROM"]["page"]["action"]:
                 instr = action["@instr"]
 
@@ -739,6 +672,8 @@ class SigmaTCPHandler(BaseRequestHandler):
 
                 if instr == "delay":
                     time.sleep(1)
+
+            SigmaTCPHandler.finish_update()
 
             if (filename != SigmaTCPHandler.dspprogramfile):
                 shutil.copy(filename, SigmaTCPHandler.dspprogramfile)
@@ -882,13 +817,13 @@ class SigmaTCPHandler(BaseRequestHandler):
         spi = SigmaTCPHandler.spi
 
         spi.write(dsp.HIBERNATE_REGISTER,
-                  SigmaTCP.int_data(1, dsp.REGISTER_WORD_LENGTH))
+                  int_data(1, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
         spi.write(dsp.KILLCORE_REGISTER,
-                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
+                  int_data(0, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
         spi.write(dsp.KILLCORE_REGISTER,
-                  SigmaTCP.int_data(1, dsp.REGISTER_WORD_LENGTH))
+                  int_data(1, dsp.REGISTER_WORD_LENGTH))
 
     @staticmethod
     def _start_dsp():
@@ -897,16 +832,16 @@ class SigmaTCPHandler(BaseRequestHandler):
         spi = SigmaTCPHandler.spi
 
         spi.write(dsp.KILLCORE_REGISTER,
-                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
+                  int_data(0, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
         spi.write(dsp.STARTCORE_REGISTER,
-                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
+                  int_data(0, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
         spi.write(dsp.STARTCORE_REGISTER,
-                  SigmaTCP.int_data(1, dsp.REGISTER_WORD_LENGTH))
+                  int_data(1, dsp.REGISTER_WORD_LENGTH))
         time.sleep(0.0001)
         spi.write(dsp.HIBERNATE_REGISTER,
-                  SigmaTCP.int_data(0, dsp.REGISTER_WORD_LENGTH))
+                  int_data(0, dsp.REGISTER_WORD_LENGTH))
 
     @staticmethod
     def store_parameters(checksum, memory):
@@ -923,6 +858,52 @@ class SigmaTCPHandler(BaseRequestHandler):
             if checksum != file_checksum:
                 logging.error("checksums do not match, aborting")
                 return
+
+    @staticmethod
+    def prepare_update():
+        '''
+        Call this method if the DSP program might change soon
+        '''
+        logging.debug("preparing for memory update")
+        SigmaTCP.checksum = None
+        SigmaTCPHandler.update_alsasync(clear=True)
+        SigmaTCPHandler.updating = True
+
+    @staticmethod
+    def finish_update():
+        '''
+        Call this method after the DSP program has been refreshed
+        '''
+        logging.debug("finished memory update")
+        ProgramRefresher().start()
+
+    @staticmethod
+    def update_alsasync(clear=False):
+        if SigmaTCPHandler.alsasync is None:
+            return
+
+        if clear:
+            SigmaTCPHandler.alsasync.set_volume_register(None)
+
+        volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
+        if volreg is None or len(volreg) == 0:
+            SigmaTCPHandler.alsasync.set_volume_register(None)
+
+        reg = datatools.parse_int(volreg)
+        SigmaTCPHandler.alsasync.set_volume_register(reg)
+
+
+class ProgramRefresher(Thread):
+
+    def run(self):
+        logging.debug(
+            "running asynchrounous checksum refresh after potential update")
+        time.sleep(0)
+        # calculate cecksum
+        SigmaTCPHandler.program_checksum(cached=False)
+        # update volume register for ALSA control
+        SigmaTCPHandler.update_alsasync()
+        SigmaTCPHandler.updating = False
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
@@ -943,15 +924,24 @@ class SigmaTCPServer(ThreadingMixIn, TCPServer):
 
 class SigmaTCPServerMain():
 
-    def __init__(self):
+    def __init__(self, alsa_mixer_name="DSPVolume"):
         self.server = SigmaTCPServer()
+        if "--alsa" in sys.argv:
+            logging.debug("initializiong ALSA mixer control")
+            alsasync = AlsaSync()
+            alsasync.set_alsa_control(alsa_mixer_name)
+            SigmaTCPHandler.alsasync = alsasync
+            alsasync.start()
+            # TODO: start sync
+        else:
+            logging.debug("not using ALSA volume control")
+            self.alsa_mixer_name = None
 
     def run(self):
-
-        logging.debug("restoring saved data memory")
         try:
-            SigmaTCPHandler.program_checksum()  # cache checksum
+            logging.debug("restoring saved data memory")
             SigmaTCPHandler.restore_data_memory()
+            SigmaTCPHandler.finish_update()
         except IOError:
             logging.debug("no saved data found")
 
@@ -960,6 +950,8 @@ class SigmaTCPServerMain():
             self.server.serve_forever()
         except KeyboardInterrupt:
             self.server.server_close()
+
+        SigmaTCPHandler.alsasync.finish()
 
         logging.debug("saving DSP data memory")
         SigmaTCPHandler.save_data_memory()

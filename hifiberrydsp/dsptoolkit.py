@@ -216,7 +216,6 @@ class DSPToolkit():
         data = []
         for coeff in coefficients:
             x = list(self.sigmatcp.get_decimal_repr(coeff))
-            print(x)
             data[0:0] = x
 
         x = list(self.sigmatcp.get_decimal_repr(0))
@@ -543,6 +542,7 @@ class CommandLine():
                 for line in firfile:
                     coeff = float(line)
                     coefficients.append(coeff)
+                    print(coeff)
         except Exception as e:
             print("can't read filter file (%s)", e)
 
