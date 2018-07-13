@@ -1,6 +1,13 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.8.1 (20180713)
+ - Bugfix in ALSA control create code
+
+0.8 (20180713)
+ - ALSA volume control
+ - automatic detection of program uploads from SigmaStudio
+
 0.7 (20180712)
  - cache program checksum
  - dsptoolkit client program now used XML file provided by sigmatcpserver

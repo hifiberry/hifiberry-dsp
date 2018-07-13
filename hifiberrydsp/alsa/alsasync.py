@@ -94,7 +94,7 @@ class AlsaSync(Thread):
                 logging.debug(
                     "ALSA control %s does not exist, creating it", alsa_control)
 
-                self.mixer = self.create_control(alsa_control)
+                self.mixer = self.create_mixer(alsa_control)
             except Exception as e:
                 logging.error(
                     "can't create ALSA mixer control %s (%s)",
