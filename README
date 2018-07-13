@@ -17,6 +17,11 @@ exists it writes it back to the parameter memory. This ensures that parameters
 like volume controls, filter parameters, switch settings will be automatically 
 restored even if they are not saved in the EEPROM. 
 
+The server accepts the following command line parameters:
+
+-v         Verbose output.
+--alsa     Create an ALSA volume control that is synced with the volume 
+           control of the running DSP program
 
 Command line utility
 ====================
@@ -118,7 +123,7 @@ the command won't have any effect.
   When using this command on register addresses, the command will write to
   2 consecutive register addresses as addresses have a length of only 2 bytes.
   
- * mute|unmute
+* mute|unmute
  
   Mutes/unmutes the output. This only works if the profile supports
   a mute register
