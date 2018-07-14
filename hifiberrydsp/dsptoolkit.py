@@ -294,7 +294,10 @@ class DSPToolkit():
         self.hibernate(False)
 
     def install_profile(self, xmlfile):
-        return self.sigmatcp.write_eeprom(xmlfile)
+        return self.sigmatcp.write_eeprom_from_file(xmlfile)
+
+    def install_profile_from_content(self, content):
+        return self.sigmatcp.write_eeprom_from_xml(content)
 
     def mute(self, mute=True):
         mutereg = datatools.parse_int(
@@ -609,20 +612,30 @@ class CommandLine():
             print("profile filename missing")
             sys.exit(1)
 
+        xmlfile = None
         if (filename.startswith("http://") or
                 filename.startswith("https://")):
             # Download and store a local copy
             try:
-                localname = os.path.expanduser(
-                    "~/.dsptoolkit/" + os.path.basename(filename))
-                urllib.request.urlretrieve(filename, localname)
-                print("Stored profile {}".format(localname))
-                filename = localname
+                xmlfile = urllib.request.urlopen(filename)
             except IOError:
-                print("Couldn't download {}".format(filename))
+                print("can't download {}".format(filename))
+                sys.exit(1)
+        else:
+            try:
+                xmlfile = open(filename)
+            except IOError:
+                print("can't open {}".format(filename))
                 sys.exit(1)
 
-        res = self.dsptk.install_profile(filename)
+        try:
+            data = xmlfile.read()
+        except IOError:
+            print("can't read {}".format(filename))
+            sys.exit(1)
+
+        res = self.dsptk.install_profile_from_content(data)
+
         if res:
             print("DSP profile {} installed".format(filename))
         else:

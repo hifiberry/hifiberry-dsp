@@ -148,7 +148,7 @@ class SigmaTCP():
         packet = self.write_request(addr, data)
         self.socket.send(packet)
 
-    def write_eeprom(self, filename):
+    def write_eeprom_from_file(self, filename):
         if self.socket is None:
             if self.autoconnect:
                 self.connect()
@@ -156,7 +156,7 @@ class SigmaTCP():
                 raise SigmaTCPException("Not connected")
 
         if (os.path.exists(filename)):
-            packet = self.write_eeprom_request(os.path.abspath(filename))
+            packet = self.write_eeprom_file_request(os.path.abspath(filename))
             self.socket.send(packet)
             result = int.from_bytes(self.socket.recv(1),
                                     byteorder='big',
@@ -167,6 +167,23 @@ class SigmaTCP():
                 return False
         else:
             raise IOError("{} does not exist".format(filename))
+
+    def write_eeprom_from_xml(self, xmldata):
+        if self.socket is None:
+            if self.autoconnect:
+                self.connect()
+            else:
+                raise SigmaTCPException("Not connected")
+
+        packet = self.write_eeprom_content_request(xmldata)
+        self.socket.send(packet)
+        result = int.from_bytes(self.socket.recv(1),
+                                byteorder='big',
+                                signed=False)
+        if result == 1:
+            return(True)
+        else:
+            return False
 
     def get_decimal_repr(self, value):
         data = self.dsp.decimal_repr(value)
@@ -302,12 +319,23 @@ class SigmaTCP():
         return data.decode("utf-8")
 
     @staticmethod
-    def write_eeprom_request(filename):
+    def write_eeprom_file_request(filename):
         packet = bytearray(HEADER_SIZE)
         packet[0] = COMMAND_EEPROM_FILE
         packet[1] = len(filename)
         packet.extend(map(ord, filename))
         packet.extend([0])
+        return packet
+
+    @staticmethod
+    def write_eeprom_content_request(data):
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+
+        packet = bytearray(HEADER_SIZE)
+        packet[0] = COMMAND_WRITE_EEPROM_CONTENT
+        packet[3:7] = datatools.int_data(len(data) + HEADER_SIZE, 4)
+        packet.extend(bytearray(data))
         return packet
 
     @staticmethod
@@ -380,6 +408,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                 if read_more:
                     logging.debug("waiting for more data")
                     d2 = self.request.recv(65536)
+                    if (len(d2) == 0):
+                        time.sleep(0.1)
                     data = data + d2
                     read_more = False
 
@@ -431,11 +461,6 @@ class SigmaTCPHandler(BaseRequestHandler):
 
                 elif data[0] == COMMAND_RESTORE_DATA:
                     self.restore_data_memory()
-
-                elif data[0] == COMMAND_EEPROM_FILE:
-                    filename_length = data[1]
-                    filename = "".join(map(chr, data[14:14 + filename_length]))
-                    result = self.write_eeprom_file(filename)
 
                 elif data[0] == COMMAND_CHECKSUM:
                     result = self._response_packet(
@@ -575,7 +600,6 @@ class SigmaTCPHandler(BaseRequestHandler):
             doc = xmltodict.parse(xml)
             for metadata in doc["ROM"]["beometa"]["metadata"]:
                 t = metadata["@type"]
-                logging.debug(t)
                 if (t == attribute):
                     return metadata["#text"]
         except Exception as e:
@@ -626,31 +650,12 @@ class SigmaTCPHandler(BaseRequestHandler):
         return res
 
     @staticmethod
-    def write_eeprom_content(data):
-        tempfile = tempfile.NamedTemporaryFile(mode='w+b',
-                                               delete=False)
-        filename = tempfile.name
-        try:
-            tempfile.write(data)
-            tempfile.close()
-            result = SigmaTCPHandler.write_eeprom_file(filename)
-            SigmaTCPHandler.program_checksum(
-                cached=False)  # calculate new checksum
-        except IOError:
-            result = b'\00'
+    def write_eeprom_content(xmldata):
+
+        logging.debug("writing XML file: %s", xmldata)
 
         try:
-            os.remove(filename)
-        except:
-            pass
-
-        return result
-
-    @staticmethod
-    def write_eeprom_file(filename):
-        try:
-            with open(filename) as fd:
-                doc = xmltodict.parse(fd.read())
+            doc = xmltodict.parse(xmldata)
 
             SigmaTCPHandler.prepare_update()
             for action in doc["ROM"]["page"]["action"]:
@@ -664,6 +669,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                         value = int(d, 16)
                         data.append(value)
 
+                    logging.debug("writeXbytes %s %s", addr, len(data))
                     SigmaTCPHandler.spi.write(addr, data)
 
                     # Sleep after erase operations
@@ -671,20 +677,33 @@ class SigmaTCPHandler(BaseRequestHandler):
                         time.sleep(10)
 
                 if instr == "delay":
+                    logging.debug("delay")
                     time.sleep(1)
 
             SigmaTCPHandler.finish_update()
 
-            if (filename != SigmaTCPHandler.dspprogramfile):
-                shutil.copy(filename, SigmaTCPHandler.dspprogramfile)
-                logging.debug("copied %s to %s",
-                              filename,
-                              SigmaTCPHandler.dspprogramfile)
+            # Write current DSP profile
+            with open(SigmaTCPHandler.dspprogramfile, "w+b") as dspprogram:
+                if (isinstance(xmldata, str)):
+                    xmldata = xmldata.encode("utf-8")
+                dspprogram.write(xmldata)
 
-        except IOError:
+        except Exception as e:
+            e.print_stack_trace()
+            logging.error("exception during EEPROM write: %s", e)
             return b'\00'
 
         return b'\01'
+
+    @staticmethod
+    def write_eeprom_file(filename):
+        try:
+            with open(filename) as fd:
+                data = fd.read()
+                return SigmaTCPHandler.write_eeprom_content(data)
+        except IOError as e:
+            logging.debug("IOError: %s", e)
+            return b'\00'
 
     @staticmethod
     def save_data_memory():
@@ -736,7 +755,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         memory = bytearray()
 
         while len(memory) < length * dsp.WORD_LENGTH:
-            logging.debug("reading program code block from addr %s", addr)
+            logging.debug("reading memory code block from addr %s", addr)
             data = SigmaTCPHandler.spi.read(addr, block_size)
             # logging.debug("%s", data)
             memory += data
@@ -884,6 +903,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         if clear:
             SigmaTCPHandler.alsasync.set_volume_register(None)
+            return
 
         volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
         if volreg is None or len(volreg) == 0:

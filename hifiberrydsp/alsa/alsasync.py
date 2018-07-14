@@ -193,12 +193,13 @@ class AlsaSync(Thread):
     def run(self):
         while not(self.finished):
             if self.mixer is None:
-                logging.debug("ALSA mixer not defined, stopping")
-                time.sleep(1)
-                continue
+                logging.error(
+                    "ALSA mixer not available, aborting volume synchronisation")
+                break
 
             if self.volume_register is None:
-                logging.debug("DSP volume register not defined, stopping")
+                # Voluem control register can chnge when a new program is
+                # uploaded, just go on and try again later
                 time.sleep(1)
                 continue
 
