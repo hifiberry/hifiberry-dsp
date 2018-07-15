@@ -674,6 +674,8 @@ class SigmaTCPHandler(BaseRequestHandler):
 
                     # Sleep after erase operations
                     if ("g_Erase" in paramname):
+                        logging.debug(
+                            "found erase command, waiting 10 seconds to finish")
                         time.sleep(10)
 
                 if instr == "delay":

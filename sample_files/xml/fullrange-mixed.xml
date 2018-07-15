@@ -6,10 +6,10 @@
     <metadata type="volumeControlRegister">0x1f55</metadata>
     <metadata type="volumeLimitRegister">0x1f56</metadata>
     <metadata type="balanceRegister">0xc5</metadata>
-    <metadata type="customFilterBankLeft">37,42,47,52,57,62,67,72,77,82,87,92,97,102,107,112</metadata>
-    <metadata type="customFilterBankRight">117,122,127,132,137,142,147,152,157,162,167,172,167,182</metadata>
-    <metadata type="customFIRFilterLeft">0xc8/3900</metadata>
-    <metadata type="customFIRFilterRight">0x1004/3900</metadata>
+    <metadata type="IIRLeft">37,42,47,52,57,62,67,72,77,82,87,92,97,102,107,112</metadata>
+    <metadata type="IIRRight">117,122,127,132,137,142,147,152,157,162,167,172,167,182</metadata>
+    <metadata type="FIRLeft">0xc8/3900</metadata>
+    <metadata type="FIRRight">0x1004/3900</metadata>
     <metadata type="muteRegister">0xc7</metadata>
     <metadata type="samplerate">48000</metadata>
     <metadata type="crossoverBands">1</metadata>

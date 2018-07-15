@@ -6,8 +6,8 @@
     <metadata type="volumeControlRegister">0x1f6a</metadata>
     <metadata type="volumeLimitRegister">0x1f7e</metadata>
     <metadata type="balanceRegister">0x25</metadata>
-    <metadata type="customFirFilterLeft">40/4000</metadata>
-    <metadata type="customFirFilterRight">4040/4000</metadata>
+    <metadata type="FIRLeft">40/4000</metadata>
+    <metadata type="FIRRight">4040/4000</metadata>
     <metadata type="samplerate">48000</metadata>
     <metadata type="crossoverBands">1</metadata>
     <metadata type="checksum">684DFE4A648F86DFC40B6B953AFD28C7</metadata>
