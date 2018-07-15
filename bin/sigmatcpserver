@@ -11,7 +11,7 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(level=logging.INFO)
 
-    import hifiberrydsp.hardware.sigmatcp
+    import hifiberrydsp.server.sigmatcp
 
-    server = hifiberrydsp.hardware.sigmatcp.SigmaTCPServerMain()
+    server = hifiberrydsp.server.sigmatcp.SigmaTCPServerMain()
     server.run()

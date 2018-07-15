@@ -98,33 +98,12 @@ class DSPError(Exception):
 class DSPToolkit():
 
     def __init__(self,
-                 xmlfile=None,
                  ip="127.0.0.1",
                  dsp=Adau145x()):
         self.dsp = dsp
         self.ip = ip
         self.sigmatcp = SigmaTCP(self.dsp, self.ip)
         self.resetgpio = None
-
-    def read_config(self, configfile="~/.dsptoolkit/dsptoolkit.conf"):
-        import configparser
-        config = configparser.ConfigParser()
-        try:
-            config.read(os.path.expanduser(configfile))
-        except Exception as e:
-            logging.info("Can't read config file %s (%s)",
-                         configfile, e)
-
-        try:
-            self.set_ip(config["host"].get("ip"))
-
-        except:
-            logging.info("Config: IP not defined")
-
-        try:
-            self.resetgpio = int(config["dsp"].get("reset_gpio"))
-        except:
-            logging.info("Config: Reset GPIO not defined")
 
     def set_ip(self, ip):
         self.ip = ip
@@ -370,6 +349,7 @@ class CommandLine():
             "mute": self.cmd_mute,
             "unmute": self.cmd_unmute,
             "get-samplerate": self.cmd_samplerate,
+            "check-eeprom": self.cmd_check_eeprom,
         }
         self.dsptk = DSPToolkit()
 
@@ -666,6 +646,19 @@ class CommandLine():
         self.dsptk.sigmatcp.write_memory(reg, data)
         sys.exit(1)
 
+    def cmd_check_eeprom(self):
+        checksum1 = self.dsptk.sigmatcp.program_checksum()
+        self.dsptk.reset()
+        time.sleep(2)
+        checksum2 = self.dsptk.sigmatcp.program_checksum()
+        cs1 = ''.join(["%02X" % x for x in checksum1])
+        cs2 = ''.join(["%02X" % x for x in checksum2])
+
+        if checksum1 == checksum2:
+            print("EEPROM content matches running profile, checksum {}".format(cs1))
+        else:
+            print("Checksums do not match {} != {}".format(cs1, cs2))
+
     def main(self):
 
         parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
@@ -674,13 +667,17 @@ class CommandLine():
                             nargs='?',
                             type=int,
                             default=1000)
+        parser.add_argument('--host',
+                            help='hostname or IP address of the server to connect to',
+                            nargs='?',
+                            default="127.0.0.1")
         parser.add_argument('command',
                             choices=sorted(self.command_map.keys()))
         parser.add_argument('parameters', nargs='*')
 
         self.args = parser.parse_args()
-        self.dsptk.read_config()
 
+        # Run the command
         self.command_map[self.args.command]()
 
 

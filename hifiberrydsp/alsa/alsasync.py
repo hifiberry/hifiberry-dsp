@@ -26,7 +26,6 @@ import os
 
 from threading import Thread
 
-from hifiberrydsp.hardware.sigmatcp import SpiHandler
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.filtering.volume import percent2amplification, amplification2percent
 from hifiberrydsp import datatools

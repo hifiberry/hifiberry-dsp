@@ -26,15 +26,15 @@ import os
 import sys
 import logging
 import hashlib
-import tempfile
-import shutil
 import getpass
 
 from threading import Thread
 
 from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
+from zeroconf import ServiceInfo, Zeroconf
 import xmltodict
+
 from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
 from hifiberrydsp.datatools import int_data, ATTRIBUTE_CHECKSUM, ATTRIBUTE_VOL_CTL
@@ -555,8 +555,8 @@ class SigmaTCPHandler(BaseRequestHandler):
     @staticmethod
     def get_and_check_xml():
 
-        logging.debug("reading profile %s",
-                      SigmaTCPHandler.dspprogramfile)
+        logging.info("reading profile %s",
+                     SigmaTCPHandler.dspprogramfile)
         try:
             checksum_xml = bytearray()
             with open(SigmaTCPHandler.dspprogramfile) as fd:
@@ -577,9 +577,9 @@ class SigmaTCPHandler(BaseRequestHandler):
                           SigmaTCPHandler.dspprogramfile)
 
         checksum_mem = SigmaTCPHandler.program_checksum()
-        logging.debug("checksum memory: %s, xmlfile: %s",
-                      checksum_mem,
-                      checksum_xml)
+        logging.info("checksum memory: %s, xmlfile: %s",
+                     checksum_mem,
+                     checksum_xml)
 
         if (checksum_xml is not None) and (checksum_xml != 0):
             if (checksum_xml != checksum_mem):
@@ -652,7 +652,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     @staticmethod
     def write_eeprom_content(xmldata):
 
-        logging.debug("writing XML file: %s", xmldata)
+        logging.info("writing XML file: %s", xmldata)
 
         try:
             doc = xmltodict.parse(xmldata)
@@ -671,6 +671,10 @@ class SigmaTCPHandler(BaseRequestHandler):
 
                     logging.debug("writeXbytes %s %s", addr, len(data))
                     SigmaTCPHandler.spi.write(addr, data)
+
+#                    if ("Page" in paramname):
+#                        logging.debug("Page write, delaying 100ms")
+#                        time.sleep(0.1)
 
                     # Sleep after erase operations
                     if ("g_Erase" in paramname):
@@ -709,24 +713,24 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def save_data_memory():
-        logging.debug("restore: checking checksum")
+        logging.info("store: getting checksum")
         checksum = SigmaTCPHandler.program_checksum()
         memory = SigmaTCPHandler.get_memory_block(SigmaTCPHandler.dsp.DATA_ADDR,
                                                   SigmaTCPHandler.dsp.DATA_LENGTH)
-        logging.debug("restore: writing memory dump to file")
+        logging.info("store: writing memory dump to file")
         SigmaTCPHandler.store_parameters(checksum, memory)
 
     @staticmethod
     def restore_data_memory():
 
-        logging.debug("restore: checking checksum")
+        logging.info("restore: checking checksum")
         checksum = SigmaTCPHandler.program_checksum(cached=False)
         memory = SigmaTCPHandler.restore_parameters(checksum)
 
         if memory is None:
             return
 
-        logging.debug("restore: writing to memory")
+        logging.info("restore: writing to memory")
 
         dsp = SigmaTCPHandler.dsp
 
@@ -805,7 +809,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         logging.debug("length: %s, digest: %s", len(data), m.digest())
 
-        logging.debug("caching program memory checksum")
+        logging.info("caching program memory checksum")
         SigmaTCPHandler.checksum = m.digest()
         return SigmaTCPHandler.checksum
 
@@ -885,7 +889,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         '''
         Call this method if the DSP program might change soon
         '''
-        logging.debug("preparing for memory update")
+        logging.info("preparing for memory update")
         SigmaTCP.checksum = None
         SigmaTCPHandler.update_alsasync(clear=True)
         SigmaTCPHandler.updating = True
@@ -895,7 +899,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         '''
         Call this method after the DSP program has been refreshed
         '''
-        logging.debug("finished memory update")
+        logging.info("finished memory update")
         ProgramRefresher().start()
 
     @staticmethod
@@ -947,25 +951,53 @@ class SigmaTCPServer(ThreadingMixIn, TCPServer):
 class SigmaTCPServerMain():
 
     def __init__(self, alsa_mixer_name="DSPVolume"):
+        self.restore = False
+
         self.server = SigmaTCPServer()
         if "--alsa" in sys.argv:
-            logging.debug("initializiong ALSA mixer control")
+            logging.info("initializiong ALSA mixer control")
             alsasync = AlsaSync()
             alsasync.set_alsa_control(alsa_mixer_name)
             SigmaTCPHandler.alsasync = alsasync
             alsasync.start()
             # TODO: start sync
         else:
-            logging.debug("not using ALSA volume control")
+            logging.info("not using ALSA volume control")
             self.alsa_mixer_name = None
 
+        if "--restore" in sys.argv:
+            self.restore = False
+
+    def announce_zeroconf(self):
+        desc = {'name': 'SigmaTCP', 'vendor': 'HiFiBerry'}
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        self.zeroconf_info = ServiceInfo("_sigmatcp._tcp.local.",
+                                         "{}._sigmatcp._tcp.local.".format(
+                                             hostname),
+                                         socket.inet_aton(ip), DEFAULT_PORT, 0, 0, desc)
+        self.zeroconf = Zeroconf()
+        self.zeroconf.register_service(self.zeroconf_info)
+
+    def shutdown_zeroconf(self):
+        if self.zeroconf is not None and self.zeroconf_info is not None:
+            self.zeroconf.unregister_service(self.zeroconf_info)
+
+        self.zeroconf_info = None
+        self.zeroconf.close()
+        self.zeroconf = None
+
     def run(self):
-        try:
-            logging.debug("restoring saved data memory")
-            SigmaTCPHandler.restore_data_memory()
-            SigmaTCPHandler.finish_update()
-        except IOError:
-            logging.debug("no saved data found")
+        if (self.restore):
+            try:
+                logging.info("restoring saved data memory")
+                SigmaTCPHandler.restore_data_memory()
+                SigmaTCPHandler.finish_update()
+            except IOError:
+                logging.info("no saved data found")
+
+        logging.info("Announcing via zeroconf")
+        self.announce_zeroconf()
 
         logging.info("Starting TCP server")
         try:
@@ -973,7 +1005,11 @@ class SigmaTCPServerMain():
         except KeyboardInterrupt:
             self.server.server_close()
 
-        SigmaTCPHandler.alsasync.finish()
+        if SigmaTCPHandler.alsasync is not None:
+            SigmaTCPHandler.alsasync.finish()
 
-        logging.debug("saving DSP data memory")
+        logging.info("Removing from zeroconf")
+        self.shutdown_zeroconf()
+
+        logging.info("saving DSP data memory")
         SigmaTCPHandler.save_data_memory()
