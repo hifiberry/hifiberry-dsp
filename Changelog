@@ -1,6 +1,12 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.9 (20180716)
+ - Renamed filter attributes
+ - install-profile command now also works on remote servers
+ - Zeroconf support to find all SigmaTCP instances on the local network
+ - XML file rework code added (not yet used)
+
 0.8.1 (20180713)
  - Bugfix in ALSA control create code
 
