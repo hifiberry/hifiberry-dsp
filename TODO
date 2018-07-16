@@ -1,3 +1,1 @@
-- cache checksum (optional)
-- cleanup dsptoolkit client code and remove all direct access to local XML files
-
+- implement persistent filtering 
