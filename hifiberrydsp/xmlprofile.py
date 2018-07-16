@@ -285,10 +285,10 @@ class DummyEepromWriter():
         return new_data
 
 
-x = XmlProfile(
-    "/Users/matuschd/devel/python/hifiberry-dsp/sample_files/xml/fullrange-iir.xml")
-
-x.write_xml("/tmp/x.xml")
-x.replace_eeprom_cells({16: [0xff, 0xff, 0xff, 0xff]})
-x.replace_ram_cells({16: [0xff, 0xff, 0xff, 0xff]})
-x.write_xml("/tmp/y.xml")
+# x = XmlProfile(
+#     "/Users/matuschd/devel/python/hifiberry-dsp/sample_files/xml/fullrange-iir.xml")
+#
+# x.write_xml("/tmp/x.xml")
+# x.replace_eeprom_cells({16: [0xff, 0xff, 0xff, 0xff]})
+# x.replace_ram_cells({16: [0xff, 0xff, 0xff, 0xff]})
+# x.write_xml("/tmp/y.xml")

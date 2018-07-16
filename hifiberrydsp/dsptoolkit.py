@@ -35,8 +35,8 @@ from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.server.sigmatcp import SigmaTCP
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
-
-from hifiberrydsp.xmlprofile import parse_int, \
+from hifiberrydsp.datatools import parse_int
+from hifiberrydsp.xmlprofile import  \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
