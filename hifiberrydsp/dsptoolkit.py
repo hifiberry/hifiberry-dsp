@@ -27,19 +27,26 @@ import os
 import time
 import sys
 import urllib.request
+import socket
+
+from zeroconf import ServiceInfo, Zeroconf, ServiceBrowser
 
 from hifiberrydsp.hardware.adau145x import Adau145x
-from hifiberrydsp.hardware.sigmatcp import SigmaTCP
+from hifiberrydsp.server.sigmatcp import SigmaTCP
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
-from hifiberrydsp.hardware import sigmatcp
 
-from hifiberrydsp.datatools import parse_int, \
+from hifiberrydsp.xmlprofile import parse_int, \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
     ATTRIBUTE_MUTE_REG
+
+from hifiberrydsp.server.sigmatcp import COMMAND_PROGMEM, \
+    COMMAND_PROGMEM_RESPONSE, COMMAND_XML, COMMAND_XML_RESPONSE, \
+    COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
+    ZEROCONF_TYPE
 
 from hifiberrydsp import datatools
 
@@ -350,6 +357,7 @@ class CommandLine():
             "unmute": self.cmd_unmute,
             "get-samplerate": self.cmd_samplerate,
             "check-eeprom": self.cmd_check_eeprom,
+            "servers": self.cmd_servers,
         }
         self.dsptk = DSPToolkit()
 
@@ -502,7 +510,7 @@ class CommandLine():
             self.dsptk.set_filters(filters, mode)
             print("Filters configured on both channels:")
             for f in filters:
-                print (f.description)
+                print(f.description)
         except DSPError as e:
             print(e)
 
@@ -549,13 +557,13 @@ class CommandLine():
         print(''.join(["%02X" % x for x in checksum]))
 
     def cmd_get_xml(self):
-        xml = self.dsptk.generic_request(sigmatcp.COMMAND_XML,
-                                         sigmatcp.COMMAND_XML_RESPONSE)
+        xml = self.dsptk.generic_request(COMMAND_XML,
+                                         COMMAND_XML_RESPONSE)
         print(xml.decode("utf-8", errors="replace"))
 
     def cmd_get_prog(self):
-        mem = self.dsptk.generic_request(sigmatcp.COMMAND_PROGMEM,
-                                         sigmatcp.COMMAND_PROGMEM_RESPONSE)
+        mem = self.dsptk.generic_request(COMMAND_PROGMEM,
+                                         COMMAND_PROGMEM_RESPONSE)
         print(mem.decode("utf-8", errors="replace"))
 
     def cmd_get_meta(self):
@@ -577,10 +585,10 @@ class CommandLine():
             print("Mute not supported")
 
     def cmd_store(self):
-        self.dsptk.generic_request(sigmatcp.COMMAND_STORE_DATA)
+        self.dsptk.generic_request(COMMAND_STORE_DATA)
 
     def cmd_restore(self):
-        self.dsptk.generic_request(sigmatcp.COMMAND_RESTORE_DATA)
+        self.dsptk.generic_request(COMMAND_RESTORE_DATA)
 
     def cmd_samplerate(self):
         print("{}Hz".format(self.dsptk.get_samplerate()))
@@ -659,6 +667,16 @@ class CommandLine():
         else:
             print("Checksums do not match {} != {}".format(cs1, cs2))
 
+    def cmd_servers(self):
+        zeroconf = Zeroconf()
+        listener = ZeroConfListener()
+        ServiceBrowser(zeroconf, ZEROCONF_TYPE, listener)
+        print("Looking for devices")
+        time.sleep(5)
+        zeroconf.close()
+        for name, info in listener.devices.items():
+            print("{}: {}".format(name, info))
+
     def main(self):
 
         parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
@@ -677,6 +695,8 @@ class CommandLine():
 
         self.args = parser.parse_args()
 
+        self.dsptk.set_ip(self.args.host)
+
         # Run the command
         self.command_map[self.args.command]()
 
@@ -684,3 +704,19 @@ class CommandLine():
 if __name__ == "__main__":
     cmdline = CommandLine()
     cmdline.main()
+
+
+class ZeroConfListener:
+
+    def __init__(self):
+        self.devices = {}
+
+    def remove_service(self, _zeroconf, _type, _name):
+        pass
+
+    def add_service(self, zeroconf, service_type, name):
+        if service_type == ZEROCONF_TYPE:
+            info = zeroconf.get_service_info(service_type, name)
+            ip = socket.inet_ntoa(info.address)
+            hostinfo = "{}:{}".format(ip, info.port)
+            self.devices[name] = hostinfo

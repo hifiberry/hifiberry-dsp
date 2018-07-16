@@ -22,19 +22,6 @@ SOFTWARE.
 
 import logging
 
-ATTRIBUTE_CHECKSUM = "checksum"
-ATTRIBUTE_VOL_CTL = "volumeControlRegister"
-ATTRIBUTE_VOL_LIMIT = "volumeLimitRegister"
-ATTRIBUTE_BALANCE = "balanceRegister"
-ATTRIBUTE_VOL_RANGE = "volumeControlRangeDb"
-ATTRIBUTE_IIR_FILTER_LEFT = "IIRLeft"
-ATTRIBUTE_IIR_FILTER_RIGHT = "IIRRight"
-ATTRIBUTE_FIR_FILTER_LEFT = "FIRLeft"
-ATTRIBUTE_FIR_FILTER_RIGHT = "FIRRight"
-ATTRIBUTE_IIR_XOVER = "IIR%LR%%CHANNEL%"
-ATTRIBUTE_MUTE_REG = "muteRegister"
-ATTRIBUTE_SAMPLERATE = "samplerate"
-
 
 def parse_int(val):
     if val is None or len(val) == 0:

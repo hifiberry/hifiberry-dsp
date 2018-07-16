@@ -29,6 +29,7 @@ from threading import Thread
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.filtering.volume import percent2amplification, amplification2percent
 from hifiberrydsp import datatools
+from hifiberrydsp.hardware.spi import SpiHandler
 
 DIRECTION_TO_DSP = 1
 DIRECTION_TO_ALSA = 2

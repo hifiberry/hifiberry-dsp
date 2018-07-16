@@ -48,6 +48,12 @@ class Adau145x():
 
     PROGRAM_END_SIGNATURE = b'\x02\xC2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 
+    START_ADDRESS = {
+        "DM0": 0x0000,
+        "DM1": 0x6000,
+        "PM": 0xc000,
+    }
+
     @staticmethod
     def decimal_repr(f):
         '''
