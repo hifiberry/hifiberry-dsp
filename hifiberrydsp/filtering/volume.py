@@ -62,9 +62,6 @@ def percent2amplification(percent, dbrange=60):
     if percent <= 0:
         return 0
 
-    if percent >= 100:
-        return 1
-
     (a, b) = log_coefficients(dbrange)
     return a * math.exp(b * float(percent) / 100)
 

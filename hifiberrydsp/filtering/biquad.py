@@ -25,6 +25,8 @@ by Robert Bristow-Johnson  <rbj@audioimagination.com>
 
 import math
 
+from hifiberrydsp.datatools import parse_frequency, parse_decibel
+
 
 class Biquad():
 
@@ -200,6 +202,12 @@ class Biquad():
         return Biquad(1, a1, 0, b0, b1, 0,
                       "High pass 1st {}Hz".format(f0))
 
+    @classmethod
+    def volume(cls, db, fs):
+        b0 = pow(10, db / 20)
+        return Biquad(1, 0, 0, b0, 0, 0,
+                      "Volume change {}db".format(db))
+
     @staticmethod
     def omega(f0, fs):
         return math.pi * f0 / fs * 2
@@ -211,6 +219,50 @@ class Biquad():
     @staticmethod
     def a(dbgain):
         return pow(10, dbgain / 40)
+
+    @classmethod
+    def create_filter(cls, definition, fs):
+        '''
+        creates a filter from a textual representation
+        '''
+        definition = definition.lower().strip()
+        if definition.startswith("lp:"):
+            try:
+                (_lp, f, q) = definition.split(":")
+                q = float(q)
+            except:
+                (_lp, f) = definition.split(":")
+                q = 0.707
+            f = parse_frequency(f)
+            return Biquad.low_pass(f, q, fs)
+        elif definition.startswith("hp:"):
+            try:
+                (_hp, f, q) = definition.split(":")
+                q = float(q)
+            except:
+                (_hp, f) = definition.split(":")
+                q = 0.707
+            f = parse_frequency(f)
+            return Biquad.high_pass(f, q, fs)
+        elif definition.startswith("eq:"):
+            try:
+                (_eq, f, q, dbgain) = definition.split(":")
+                q = float(q)
+                f = parse_frequency(f)
+                dbgain = parse_decibel(dbgain)
+                return Biquad.peaking_eq(f, q, dbgain, fs)
+            except:
+                return None
+        elif definition.startswith("vol:"):
+            try:
+                (_vol, db) = definition.split(":")
+                db = parse_decibel(db)
+                return Biquad.volume(db, fs)
+            except:
+                return None
+        else:
+            print("unknown", definition)
+            return None
 
 
 if __name__ == "__main__":

@@ -1,21 +1,24 @@
 HiFiberry DSP
 *************
 
-Software for HiFiBerry boards equipped with DSP. This package can be used to 
-read/write data to HiFiBerry DSP boards using the Beocreate TCP server.
+Software for HiFiBerry boards equipped with DSP. This package can be 
+used to read/write data to HiFiBerry DSP boards using the Beocreate TCP 
+server.
 
 sigmatcpserver
 ==============
 
-This server runs in background and provides a TCP interface (port 8089) to 
-access DSP functions. It is compatible with SigmaStudio. That means you can
-directly deploy DSP programs from SigmaStudio and change parameters online.
+This server runs in background and provides a TCP interface (port 8089) 
+to access DSP functions. It is compatible with SigmaStudio. That means 
+you can directly deploy DSP programs from SigmaStudio and change 
+parameters online.
 
-The server automatically dumps the so-called parameter RAM to the file system 
-when it terminates. On startup, it checks for a parameter RAM file and if it 
-exists it writes it back to the parameter memory. This ensures that parameters 
-like volume controls, filter parameters, switch settings will be automatically 
-restored even if they are not saved in the EEPROM. 
+The server automatically dumps the so-called parameter RAM to the file 
+system when it terminates. On startup, it checks for a parameter RAM 
+file and if it exists it writes it back to the parameter memory. This 
+ensures that parameters like volume controls, filter parameters, switch 
+settings will be automatically restored even if they are not saved in 
+the EEPROM. 
 
 The server accepts the following command line parameters:
 
@@ -40,8 +43,8 @@ the command won't have any effect.
 * store
 
   saves the current parameter RAM to the file system. This is recommended 
-  if you have deployed new filters or changed other settings that should be 
-  re-activated after a system reboot
+  if you have deployed new filters or changed other settings that 
+  should be re-activated after a system reboot
 
 * restore
 
@@ -49,19 +52,19 @@ the command won't have any effect.
 
 * reset
 
-  Resets the DSP. The program will be loaded from the EEPROM. The parameter 
-  RAM won't be stored and/or recovered from the file system.
+  Resets the DSP. The program will be loaded from the EEPROM. The 
+  parameter RAM won't be stored and/or recovered from the file system.
 
 * install-profile
 
-  writes a DSP profile to the DSP EEPROM and activates it. A profile installed
-  with this command will be automatically started after a reset
+  writes a DSP profile to the DSP EEPROM and activates it. A profile 
+  installed with this command will be automatically started after a reset
   
 * set-volume volume
 
   set the volume. Volume values can be defined in real values (0-1), 
-  percent (0% to 100%) or decibels (use need to use negative values to reduce
-  the volume)
+  percent (0% to 100%) or decibels (use need to use negative values to 
+  reduce the volume)
 
 * get-volume
 
@@ -69,27 +72,27 @@ the command won't have any effect.
 
 * set-limit
 
-  sets the volume limit. The effect is the same as setting volume. The idea
-  of this setting is having a volume control that can be changed between 
-  0 and 100% (or -inf dB to 0dB) and the limit setting to set the maximum
-  volume of the system.
+  sets the volume limit. The effect is the same as setting volume. The 
+  idea of this setting is having a volume control that can be changed 
+  between 0 and 100% (or -inf dB to 0dB) and the limit setting to set 
+  the maximum volume of the system.
 
 * set-rew-filters|set-rew-filters-left|set-rew-filters-right filename
 
-  Deploys parametric equaliser settings calculated by REW to the equaliser
-  filter banks (left, right or both).
+  Deploys parametric equaliser settings calculated by REW to the 
+  equaliser filter banks (left, right or both).
   Not all DSP profiles will support this setting
-  To make sure the filters are still active after a system reboot, make sure
-  you use teh store command.
+  To make sure the filters are still active after a system reboot, make 
+  sure you use the store command.
 
 * set-fir-filters|set-fir-filters-left|set-fir-filters-right
 
-  Deploys a FIR (finite impulse response) filter to the left, right or both
-  FIR filter banks.
+  Deploys a FIR (finite impulse response) filter to the left, right or 
+  both FIR filter banks.
   A FIR filter file is a simple text file with one real number per line.
   Not all DSP profiles will support this setting
-  To make sure the filters are still active after a system reboot, make sure
-  you use teh store command.
+  To make sure the filters are still active after a system reboot, make 
+  sure you use the store command.
 
 * clear-iir-filters
 
@@ -98,30 +101,32 @@ the command won't have any effect.
 
 * read-dec|red-int|read-hex address
 
-  Reads a memory word from the given address and interprets it as a decimal
-  value, integer value or just displays it as a HEX value
-  Addresses are 2byte long and they can be defined as integers or hex values.
+  Reads a memory word from the given address and interprets it as a 
+  decimal value, integer value or just displays it as a HEX value
+  Addresses are 2byte long and they can be defined as integers or hex 
+  values.
   Hex values are defined by the prefix 0x (e.g. 0x01aa)
 
 * loop-read-dec|loop-read-int|loop-read-hex address
   
-  Works exactly like the read-xxx command. However, it reads the values in
-  a loop. This is often useful when debugging DSP programs as you can easily
-  see if and how parameters change
+  Works exactly like the read-xxx command. However, it reads the values 
+  in a loop. This is often useful when debugging DSP programs as you can 
+  easily see if and how parameters change
 
 * write-reg address value
 
-  Writes a value to a 2-byte register. This command should be used to write
-  the DSP register addresses. While it will also accept DSP RAM addresses,
-  these are 4 bytes long and the command will only set the first 2 bytes of
-  a RAM cell
+  Writes a value to a 2-byte register. This command should be used to 
+  write the DSP register addresses. While it will also accept DSP RAM 
+  addresses, these are 4 bytes long and the command will only set the 
+  first 2 bytes of a RAM cell
 
 * write-mem address value
 
   Writes a 4 byte value to a memory cell.
   The value can be given as an integer or hex value. 
-  When using this command on register addresses, the command will write to
-  2 consecutive register addresses as addresses have a length of only 2 bytes.
+  When using this command on register addresses, the command will write 
+  to 2 consecutive register addresses as addresses have a length of 
+  only 2 bytes.
   
 * mute|unmute
  
@@ -136,12 +141,104 @@ the command won't have any effect.
 REW integration
 ===============
 
-The software can be used to push filters created by Room Equalisation Wizard 
+The software can be used to push filters created by Room Equalisation 
+Wizard 
 (REW) to the DSP.
 
 DSP profile format
 ==================
 
-DSP profiles can be generated directly in SigmaStudio. However, to enable the
-full potential of DSP Profiles and allow DSPToolkit to directly control the
+DSP profiles can be generated directly in SigmaStudio. However, to 
+enable the full potential of DSP Profiles and allow DSPToolkit to 
+directly control the
 DSP program, you need to add some additional metadata to the XML file.
+
+IIR filter format
+=================
+
+Standard IIR filters like high-pass, low-pass, bandpass and parametric 
+equalisers can be described by a simple text syntax. This allows to 
+create these filters from a textual respresentation that can be edited 
+easyly without the need to use SigmaStudio to to filter adjustments 
+
+* lp:frequency:q
+  defines a second-order low-pass filter with the given corner frequency
+  and quality. If quality isn't given, 0.707 is used (Butterworth filter)
+* hp:frequency:q
+  defines a second-order high-pass filter with the given corner frequency
+  and quality. If quality isn't given, 0.707 is used (Butterworth filter)
+* eq:frequency:q:gain
+  defines a parametric equaliser with the given center frequency
+  and quality. gain (in decibel) can be positive or negative
+  
+Often IIR filters can be chained to define more complex filters, e.g.
+
+lp:1500Hz, lp:1500Hz, hp:300Hz:0.6, eq:1200Hz:2:+3dB
+
+This defines a filter that consists of:
+ - a 4th order low-pass at 1.5kHz (created from two 2nd order filters)
+ - a 2nd order high-pass as 300Hz with a quality of 0.6
+ - a parametric equaliser at 1.2kHz with a quality of 2.0 and +3dB gain  
+
+Settings file format
+====================
+
+A settings file is a text file that consists of lines of attribute:value 
+pairs. Attributes are register names defined in the profile metadata. 
+Values can be 
+ - float values
+ - integer values
+ - decibel values (in format +xdb, -xdb)
+ - percent values (for volume, will be converted to a -60db-0dB volume
+   control range)
+ - IIR filter definitions (see above)
+ 
+ Example
+ -------
+ 
+ Let's assume the following DSP profile:
+ 
+ <ROM>
+  <beometa>
+    <metadata type="IIR_L">37/80</metadata>
+    <metadata type="IIR_R">117/80</metadata>
+    <metadata type="IIR_L1">197/40</metadata>
+    <metadata type="IIR_R1">237/40</metadata>
+    <metadata type="IIR_L2">277/40</metadata>
+    <metadata type="IIR_R2">317/40</metadata>
+    <metadata type="IIR_L3">357/40</metadata>
+    <metadata type="IIR_R3">397/40</metadata>
+    <metadata type="IIR_L4">437/40</metadata>
+    <metadata type="IIR_R4">477/40</metadata>
+    <metadata type="balanceRegister">525</metadata>
+    <metadata type="channelSelectRegister">546</metadata>
+    <metadata type="volumeControlRegister">541</metadata>
+    <metadata type="volumeLimitRegister">542</metadata>
+  </beometa>
+  ....
+ </ROM>
+ 
+A simple settings file for this DSP profile could look like this:
+
+volumeLimitRegister: -10dB
+
+Applying these settings would set the the volumeLimit to -10dB.
+
+You can check this by running the command
+
+ dsptoolkit get-limit
+ 
+A more complex file:
+
+volumeControlRegister: -3dB
+volumeLimitRegister: 90%
+mute: 0x1
+balanceRegister: 0.8
+IIR_L: lp:1500Hz, hp:300Hz:0.6, eq: 1200Hz:2:+3dB, vol:-1dB
+IIR_R1: vol: +3dB
+IIR_R2: vol: -3dB
+IIR_R3: vol: +0dB
+
+ In this case, the mute setting would be ignored as no mute attribute
+ is available in the DSP profile. 
+

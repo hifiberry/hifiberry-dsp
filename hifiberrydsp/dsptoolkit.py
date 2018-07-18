@@ -29,10 +29,10 @@ import sys
 import urllib.request
 import socket
 
-from zeroconf import ServiceInfo, Zeroconf, ServiceBrowser
+from zeroconf import Zeroconf, ServiceBrowser
 
 from hifiberrydsp.hardware.adau145x import Adau145x
-from hifiberrydsp.server.sigmatcp import SigmaTCP
+from hifiberrydsp.client.sigmatcp import SigmaTCPClient
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import *
 from hifiberrydsp.datatools import parse_int
@@ -41,12 +41,12 @@ from hifiberrydsp.parser.xmlprofile import  \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
-    ATTRIBUTE_MUTE_REG
-
-from hifiberrydsp.server.sigmatcp import COMMAND_PROGMEM, \
+    ATTRIBUTE_MUTE_REG, XmlProfile
+from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     COMMAND_PROGMEM_RESPONSE, COMMAND_XML, COMMAND_XML_RESPONSE, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
     ZEROCONF_TYPE
+from hifiberrydsp.parser.registervalues import RegisterFile
 
 from hifiberrydsp import datatools
 
@@ -109,12 +109,12 @@ class DSPToolkit():
                  dsp=Adau145x()):
         self.dsp = dsp
         self.ip = ip
-        self.sigmatcp = SigmaTCP(self.dsp, self.ip)
+        self.sigmatcp = SigmaTCPClient(self.dsp, self.ip)
         self.resetgpio = None
 
     def set_ip(self, ip):
         self.ip = ip
-        self.sigmatcp = SigmaTCP(self.dsp, self.ip)
+        self.sigmatcp = SigmaTCPClient(self.dsp, self.ip)
 
     def set_volume(self, volume):
         volctl = datatools.parse_int(
@@ -358,6 +358,7 @@ class CommandLine():
             "get-samplerate": self.cmd_samplerate,
             "check-eeprom": self.cmd_check_eeprom,
             "servers": self.cmd_servers,
+            "merge-settings": self.cmd_merge_settings,
         }
         self.dsptk = DSPToolkit()
 
@@ -676,6 +677,66 @@ class CommandLine():
         zeroconf.close()
         for name, info in listener.devices.items():
             print("{}: {}".format(name, info))
+
+    def cmd_merge_settings(self):
+        settingsfile = self.args.parameters[0]
+        xmlfile = None
+
+        if len(self.args.parameters) > 1:
+            xmlfile = self.args.parameters[1]
+            try:
+                with open(xmlfile) as infile:
+                    xml = infile.read()
+            except IOError:
+                print("can't read {}".format(xmlfile))
+                sys.exit(1)
+        else:
+            xml = self.dsptk.generic_request(COMMAND_XML,
+                                             COMMAND_XML_RESPONSE).decode()
+            if xml is None or len(xml) == 0:
+                print("server did not provide XML file")
+                sys.exit(1)
+
+        xmlprofile = XmlProfile()
+        try:
+            xmlprofile.read_from_text(xml)
+        except:
+            print("can't parse XML profile")
+            sys.exit(1)
+
+        try:
+            rf = RegisterFile(settingsfile, xmlprofile.samplerate())
+        except:
+            print("can't parse settings file")
+            sys.exit(1)
+
+        rf.update_xml_profile(xmlprofile)
+
+        if xmlfile is None:
+            print("writing back updated DSP profile")
+            res = self.dsptk.install_profile_from_content(str(xmlprofile))
+            if res:
+                print("DSP profile {} updated")
+            else:
+                print("Failed to update DSP profile")
+                sys.exit(1)
+        else:
+            backupfile = xmlfile + ".bak"
+            try:
+                os.rename(xmlfile, backupfile)
+            except:
+                print("can't write rename %s to %s", xmlfile, backupfile)
+                sys.exit(1)
+
+            try:
+                with open(xmlfile, "w") as outfile:
+                    outfile.write(str(xmlprofile))
+            except:
+                print("can't write %s", xmlfile)
+                sys.exit(1)
+
+            print("Updated {}, backuup copy {}".format(xmlfile,
+                                                       backupfile))
 
     def main(self):
 

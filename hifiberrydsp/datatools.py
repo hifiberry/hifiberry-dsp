@@ -23,6 +23,19 @@ SOFTWARE.
 import logging
 
 
+def parse_frequency(f_str):
+    if f_str.endswith("hz"):
+        f_str = f_str[0:-2]
+    return float(f_str)
+
+
+def parse_decibel(dbstr):
+    dbstr = dbstr.strip()
+    if dbstr.endswith("db"):
+        dbstr = dbstr[0:-2]
+    return float(dbstr)
+
+
 def parse_int(val):
     if val is None or len(val) == 0:
         return

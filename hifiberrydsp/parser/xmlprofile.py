@@ -63,7 +63,7 @@ def replace_in_memory_block(data, startaddr, replace_dict):
 
             address_offset = (repl_addr - startaddr) * 4
             logging.debug(
-                "Replacing memory at address {} by {}", repl_addr, content)
+                "replacing memory at address {} by {}", repl_addr, content)
 
             data[address_offset:address_offset +
                  len(content)] = content
@@ -87,6 +87,14 @@ class XmlProfile():
         except IOError:
             logging.error("can't read file %s", filename)
 
+        self.update()
+
+    def read_from_text(self, xmlcontent):
+        logging.info("parsing xml")
+        self.doc = xmltodict.parse(xmlcontent)
+        self.update()
+
+    def update(self):
         page_address = None
 
         for action in self.doc["ROM"]["page"]["action"]:
@@ -174,7 +182,6 @@ class XmlProfile():
 
         md = dict(metadata_dict)
         try:
-            # print(self.doc["ROM"])
             beometa = self.doc["ROM"]["beometa"]
         except KeyError:
             self.doc["ROM"]["beometa"] = OrderedDict()
@@ -184,12 +191,8 @@ class XmlProfile():
 
         md_new = []
 
-        print(beometa)
-
         # First replace existing metadata
         for metadata in beometa["metadata"]:
-            # self.doc["ROM"]["beometa"](metadata)
-            # print(beometa["metadata"])
             attribute = metadata["@type"]
             if attribute in md:
                 md_new.append(OrderedDict([('@type', attribute),
@@ -204,6 +207,12 @@ class XmlProfile():
                                        ('#text', md[attribute])]))
 
         beometa["metadata"] = md_new
+
+    def samplerate(self):
+        try:
+            return int(self.get_meta("samplerate"))
+        except TypeError:
+            return 48000
 
     def write_xml(self, filename):
         outfile = open(filename, "w")
@@ -328,10 +337,9 @@ class DummyEepromWriter():
         return new_data
 
 
-# x = XmlProfile(
-#     "/Users/matuschd/devel/python/hifiberry-dsp/sample_files/xml/fullrange-iir.xml")
-#
-# x.write_xml("/tmp/x.xml")
-# x.replace_eeprom_cells({16: [0xff, 0xff, 0xff, 0xff]})
-# x.replace_ram_cells({16: [0xff, 0xff, 0xff, 0xff]})
-# x.write_xml("/tmp/y.xml")
+def demo():
+    x = XmlProfile("sample_files/xml/fullrange-iir.xml")
+    x.write_xml("/tmp/x.xml")
+    x.replace_eeprom_cells({16: [0xff, 0xff, 0xff, 0xff]})
+    x.replace_ram_cells({16: [0xff, 0xff, 0xff, 0xff]})
+    x.write_xml("/tmp/y.xml")
