@@ -360,7 +360,7 @@ class CommandLine():
             "check-eeprom": self.cmd_check_eeprom,
             "servers": self.cmd_servers,
             "activate-settings": self.cmd_activate_settings,
-            "store-settings": self.cmd_merge_settings,
+            "merge-settings": self.cmd_merge_settings,
         }
         self.dsptk = DSPToolkit()
 
