@@ -208,6 +208,10 @@ class Biquad():
         return Biquad(1, 0, 0, b0, 0, 0,
                       "Volume change {}db".format(db))
 
+    @classmethod
+    def null(cls):
+        return Biquad(1, 0, 0, 0, 0, 0, "Null")
+
     @staticmethod
     def omega(f0, fs):
         return math.pi * f0 / fs * 2
@@ -260,6 +264,8 @@ class Biquad():
                 return Biquad.volume(db, fs)
             except:
                 return None
+        elif definition == "null":
+            return Biquad.null()
         else:
             print("unknown", definition)
             return None

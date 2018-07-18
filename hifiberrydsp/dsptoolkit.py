@@ -34,7 +34,8 @@ from zeroconf import Zeroconf, ServiceBrowser
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.client.sigmatcp import SigmaTCPClient
 from hifiberrydsp.filtering.biquad import Biquad
-from hifiberrydsp.filtering.volume import *
+from hifiberrydsp.filtering.volume import decibel2amplification, \
+    percent2amplification, amplification2decibel, amplification2percent
 from hifiberrydsp.datatools import parse_int
 from hifiberrydsp.parser.xmlprofile import  \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
@@ -358,7 +359,8 @@ class CommandLine():
             "get-samplerate": self.cmd_samplerate,
             "check-eeprom": self.cmd_check_eeprom,
             "servers": self.cmd_servers,
-            "merge-settings": self.cmd_merge_settings,
+            "activate-settings": self.cmd_activate_settings,
+            "store-settings": self.cmd_merge_settings,
         }
         self.dsptk = DSPToolkit()
 
@@ -679,38 +681,17 @@ class CommandLine():
             print("{}: {}".format(name, info))
 
     def cmd_merge_settings(self):
+
         settingsfile = self.args.parameters[0]
-        xmlfile = None
-
-        if len(self.args.parameters) > 1:
+        try:
             xmlfile = self.args.parameters[1]
-            try:
-                with open(xmlfile) as infile:
-                    xml = infile.read()
-            except IOError:
-                print("can't read {}".format(xmlfile))
-                sys.exit(1)
-        else:
-            xml = self.dsptk.generic_request(COMMAND_XML,
-                                             COMMAND_XML_RESPONSE).decode()
-            if xml is None or len(xml) == 0:
-                print("server did not provide XML file")
-                sys.exit(1)
-
-        xmlprofile = XmlProfile()
-        try:
-            xmlprofile.read_from_text(xml)
         except:
-            print("can't parse XML profile")
-            sys.exit(1)
+            xmlfile = None
 
-        try:
-            rf = RegisterFile(settingsfile, xmlprofile.samplerate())
-        except:
-            print("can't parse settings file")
-            sys.exit(1)
+        (registerfile, xmlprofile) = self.read_register_and_xml(
+            settingsfile, xmlfile)
 
-        rf.update_xml_profile(xmlprofile)
+        registerfile.update_xml_profile(xmlprofile)
 
         if xmlfile is None:
             print("writing back updated DSP profile")
@@ -737,6 +718,54 @@ class CommandLine():
 
             print("Updated {}, backuup copy {}".format(xmlfile,
                                                        backupfile))
+
+    def cmd_activate_settings(self):
+
+        settingsfile = self.args.parameters[0]
+        try:
+            xmlfile = self.args.parameters[1]
+        except:
+            xmlfile = None
+
+        (registerfile, xmlprofile) = self.read_register_and_xml(
+            settingsfile, xmlfile)
+
+        changes = registerfile.get_updates(xmlprofile)
+        self.dsptk.hibernate(True)
+        for addr in changes:
+            logging.debug("writing {} to {}", changes[addr], addr)
+            self.dsptk.sigmatcp.write_memory(addr, changes[addr])
+        self.dsptk.hibernate(False)
+
+    def read_register_and_xml(self, settingsfile, xmlfile):
+        if xmlfile is not None:
+            try:
+                with open(xmlfile) as infile:
+                    xml = infile.read()
+            except IOError:
+                print("can't read {}".format(xmlfile))
+                sys.exit(1)
+        else:
+            xml = self.dsptk.generic_request(COMMAND_XML,
+                                             COMMAND_XML_RESPONSE).decode()
+            if xml is None or len(xml) == 0:
+                print("server did not provide XML file")
+                sys.exit(1)
+
+        xmlprofile = XmlProfile()
+        try:
+            xmlprofile.read_from_text(xml)
+        except:
+            print("can't parse XML profile")
+            sys.exit(1)
+
+        try:
+            registerfile = RegisterFile(settingsfile, xmlprofile.samplerate())
+        except:
+            print("can't parse settings file")
+            sys.exit(1)
+
+        return(registerfile, xmlprofile)
 
     def main(self):
 

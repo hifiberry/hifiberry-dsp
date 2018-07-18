@@ -85,7 +85,7 @@ class RegisterFile():
                 result.append(filter)
         return result
 
-    def update_xml_profile(self, xmlprofile):
+    def get_updates(self, xmlprofile):
 
         replace = {}
 
@@ -118,6 +118,10 @@ class RegisterFile():
                     addr += 1
                     memory = memory[self.dsp.WORD_LENGTH:]
 
+        return replace
+
+    def update_xml_profile(self, xmlprofile):
+        replace = self.get_updates(xmlprofile)
         xmlprofile.replace_eeprom_cells(replace)
         xmlprofile.replace_ram_cells(replace)
 
