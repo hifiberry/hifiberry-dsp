@@ -38,7 +38,7 @@ import xmltodict
 from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
 from hifiberrydsp.datatools import int_data
-from hifiberrydsp.xmlprofile import ATTRIBUTE_CHECKSUM, ATTRIBUTE_VOL_CTL
+from hifiberrydsp.parser.xmlprofile import XmlProfile, ATTRIBUTE_CHECKSUM, ATTRIBUTE_VOL_CTL
 from hifiberrydsp.alsa.alsasync import AlsaSync
 from hifiberrydsp import datatools
 
@@ -379,6 +379,8 @@ class SigmaTCPHandler(BaseRequestHandler):
     parameterfile = parameterfile()
     alsasync = None
     updating = False
+    xml = None
+    checksum_error = False
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
@@ -474,11 +476,12 @@ class SigmaTCPHandler(BaseRequestHandler):
                     try:
                         data = self.get_and_check_xml()
                     except IOError:
-                        data = ""  # empty response
+                        data = None
 
                     if data is not None:
+                        xml_bytes = data.encode()
                         result = self._response_packet(
-                            COMMAND_XML_RESPONSE, 0, len(data)) + data
+                            COMMAND_XML_RESPONSE, 0, len(data)) + xml_bytes
                     else:
                         result = self._response_packet(
                             COMMAND_XML_RESPONSE, 0, 0)
@@ -556,30 +559,19 @@ class SigmaTCPHandler(BaseRequestHandler):
                 finished = True
 
     @staticmethod
-    def get_and_check_xml():
-
-        logging.info("reading profile %s",
-                     SigmaTCPHandler.dspprogramfile)
-        try:
-            checksum_xml = bytearray()
-            with open(SigmaTCPHandler.dspprogramfile) as fd:
-                doc = xmltodict.parse(fd.read())
-                for metadata in doc["ROM"]["beometa"]["metadata"]:
-                    t = metadata["@type"]
-
-                    if (t == ATTRIBUTE_CHECKSUM):
-                        cs = metadata["#text"]
-                        logging.debug("checksum from XML: %s", cs)
-                        if cs is not None:
-                            for i in range(0, len(cs), 2):
-                                octet = int(cs[i:i + 2], 16)
-                                checksum_xml.append(octet)
-
-        except IOError:
-            logging.error("can't read file %s",
-                          SigmaTCPHandler.dspprogramfile)
+    def read_xml_profile():
+        SigmaTCPHandler.xml = XmlProfile(SigmaTCPHandler.dspprogramfile)
+        cs = SigmaTCPHandler.xml.get_meta("checksum")
+        logging.debug("checksum from XML: %s", cs)
+        SigmaTCPHandler.checksum_xml = None
+        if cs is not None:
+            SigmaTCPHandler.checksum_xml = bytearray()
+            for i in range(0, len(cs), 2):
+                octet = int(cs[i:i + 2], 16)
+                SigmaTCPHandler.checksum_xml.append(octet)
 
         checksum_mem = SigmaTCPHandler.program_checksum()
+        checksum_xml = SigmaTCPHandler.checksum_xml
         logging.info("checksum memory: %s, xmlfile: %s",
                      checksum_mem,
                      checksum_xml)
@@ -587,28 +579,36 @@ class SigmaTCPHandler(BaseRequestHandler):
         if (checksum_xml is not None) and (checksum_xml != 0):
             if (checksum_xml != checksum_mem):
                 logging.error("checksums do not match, aborting")
-                return None
+                SigmaTCPHandler.checksum_error = True
+                return
         else:
             logging.info("DSP profile doesn't have a checksum, "
                          "might be different from the program running now")
 
-        data = open(SigmaTCPHandler.dspprogramfile, "rb").read()
+        SigmaTCPHandler.checksum_error = False
 
-        return data
+    @staticmethod
+    def get_checked_xml():
+        if not(SigmaTCPHandler.checksum_error):
+            if SigmaTCPHandler.xml is None:
+                SigmaTCPHandler.read_xml_profile()
+
+            return SigmaTCPHandler.xml
+        else:
+            logging.debug("XML checksum error, ignoring XML file")
+            return None
+
+    @staticmethod
+    def get_and_check_xml():
+        return str(SigmaTCPHandler.get_checked_xml())
 
     @staticmethod
     def get_meta(attribute):
-        xml = SigmaTCPHandler.get_and_check_xml()
-        try:
-            doc = xmltodict.parse(xml)
-            for metadata in doc["ROM"]["beometa"]["metadata"]:
-                t = metadata["@type"]
-                if (t == attribute):
-                    return metadata["#text"]
-        except Exception as e:
-            logging.info("can't parse XML metadata (%s)", e)
-
-        return None
+        xml = SigmaTCPHandler.get_checked_xml()
+        if xml is None:
+            return None
+        else:
+            return xml.get_meta(attribute)
 
     @staticmethod
     def handle_read(data):
@@ -903,6 +903,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         Call this method after the DSP program has been refreshed
         '''
         logging.info("finished memory update")
+        SigmaTCPHandler.xml = None
         ProgramRefresher().start()
 
     @staticmethod

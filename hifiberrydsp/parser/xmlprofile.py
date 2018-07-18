@@ -24,6 +24,8 @@ import logging
 
 import xmltodict
 
+from collections import OrderedDict
+
 from hifiberrydsp.hardware.adau145x import Adau145x
 
 ATTRIBUTE_CHECKSUM = "checksum"
@@ -31,13 +33,15 @@ ATTRIBUTE_VOL_CTL = "volumeControlRegister"
 ATTRIBUTE_VOL_LIMIT = "volumeLimitRegister"
 ATTRIBUTE_BALANCE = "balanceRegister"
 ATTRIBUTE_VOL_RANGE = "volumeControlRangeDb"
-ATTRIBUTE_IIR_FILTER_LEFT = "IIRLeft"
-ATTRIBUTE_IIR_FILTER_RIGHT = "IIRRight"
-ATTRIBUTE_FIR_FILTER_LEFT = "FIRLeft"
-ATTRIBUTE_FIR_FILTER_RIGHT = "FIRRight"
+ATTRIBUTE_IIR_FILTER_LEFT = "IIR_L"
+ATTRIBUTE_IIR_FILTER_RIGHT = "IIR_R"
+ATTRIBUTE_FIR_FILTER_LEFT = "FIR_L"
+ATTRIBUTE_FIR_FILTER_RIGHT = "FIR_R"
 ATTRIBUTE_IIR_XOVER = "IIR%LR%%CHANNEL%"
 ATTRIBUTE_MUTE_REG = "muteRegister"
 ATTRIBUTE_SAMPLERATE = "samplerate"
+ATTRIBUTE_CHANNEL_SELECT = "channelSelectRegister"
+ATTRIBUTE_IIR_TEMPLATE = "IIR_%LR%%CHANNEL%"
 
 MEMTYPE = {
     0: "DM0",
@@ -76,7 +80,7 @@ class XmlProfile():
             self.read_from_file(filename)
 
     def read_from_file(self, filename):
-        logging.debug("reading profile %s", filename)
+        logging.info("reading profile %s", filename)
         try:
             with open(filename) as fd:
                 self.doc = xmltodict.parse(fd.read())
@@ -155,15 +159,58 @@ class XmlProfile():
 
                 for _name, saddr in self.dsp.START_ADDRESS.items():
                     if addr == saddr:
-                        print("Found memory block ", saddr)
                         replace_in_memory_block(data, addr, replace_dict)
                         new_data_str = ''.join(
                             '%02X ' % octet for octet in data).strip()
                         action["#text"] = new_data_str
 
+    def get_meta(self, name):
+        for metadata in self.doc["ROM"]["beometa"]["metadata"]:
+            t = metadata["@type"]
+            if (t == name):
+                return metadata["#text"]
+
+    def update_metadata(self, metadata_dict):
+
+        md = dict(metadata_dict)
+        try:
+            # print(self.doc["ROM"])
+            beometa = self.doc["ROM"]["beometa"]
+        except KeyError:
+            self.doc["ROM"]["beometa"] = OrderedDict()
+            self.doc["ROM"]["beometa"]["metadata"] = OrderedDict()
+            self.doc["ROM"].move_to_end('beometa', last=False)
+            beometa = self.doc["ROM"]["beometa"]
+
+        md_new = []
+
+        print(beometa)
+
+        # First replace existing metadata
+        for metadata in beometa["metadata"]:
+            # self.doc["ROM"]["beometa"](metadata)
+            # print(beometa["metadata"])
+            attribute = metadata["@type"]
+            if attribute in md:
+                md_new.append(OrderedDict([('@type', attribute),
+                                           ('#text', metadata_dict[attribute])]))
+                del md[attribute]
+            else:
+                md_new.append(metadata)
+
+        # Insert remaining attributes
+        for attribute in md:
+            md_new.append(OrderedDict([('@type', attribute),
+                                       ('#text', md[attribute])]))
+
+        beometa["metadata"] = md_new
+
     def write_xml(self, filename):
         outfile = open(filename, "w")
         outfile.write(xmltodict.unparse(self.doc, pretty=True))
+
+    def __str__(self):
+        return xmltodict.unparse(self.doc, pretty=True)
 
 
 class DummyEepromWriter():
@@ -272,15 +319,11 @@ class DummyEepromWriter():
 
         addr += 8
 
-        print(checksum, cs_calc, cs_new)
-
         # Append checksum
         new_data.extend(cs_new.to_bytes(8, byteorder='big'))
 
         # Padding with zeros
         new_data.extend(bytearray(len(self.as_bytes()) - addr))
-
-        print(len(self.as_bytes()), len(new_data))
 
         return new_data
 
