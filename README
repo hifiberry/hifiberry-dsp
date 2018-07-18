@@ -141,3 +141,7 @@ The software can be used to push filters created by Room Equalisation Wizard
 
 DSP profile format
 ==================
+
+DSP profiles can be generated directly in SigmaStudio. However, to enable the
+full potential of DSP Profiles and allow DSPToolkit to directly control the
+DSP program, you need to add some additional metadata to the XML file.
