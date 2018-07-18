@@ -1,0 +1,8 @@
+volumeControlRegister: -3dB
+volumeLimitRegister: 50%
+mute: 0x1
+balanceRegister: 0.8
+IIR_L: lp:1500Hz, hp:300Hz:0.6, eq: 1200Hz:2:+3dB, vol:-1dB
+IIR_R1: vol: +3dB
+IIR_R2: vol: -3dB
+IIR_R3: vol: +0dB
