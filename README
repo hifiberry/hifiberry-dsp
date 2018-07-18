@@ -136,6 +136,27 @@ the command won't have any effect.
 * servers
 
   Find all servers on the local network using Zeroconf
+  
+* activate-settings settings-file
+
+  Apply the parameter settings from the given parameter file to the 
+  running program. 
+  
+* merge-settings settings-file [xml-file]
+
+  Apply the parameter from the given parameter file to the 
+  running program. Also store them into the given DSP profile. 
+  This means, the deault settings of this DSP Profile will be changed.
+  There are 2 possible ways to merge this into a DSP profile:
+  1. If an XML file is given in the command line, the settings will be
+     applied to this DSP profile. The profile file will be edited. 
+     A backup version of teh DSP profile will be stored
+  2. If no xml-file parameter is given, dnstoolkit retrieves the 
+     currently running DSP program directly from the server, applies
+     the settings and pushed the profile back to the server. In this
+     case, the server not only activated this, but also stores the
+     changed settings to the EEPROM. They will then be automatically
+     activated after a reset of the DSP board.     
 
 
 REW integration
