@@ -18,6 +18,7 @@
 		<metadata type="IIR_R4">8080/40</metadata>
 		<metadata type="volumeControlRegister">8141</metadata>
 		<metadata type="volumeLimitRegister">8142</metadata>
+                <metadata type="checksum">8B40A4FFC4F3750DB33F7B4C2C459069</metadata>
 	</beometa>
 	<dateTime>2018-07-17T09:04:02.1636334Z</dateTime>
 	<version>4.1.1.1761</version>
