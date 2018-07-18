@@ -1,6 +1,12 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.10
+ - settings files allow to overwrite parameters in the DSPProfile. 
+   This allows to create crossovers and equalisations directly in the
+   DSP profile without the need to use SigmaStudio to create a new
+   profile
+
 0.9 (20180716)
  - Renamed filter attributes
  - install-profile command now also works on remote servers
