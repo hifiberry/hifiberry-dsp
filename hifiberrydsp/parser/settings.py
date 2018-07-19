@@ -137,11 +137,11 @@ class SettingsFile():
             res = []
             bqn = value.normalized()
             vals = []
-            vals.append(-bqn.a1)
-            vals.append(-bqn.a2)
-            vals.append(bqn.b0)
-            vals.append(bqn.b1)
             vals.append(bqn.b2)
+            vals.append(bqn.b1)
+            vals.append(bqn.b0)
+            vals.append(-bqn.a2)
+            vals.append(-bqn.a1)
             for v in vals:
                 dec = self.dsp.decimal_repr(v)
                 res = res + list(int_data(dec, self.dsp.WORD_LENGTH))
