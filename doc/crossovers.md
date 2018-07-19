@@ -30,6 +30,14 @@ First, you need to install the profile onto the DSP:
 dsptoolkit install-profile 4way-iir.xml
 ```
 
+You don't even have to download the profile by yourself as dsptoolkit 
+directly accepts URLs:
+
+```
+dsptoolkit install-profile https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/sample_files/xml/4way-iir.xml
+```
+
+
 
 ## Create a crossover settings file
 
@@ -56,10 +64,10 @@ basically a normal stereo fullrange configuration.
 For a crossover, you need to use low-pass and high-pass filters. Let's 
 do a simple 2 way setup with a crossover at 2kHz.
 The connection to the DSP board is as follows:
-- woofer left:   1
-- woofer right:  2
-- tweeter left:  3
-- tweeter right: 4
+- woofer left:   channel 1
+- woofer right:  channel 2
+- tweeter left:  channel 3
+- tweeter right: channel 4
 
 On the Beocreate 4 channel amplifier it is recommended to connect woofers
 to channels 1 and 2 as these can provide twice the power of channels 
