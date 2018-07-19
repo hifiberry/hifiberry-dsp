@@ -50,25 +50,6 @@ MEMTYPE = {
 }
 
 
-def replace_in_memory_block(data, startaddr, replace_dict):
-    assert len(data) % 4 == 0
-
-    endaddr = startaddr + len(data) / 4
-
-    for repl_addr in replace_dict.keys():
-        if repl_addr >= startaddr and repl_addr <= endaddr:
-            content = replace_dict[repl_addr]
-
-            assert len(content) == 4
-
-            address_offset = (repl_addr - startaddr) * 4
-            logging.debug(
-                "replacing memory at address {} by {}", repl_addr, content)
-
-            data[address_offset:address_offset +
-                 len(content)] = content
-
-
 class XmlProfile():
 
     def __init__(self, filename=None):
@@ -101,7 +82,6 @@ class XmlProfile():
             instr = action["@instr"]
 
             if instr == "writeXbytes":
-                addr = int(action["@addr"])
                 paramname = action["@ParamName"]
 
                 data = []
@@ -167,10 +147,30 @@ class XmlProfile():
 
                 for _name, saddr in self.dsp.START_ADDRESS.items():
                     if addr == saddr:
-                        replace_in_memory_block(data, addr, replace_dict)
+                        self.replace_in_memory_block(data,
+                                                     addr,
+                                                     replace_dict)
                         new_data_str = ''.join(
                             '%02X ' % octet for octet in data).strip()
                         action["#text"] = new_data_str
+
+    def replace_in_memory_block(self, data, startaddr, replace_dict):
+        assert len(data) % 4 == 0
+
+        endaddr = startaddr + len(data) / 4
+
+        for repl_addr in replace_dict.keys():
+            if repl_addr >= startaddr and repl_addr <= endaddr:
+                content = replace_dict[repl_addr]
+
+                assert len(content) == 4
+
+                address_offset = (repl_addr - startaddr) * 4
+                logging.debug(
+                    "replacing memory at address {} by {}", repl_addr, content)
+
+                data[address_offset:address_offset +
+                     len(content)] = content
 
     def get_meta(self, name):
         for metadata in self.doc["ROM"]["beometa"]["metadata"]:
