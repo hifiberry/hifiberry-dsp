@@ -136,8 +136,8 @@ In this measurement you can see that it is not linear. The biggest
 problem is the peak at 45Hz. This is looks like a so-called "room mode".  
 In general there are 2 reasons for a non-linear frequency response:
 
-*Non-linearities of the speaker
-*Interactions with the room
+* Non-linearities of the speaker
+* Interactions with the room
 
 With a far-field measurement as we did it here, you can't distinguish 
 between both, but that's not a problem. REW will correct both.
@@ -254,7 +254,8 @@ using the DSP toolkit
 ### Run the optimization with a signal on both speakers
 
 If your speakers are identical, you should apply the same filters to 
-both speakers, especially if you use the full frequency range (20-20.000Hz).
+both speakers, especially if you use the full frequency range 
+(20-20.000Hz).
 
 ### Use equalisation only where it is needed
 
@@ -263,7 +264,8 @@ speakers frequency response is reasonably flat (it doesn't need to
 be perfect!), optimise only the low frequencies. Slight peaks of 2-3dB 
 in the frequency response are not a problem. You will see these with 
 practically every speaker in a normal listening environment. 
-*Don't over-optimise!*
+
+Don't over-optimise!
 
 ### Low-frequency vs. full range optimisations
 
