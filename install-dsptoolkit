@@ -7,6 +7,8 @@ for i in sigmatcp; do
  sudo systemctl disable $i
 done
 
+mkdir -p /var/lib/hifiberry
+
 LOC=`which dsptoolkit`
 mkdir ~/.dsptoolkit
 
@@ -20,7 +22,7 @@ Wants=network-online.target
 After=network.target network-online.target
 [Service]
 Type=simple
-ExecStart=$LOC -v --alsa
+ExecStart=$LOC --alsa
 StandardOutput=journal
 [Install]
 WantedBy=multi-user.target
