@@ -179,3 +179,19 @@ Check if is stored correctly by resetting the DSP:
 ```
 dsptoolkit reset
 ```
+
+
+## Merge the settings into an existing DSP profile
+
+If you want to share your settings or apply the profile including these
+settings on another system, it can help to merge the settings into
+an existing XML DSP profile. 
+This can also be done with dsptoolkit by just adding the file name of 
+the XML profile file:
+
+```
+dsptoolkit store-settings crossover.txt profile.xml
+```
+
+Note that this will NOT apply the settings directly to the DSP, but 
+only to the XML profile file.

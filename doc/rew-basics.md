@@ -267,7 +267,7 @@ practically every speaker in a normal listening environment.
 
 Don't over-optimise!
 
-### Low-frequency vs. full range optimisations
+### Low frequency vs. full range optimisations
 
 The following pictures shows 2 equalisation setting: One full-range 
 optimisation and one only in the range of 20-200Hz.
