@@ -333,12 +333,12 @@ class CommandLine():
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
             "get-limit": self.cmd_get_limit,
-            "set-rew-filters": self.cmd_set_rew_filters,
-            "set-rew-filters-left": self.cmd_set_rew_filters_left,
-            "set-rew-filters-right": self.cmd_set_rew_filters_right,
-            "set-fir-filters": self.cmd_set_fir_filters,
-            "set-fir-filter-right": self.cmd_set_fir_filter_right,
-            "set-fir-filter-left": self.cmd_set_fir_filter_left,
+            "apply-rew-filters": self.cmd_set_rew_filters,
+            "apply-rew-filters-left": self.cmd_set_rew_filters_left,
+            "apply-rew-filters-right": self.cmd_set_rew_filters_right,
+            "apply-fir-filters": self.cmd_set_fir_filters,
+            "apply-fir-filter-right": self.cmd_set_fir_filter_right,
+            "apply-fir-filter-left": self.cmd_set_fir_filter_left,
             "clear-iir-filters": self.cmd_clear_iir_filters,
             "reset": self.cmd_reset,
             "read-dec": self.cmd_read,
@@ -361,7 +361,7 @@ class CommandLine():
             "check-eeprom": self.cmd_check_eeprom,
             "servers": self.cmd_servers,
             "apply-settings": self.cmd_apply_settings,
-            "store-settings": self.cmd_store_settings,
+            "save-settings": self.cmd_save_settings,
             "version": self.cmd_version,
         }
         self.dsptk = DSPToolkit()
@@ -685,7 +685,7 @@ class CommandLine():
         for name, info in listener.devices.items():
             print("{}: {}".format(name, info))
 
-    def cmd_store_settings(self):
+    def cmd_save_settings(self):
 
         settingsfile = self.args.parameters[0]
         try:
