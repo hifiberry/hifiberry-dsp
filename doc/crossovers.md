@@ -155,3 +155,19 @@ IIR_R4: hp: 2000Hz, vol:-3dB, eq:5000Hz,2,+2dB
 
 Note that you will need measurement equipment to correctly design these
 filters.
+
+## Write the settings to the EEPROM
+
+If your crossover is working as expected, you should save it to the 
+EEPROM of the DSP board. This ensures that the crossover is still 
+correctly configured after a reboot.
+
+```
+dsptoolkit store-settings crossover.txt
+```
+
+Check if is stored correctly by resetting the DSP:
+
+```
+dsptoolkit reset
+```
