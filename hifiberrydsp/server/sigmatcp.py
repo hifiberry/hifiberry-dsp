@@ -38,7 +38,7 @@ import xmltodict
 from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
 from hifiberrydsp.datatools import int_data
-from hifiberrydsp.parser.xmlprofile import XmlProfile, ATTRIBUTE_CHECKSUM, ATTRIBUTE_VOL_CTL
+from hifiberrydsp.parser.xmlprofile import XmlProfile, ATTRIBUTE_VOL_CTL
 from hifiberrydsp.alsa.alsasync import AlsaSync
 from hifiberrydsp import datatools
 
@@ -51,6 +51,7 @@ from hifiberrydsp.server.constants import \
     HEADER_SIZE, \
     DEFAULT_PORT, \
     ZEROCONF_TYPE
+import hifiberrydsp
 
 
 def parameterfile():
@@ -670,7 +671,9 @@ class SigmaTCPServerMain():
             self.restore = False
 
     def announce_zeroconf(self):
-        desc = {'name': 'SigmaTCP', 'vendor': 'HiFiBerry'}
+        desc = {'name': 'SigmaTCP',
+                'vendor': 'HiFiBerry',
+                'version': hifiberrydsp.__version__}
         hostname = socket.gethostname()
         ip = socket.gethostbyname(hostname)
         self.zeroconf_info = ServiceInfo(ZEROCONF_TYPE,

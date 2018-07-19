@@ -50,6 +50,7 @@ from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
 from hifiberrydsp.parser.registervalues import RegisterFile
 
 from hifiberrydsp import datatools
+import hifiberrydsp
 
 
 MODE_BOTH = 0
@@ -361,6 +362,7 @@ class CommandLine():
             "servers": self.cmd_servers,
             "activate-settings": self.cmd_activate_settings,
             "merge-settings": self.cmd_merge_settings,
+            "version": self.cmd_version,
         }
         self.dsptk = DSPToolkit()
 
@@ -389,6 +391,9 @@ class CommandLine():
             vol = float(strval)
 
         return vol
+
+    def cmd_version(self):
+        print(hifiberrydsp.__version__)
 
     def cmd_set_volume(self):
         if len(self.args.parameters) > 0:
@@ -808,5 +813,11 @@ class ZeroConfListener:
         if service_type == ZEROCONF_TYPE:
             info = zeroconf.get_service_info(service_type, name)
             ip = socket.inet_ntoa(info.address)
-            hostinfo = "{}:{}".format(ip, info.port)
+            try:
+                version = info.properties[b'version'].decode()
+            except:
+                version = "unknown"
+            hostinfo = "{}:{} (version {})".format(ip,
+                                                   info.port,
+                                                   version)
             self.devices[name] = hostinfo
