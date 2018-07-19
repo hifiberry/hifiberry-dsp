@@ -16,6 +16,7 @@
 		<metadata type="channelSelectRegister">546</metadata>
 		<metadata type="volumeControlRegister">541</metadata>
 		<metadata type="volumeLimitRegister">542</metadata>
+                <metadata type="checksum">8B924F2C2210B903CB4226C12C56EE44</metadata>
 	</beometa>
 	<dateTime>2018-07-17T16:46:44.7096255Z</dateTime>
 	<version>4.1.1.1761</version>
