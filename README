@@ -159,12 +159,12 @@ the command won't have any effect.
 
   Find all servers on the local network using Zeroconf
   
-* activate-settings settings-file
+* apply-settings settings-file
 
   Apply the parameter settings from the given parameter file to the 
   running program. 
   
-* merge-settings settings-file [xml-file]
+* store-settings settings-file [xml-file]
 
   Apply the parameter from the given parameter file to the 
   running program. Also store them into the given DSP profile. 
