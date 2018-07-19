@@ -40,7 +40,7 @@ Select the Hardware configuration tab on top and config tab on the
 bottom and you should see a TCP control. Right click onto it to change
 the TCP/IP settings
 
-  ![SigmaStudio TCP/IP](ss-tcpip.png)
+![SigmaStudio TCP/IP](ss-tcpip.png)
 
 Enter the IP address of your system here, click "Open connection" and 
 close the settings again.
@@ -62,7 +62,7 @@ First open a capture window using the "View/Capture window menu".
 You should now see an additional "Capture window". This will record all
 transactions send to the DSP.
 
-  ![SigmaStudio Capture window](ss-capture.png)
+![SigmaStudio Capture window](ss-capture.png)
   
 The capture window should be empty. If it isn't click on the 
 "Clear all output data" button in the top-left of this window.
@@ -70,11 +70,11 @@ The capture window should be empty. If it isn't click on the
 Right-click onto the ADAU1451 and select 
 "Write latest compilation through DSP"
 
-  ![SigmaStudio Write EEPROM](ss-write-eeprom.png)
+![SigmaStudio Write EEPROM](ss-write-eeprom.png)
 
 Configure the properties as follows and click "OK"
 
-  ![SigmaStudio EEPROM settings](ss-eeprom-settings.png)
+![SigmaStudio EEPROM settings](ss-eeprom-settings.png)
 
 This will take some time and you should now see the transactions in the
 capture window.
@@ -83,7 +83,7 @@ capture window.
 
 Now mark all transactions in the capture window and right click onto 
 
-  ![SigmaStudio Add to sequence](ss-add-sequence.png)
+![SigmaStudio Add to sequence](ss-add-sequence.png)
   
 A new subwindow should open with the recorded transactions. Use the 
 save button in this window to export the sequence file. 
@@ -104,5 +104,51 @@ don't have any information about this program except the program itself.
 It doesn't know what controls are implemented and how they can be 
 controlled. 
 To support this, you have to add metadata to the DSP profile.
+
+The first step is to export more data from SigmaStudio. Select 
+"Export system files" from the action menu.
+
+![SigmaStudio Export system files](ss-system.png)
+
+This will create a lot of files, but for the metadata we'll only need 
+the .params file. This file contains a description of all controls,
+their addresses in memory and their settings.
+
+It looks like this (but much longer)
+```
+Cell Name         = SPDIF output.Nx2-2
+Parameter Name    = stereomuxSigma300ns2index
+Parameter Address = 547
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Balance.Balance
+Parameter Name    = DCInpAlg145X1value
+Parameter Address = 525
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Balance.DC2
+Parameter Name    = DCInpAlg145X2value
+Parameter Address = 526
+Parameter Value   = 2
+Parameter Data :
+0x02, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mute.Mute
+Parameter Name    = SwitchAlg321ison
+Parameter Address = 527
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+```
 
 Coming soon ...
