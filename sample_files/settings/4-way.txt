@@ -1,0 +1,13 @@
+# Sample settings for a sub/sat setup with the subwoofer connected to outputs 1 and 2 and
+# the satellites connected to 3 and 4
+# Tune crossover freqency and volume to your setup
+IIR_L1: lp:200Hz
+IIR_L2: hp:200Hz,lp:1000Hz
+IIR_L3: hp:1000Hz,lp:4000Hz
+IIR_L4: hp:4000Hz
+IIR_R1: mute
+IIR_R2: mute
+IIR_R3: mute
+IIR_R4: mute
+
+

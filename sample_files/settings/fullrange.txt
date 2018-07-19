@@ -1,0 +1,13 @@
+# Sample settings for a sub/sat setup with the subwoofer connected to outputs 1 and 2 and
+# the satellites connected to 3 and 4
+# Tune crossover freqency and volume to your setup
+IIR_L1: pass
+IIR_L2: mute
+IIR_L3: pass
+IIR_L4: mute
+IIR_R1: mute
+IIR_R2: pass
+IIR_R3: mute
+IIR_R4: mute
+
+
