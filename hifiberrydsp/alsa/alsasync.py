@@ -41,14 +41,16 @@ state.sndrpihifiberry {
   iface MIXER
   name %VOLUME%
   value.0 230
+  value.1 230
   comment {
    access 'read write user'
    type INTEGER
-   count 1
+   count 2
    range '0 - 255'
    dbmin -60
    dbmax 0
    dbvalue.0 -60
+   dbvalue.1 -60
   }
  }
 }
