@@ -223,7 +223,7 @@ Transfer this file to your Raspberry Pi (I recommend scp for this), e.g.
 Login to your Raspberry Pi and write these filters to the DSP using 
 the DSP Toolkit:
 
-```dsptoolkit apply-rew-filters filter.txt```
+```dsptoolkit apply-rew-filters filters.txt```
 
 ## Run another measurement
 
@@ -257,7 +257,7 @@ If your speakers are identical, you should apply the same filters to
 both speakers, especially if you use the full frequency range 
 (20-20.000Hz).
 
-### Use equalisation only where it is needed
+### Use equalisation wisely
 
 Most problems will be in the low frequencies (0-200Hz). If you're 
 speakers frequency response is reasonably flat (it doesn't need to 
