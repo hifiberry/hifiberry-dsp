@@ -1,6 +1,9 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.12
+ - moved data to /var/lib/hifiberry
+
 0.11 (20180719)
  - Bugfix: REW filters are working again
  - implemented store and store-filter commands that persist DSP settings to the EEPROM
