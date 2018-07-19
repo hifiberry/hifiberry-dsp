@@ -360,8 +360,8 @@ class CommandLine():
             "get-samplerate": self.cmd_samplerate,
             "check-eeprom": self.cmd_check_eeprom,
             "servers": self.cmd_servers,
-            "activate-settings": self.cmd_activate_settings,
-            "merge-settings": self.cmd_merge_settings,
+            "apply-settings": self.cmd_apply_settings,
+            "store-settings": self.cmd_store_settings,
             "version": self.cmd_version,
         }
         self.dsptk = DSPToolkit()
@@ -685,7 +685,7 @@ class CommandLine():
         for name, info in listener.devices.items():
             print("{}: {}".format(name, info))
 
-    def cmd_merge_settings(self):
+    def cmd_store_settings(self):
 
         settingsfile = self.args.parameters[0]
         try:
@@ -702,7 +702,7 @@ class CommandLine():
             print("writing back updated DSP profile")
             res = self.dsptk.install_profile_from_content(str(xmlprofile))
             if res:
-                print("DSP profile {} updated")
+                print("DSP profile updated on server")
             else:
                 print("Failed to update DSP profile")
                 sys.exit(1)
@@ -724,7 +724,7 @@ class CommandLine():
             print("Updated {}, backuup copy {}".format(xmlfile,
                                                        backupfile))
 
-    def cmd_activate_settings(self):
+    def cmd_apply_settings(self):
 
         settingsfile = self.args.parameters[0]
         try:
@@ -777,12 +777,12 @@ class CommandLine():
         parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
         parser.add_argument('--delay',
                             help='delay for loop operations in ms',
-                            nargs='?',
                             type=int,
+                            required=False,
                             default=1000)
         parser.add_argument('--host',
                             help='hostname or IP address of the server to connect to',
-                            nargs='?',
+                            required=False,
                             default="127.0.0.1")
         parser.add_argument('command',
                             choices=sorted(self.command_map.keys()))
