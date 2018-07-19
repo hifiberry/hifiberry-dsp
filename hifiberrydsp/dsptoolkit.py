@@ -42,7 +42,7 @@ from hifiberrydsp.parser.xmlprofile import  \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
-    ATTRIBUTE_MUTE_REG, XmlProfile
+    ATTRIBUTE_MUTE_REG, REGISTER_ATTRIBUTES, XmlProfile
 from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     COMMAND_PROGMEM_RESPONSE, COMMAND_XML, COMMAND_XML_RESPONSE, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
@@ -220,24 +220,25 @@ class DSPToolkit():
     def generic_request(self, request_code, response_code=None):
         return self.sigmatcp.request_generic(request_code, response_code)
 
-    def set_filters(self, filters, mode=MODE_BOTH):
+    def set_filters(self, filters, mode=MODE_BOTH, cutoff_long=False):
 
-        filters_left = datatools.parse_int_list(
+        (addr_left, length_left) = datatools.parse_int_length(
             self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_LEFT))
-        filters_right = datatools.parse_int_list(
+        (addr_right, length_right) = datatools.parse_int_length(
             self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_RIGHT))
 
-        l1 = len(filters_left)
-        l2 = len(filters_right)
-
         if mode == MODE_LEFT:
-            maxlen = l1
+            maxlen = length_left
         elif mode == MODE_RIGHT:
-            maxlen = l2
+            maxlen = length_right
         else:
-            maxlen = min(l1, l2)
+            maxlen = min(length_left, length_right)
 
-        if len(filters) > maxlen:
+        assert maxlen % 5 == 0
+
+        maxlen = maxlen / 5
+
+        if len(filters) > maxlen and (cutoff_long == False):
             raise(DSPError("{} filters given, but filter bank has only {} slots".format(
                 len(filters), maxlen)))
 
@@ -249,37 +250,21 @@ class DSPToolkit():
         for f in filters:
             logging.debug(f)
             if mode == MODE_LEFT or mode == MODE_BOTH:
-                self.sigmatcp.write_biquad(filters_left[i], f)
+                if i < length_left:
+                    self.sigmatcp.write_biquad(addr_left + i * 5, f)
             if mode == MODE_RIGHT or mode == MODE_BOTH:
-                self.sigmatcp.write_biquad(filters_right[i], f)
+                if i < length_right:
+                    self.sigmatcp.write_biquad(addr_right + i * 5, f)
             i += 1
+            if i > maxlen:
+                break
 
         self.hibernate(False)
 
     def clear_iir_filters(self, mode=MODE_BOTH):
-
-        filters_left = datatools.parse_int_list(
-            self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_LEFT))
-        filters_right = datatools.parse_int_list(
-            self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_RIGHT))
-
-        self.hibernate(True)
-
-        if mode == MODE_BOTH:
-            regs = filters_left + filters_right
-        elif mode == MODE_LEFT:
-            regs = filters_left
-        elif mode == MODE_RIGHT:
-            regs = filters_right
-
-        if regs is None:
-            return
-
-        nullfilter = Biquad.plain()
-        for reg in regs:
-            self.sigmatcp.write_biquad(reg, nullfilter)
-
-        self.hibernate(False)
+        # Simply fill filter arrays with dummy filters
+        self.set_filters([Biquad.plain()] * 256,
+                         mode=mode, cutoff_long=True)
 
     def install_profile(self, xmlfile):
         return self.sigmatcp.write_eeprom_from_file(xmlfile)
@@ -326,8 +311,8 @@ class CommandLine():
 
     def __init__(self):
         self.command_map = {
-            "store":  self.cmd_store,
-            "restore": self.cmd_restore,
+            "save":  self.cmd_save,
+            "load": self.cmd_load,
             "install-profile": self.cmd_install_profile,
             "set-volume": self.cmd_set_volume,
             "get-volume": self.cmd_get_volume,
@@ -361,7 +346,9 @@ class CommandLine():
             "check-eeprom": self.cmd_check_eeprom,
             "servers": self.cmd_servers,
             "apply-settings": self.cmd_apply_settings,
-            "save-settings": self.cmd_save_settings,
+            "store-settings": self.cmd_store_settings,
+            "store-filters": self.cmd_store_filters,
+            "store": self.cmd_store,
             "version": self.cmd_version,
         }
         self.dsptk = DSPToolkit()
@@ -592,10 +579,10 @@ class CommandLine():
         else:
             print("Mute not supported")
 
-    def cmd_store(self):
+    def cmd_save(self):
         self.dsptk.generic_request(COMMAND_STORE_DATA)
 
-    def cmd_restore(self):
+    def cmd_load(self):
         self.dsptk.generic_request(COMMAND_RESTORE_DATA)
 
     def cmd_samplerate(self):
@@ -685,7 +672,7 @@ class CommandLine():
         for name, info in listener.devices.items():
             print("{}: {}".format(name, info))
 
-    def cmd_save_settings(self):
+    def cmd_store_settings(self):
 
         settingsfile = self.args.parameters[0]
         try:
@@ -698,31 +685,7 @@ class CommandLine():
 
         registerfile.update_xml_profile(xmlprofile)
 
-        if xmlfile is None:
-            print("writing back updated DSP profile")
-            res = self.dsptk.install_profile_from_content(str(xmlprofile))
-            if res:
-                print("DSP profile updated on server")
-            else:
-                print("Failed to update DSP profile")
-                sys.exit(1)
-        else:
-            backupfile = xmlfile + ".bak"
-            try:
-                os.rename(xmlfile, backupfile)
-            except:
-                print("can't write rename %s to %s", xmlfile, backupfile)
-                sys.exit(1)
-
-            try:
-                with open(xmlfile, "w") as outfile:
-                    outfile.write(str(xmlprofile))
-            except:
-                print("can't write %s", xmlfile)
-                sys.exit(1)
-
-            print("Updated {}, backuup copy {}".format(xmlfile,
-                                                       backupfile))
+        self.write_back_xml(xmlprofile, xmlfile)
 
     def cmd_apply_settings(self):
 
@@ -741,6 +704,18 @@ class CommandLine():
             logging.debug("writing {} to {}", changes[addr], addr)
             self.dsptk.sigmatcp.write_memory(addr, changes[addr])
         self.dsptk.hibernate(False)
+
+    def cmd_store_filters(self):
+        attributes = [ATTRIBUTE_IIR_FILTER_LEFT,
+                      ATTRIBUTE_IIR_FILTER_RIGHT,
+                      ATTRIBUTE_FIR_FILTER_LEFT,
+                      ATTRIBUTE_FIR_FILTER_RIGHT]
+        self.store_attributes(attributes)
+        print("Stored filter settings")
+
+    def cmd_store(self):
+        self.store_attributes(REGISTER_ATTRIBUTES)
+        print("Stored filter settings")
 
     def read_register_and_xml(self, settingsfile, xmlfile):
         if xmlfile is not None:
@@ -771,6 +746,64 @@ class CommandLine():
             sys.exit(1)
 
         return(registerfile, xmlprofile)
+
+    def write_back_xml(self, xmlprofile, xmlfile=None):
+        if xmlfile is None:
+            print("writing back updated DSP profile")
+            res = self.dsptk.install_profile_from_content(str(xmlprofile))
+            if res:
+                print("DSP profile updated on server")
+            else:
+                print("Failed to update DSP profile")
+                sys.exit(1)
+        else:
+            backupfile = xmlfile + ".bak"
+            try:
+                os.rename(xmlfile, backupfile)
+            except:
+                print("can't write rename %s to %s", xmlfile, backupfile)
+                sys.exit(1)
+
+            try:
+                with open(xmlfile, "w") as outfile:
+                    outfile.write(str(xmlprofile))
+            except:
+                print("can't write %s", xmlfile)
+                sys.exit(1)
+
+            print("Updated {}, backuup copy {}".format(xmlfile,
+                                                       backupfile))
+
+    def store_attributes(self, attributes):
+        '''
+        Store specific attributes from RAM into DSP EEPROM
+        '''
+        xml = self.dsptk.generic_request(COMMAND_XML,
+                                         COMMAND_XML_RESPONSE)
+        if len(xml) == 0:
+            print("can't retrieve XML file from server")
+            sys.exit(1)
+
+        xmlprofile = XmlProfile()
+        xmlprofile.read_from_text(xml.decode("utf-8", errors="replace"))
+
+        replace = {}
+
+        for attribute in attributes:
+            (addr, length) = xmlprofile.get_addr_length(attribute)
+            if addr is None:
+                continue
+
+            while length > 0:
+                data = self.dsptk.sigmatcp.read_data(addr,
+                                                     self.dsptk.dsp.WORD_LENGTH)
+                replace[addr] = data
+                addr += 1
+                length -= 1
+
+        xmlprofile.replace_eeprom_cells(replace)
+        xmlprofile.replace_ram_cells(replace)
+        self.write_back_xml(xmlprofile)
 
     def main(self):
 

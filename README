@@ -62,21 +62,6 @@ The following command are supported. Note that some command need specific
 parameters in the DSP profile. If the DSP profile does not support these,
 the command won't have any effect.
 
-* store
-
-  saves the current parameter RAM to the file system. This is recommended 
-  if you have deployed new filters or changed other settings that 
-  should be re-activated after a system reboot
-
-* restore
-
-  restores the parameter RAM from the file system
-
-* reset
-
-  Resets the DSP. The program will be loaded from the EEPROM. The 
-  parameter RAM won't be stored and/or recovered from the file system.
-
 * install-profile
 
   writes a DSP profile to the DSP EEPROM and activates it. A profile 
@@ -179,6 +164,35 @@ the command won't have any effect.
      case, the server not only activated this, but also stores the
      changed settings to the EEPROM. They will then be automatically
      activated after a reset of the DSP board.     
+
+* save
+
+  saves the current parameter RAM to the file system. This is recommended 
+  if you have deployed new filters or changed other settings that 
+  should be re-activated later
+  This does NOT save anything to EEPROM
+
+* load
+
+  restores the parameter RAM from the file system
+
+* store-filters
+
+  Store filters currently deployed in the IIR and FIR filter banks to 
+  the EEPROM
+  
+* store
+
+  Store all known paramater settings (filters, volume, balance) that
+  are currently active on the DSP to the DSP's EEPROM.
+  Reseting the EEPROM will than recover these settings
+  
+
+* reset
+
+  Resets the DSP. The program will be loaded from the EEPROM. The 
+  parameter RAM won't be stored and/or recovered from the file system.
+
 
 
 REW integration

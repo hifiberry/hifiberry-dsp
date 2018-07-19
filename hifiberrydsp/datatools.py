@@ -51,11 +51,13 @@ def parse_int_length(val):
         return (None, 0)
 
     try:
-        (addr, length) = val.split("/")
-
-        addr = parse_int(addr)
-        length = parse_int(length)
-
+        if "/" in val:
+            (addr, length) = val.split("/")
+            addr = parse_int(addr)
+            length = parse_int(length)
+        else:
+            addr = parse_int(val)
+            length = 1
     except:
         addr = None
         length = 0

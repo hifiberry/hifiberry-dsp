@@ -90,20 +90,12 @@ class SettingsFile():
         replace = {}
 
         for attribute in self.values:
-            val = self.values[attribute]
-            addr = xmlprofile.get_meta(attribute)
+            (addr, length) = xmlprofile.get_addr_length(attribute)
             if addr is None:
-                logging.error(
-                    "control name %s not defined in XML profile, ignoring", attribute)
                 continue
 
-            if "/" in addr:
-                (addr, length) = addr.split("/")
-            else:
-                length = "1"
+            val = self.values[attribute]
 
-            addr = parse_int(addr)
-            length = parse_int(length)
             memory = self.param_to_bytes(val, length)
 
             if len(memory) <= self.dsp.WORD_LENGTH:
