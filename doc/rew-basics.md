@@ -113,7 +113,7 @@ select the Generic equalisation type:
 
 Now create a new measurement by clicking the Measure button.
 
-![REW start measurement](rew-starts.png)
+![REW start measurement](rew-start.png)
 
 Make sure the frequency range is 20-20.000 Hz. During the measurement 
 REW shows you the headroom of the mesurement. Ideally it should be 
@@ -251,12 +251,13 @@ using the DSP toolkit
 
 ## Tips & tricks
 
-### Run the optimization with a signal on both speakers.
+### Run the optimization with a signal on both speakers
 
 If your speakers are identical, you should apply the same filters to 
 both speakers, especially if you use the full frequency range (20-20.000Hz).
 
-### Use equalisation only where it is needed.
+### Use equalisation only where it is needed
+
 Most problems will be in the low frequencies (0-200Hz). If you're 
 speakers frequency response is reasonably flat (it doesn't need to 
 be perfect!), optimise only the low frequencies. Slight peaks of 2-3dB 
@@ -265,6 +266,7 @@ practically every speaker in a normal listening environment.
 *Don't over-optimise!*
 
 ### Low-frequency vs. full range optimisations
+
 The following pictures shows 2 equalisation setting: One full-range 
 optimisation and one only in the range of 20-200Hz.
 
