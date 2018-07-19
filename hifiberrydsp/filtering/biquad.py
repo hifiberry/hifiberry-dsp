@@ -203,14 +203,18 @@ class Biquad():
                       "High pass 1st {}Hz".format(f0))
 
     @classmethod
-    def volume(cls, db, fs):
+    def volume(cls, db):
         b0 = pow(10, db / 20)
         return Biquad(1, 0, 0, b0, 0, 0,
                       "Volume change {}db".format(db))
 
     @classmethod
-    def null(cls):
+    def mute(cls):
         return Biquad(1, 0, 0, 0, 0, 0, "Null")
+
+    @classmethod
+    def pass_filter(cls):
+        return Biquad.volume(0)
 
     @staticmethod
     def omega(f0, fs):
@@ -261,11 +265,13 @@ class Biquad():
             try:
                 (_vol, db) = definition.split(":")
                 db = parse_decibel(db)
-                return Biquad.volume(db, fs)
+                return Biquad.volume(db)
             except:
                 return None
-        elif definition == "null":
-            return Biquad.null()
+        elif definition.startswith("pass"):
+            return Biquad.pass_filter()
+        elif definition == "mute" or definition == "null":
+            return Biquad.mute()
         else:
             print("unknown", definition)
             return None

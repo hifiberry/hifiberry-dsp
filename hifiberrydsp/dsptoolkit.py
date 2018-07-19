@@ -47,7 +47,7 @@ from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     COMMAND_PROGMEM_RESPONSE, COMMAND_XML, COMMAND_XML_RESPONSE, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
     ZEROCONF_TYPE
-from hifiberrydsp.parser.registervalues import RegisterFile
+from hifiberrydsp.parser.settings import SettingsFile
 
 from hifiberrydsp import datatools
 import hifiberrydsp
@@ -765,7 +765,7 @@ class CommandLine():
             sys.exit(1)
 
         try:
-            registerfile = RegisterFile(settingsfile, xmlprofile.samplerate())
+            registerfile = SettingsFile(settingsfile, xmlprofile.samplerate())
         except:
             print("can't parse settings file")
             sys.exit(1)

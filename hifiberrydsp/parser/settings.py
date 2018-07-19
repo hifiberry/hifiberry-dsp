@@ -32,7 +32,7 @@ from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.datatools import int_data, parse_int
 
 
-class RegisterFile():
+class SettingsFile():
 
     def __init__(self, filename, fs=48000, dsp=Adau145x()):
         self.values = {}
@@ -126,6 +126,8 @@ class RegisterFile():
         xmlprofile.replace_ram_cells(replace)
 
     def param_to_bytes(self, value, max_length=1, ignore_limit=False):
+        biquad = False
+
         if isinstance(value, float):
             value = self.dsp.decimal_repr(value)
             res = int_data(value, self.dsp.WORD_LENGTH)
@@ -147,14 +149,22 @@ class RegisterFile():
         elif isinstance(value, Iterable):
             res = []
             for part in value:
+                if isinstance(part, Biquad):
+                    biquad = True
                 res = res + self.param_to_bytes(part, 0, ignore_limit=True)
         else:
             raise RuntimeError("parameter type not implemented: %s",
                                type(value).__name__)
 
-        # Fill with zeros
         while len(res) < max_length * self.dsp.WORD_LENGTH:
-            res.append(0)
+            if biquad:
+                # Fill biquad filter banks with pass filters
+                passfilter = Biquad.pass_filter()
+                res = res + \
+                    self.param_to_bytes(passfilter, 0, ignore_limit=True)
+            else:
+                # Fill with zeros
+                res.append(0)
 
         if not(ignore_limit) and len(res) > (max_length * self.dsp.WORD_LENGTH):
             logging.error("parameter set too long (%s bytes), won't fit into %s words",
@@ -169,12 +179,12 @@ def demo():
     xml = XmlProfile("sample_files/xml/4way-iir.xml")
     xml.write_xml("/tmp/x.xml")
     fs = xml.samplerate()
-    rf = RegisterFile("sample_files/simple-settings.txt", fs)
+    rf = SettingsFile("sample_files/simple-settings.txt", fs)
     print(rf.values)
     rf.update_xml_profile(xml)
     print("writing y.xml")
     xml.write_xml("/tmp/y.xml")
-    rf = RegisterFile("sample_files/settings.txt", fs)
+    rf = SettingsFile("sample_files/settings.txt", fs)
     print(rf.values)
     rf.update_xml_profile(xml)
     print("writing z.xml")
