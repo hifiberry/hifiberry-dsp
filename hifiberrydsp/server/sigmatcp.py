@@ -26,7 +26,6 @@ import os
 import sys
 import logging
 import hashlib
-import getpass
 
 from threading import Thread
 
@@ -55,17 +54,27 @@ import hifiberrydsp
 
 
 def parameterfile():
-    if (getpass.getuser() == 0):
-        return "/etc/dspparameters.dat"
+    if (os.geteuid() == 0):
+        return "/var/lib/hifiberry/dspparameters.dat"
     else:
-        return os.path.expanduser("~/.dsptoolkit/dspparameters.dat")
+        return os.path.expanduser("~/.hifiberry/dspparameters.dat")
 
 
 def dspprogramfile():
-    if (getpass.getuser() == 0):
-        return "/etc/dspprogram.xml"
+    if (os.geteuid() == 0):
+        logging.info(
+            "running as root, data will be stored in /var/lib/hifiberry")
+        mydir = "/var/lib/hifiberry"
+        try:
+            if not os.path.isdir(mydir):
+                os.makedirs("/var/lib/hifiberry")
+        except Exception as e:
+            logging.error("can't creeate directory {} ({})", mydir, e)
+        return "/var/lib/hifiberry/dspprogram.xml"
     else:
-        return os.path.expanduser("~/.dsptoolkit/dspprogram.xml")
+        logging.info(
+            "not running as root, data will be stored in ~/.hifiberry")
+        return os.path.expanduser("~/.hifiberry/dspprogram.xml")
 
 
 class SigmaTCPHandler(BaseRequestHandler):
