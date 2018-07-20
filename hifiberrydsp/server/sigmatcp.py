@@ -65,16 +65,17 @@ def dspprogramfile():
         logging.info(
             "running as root, data will be stored in /var/lib/hifiberry")
         mydir = "/var/lib/hifiberry"
-        try:
-            if not os.path.isdir(mydir):
-                os.makedirs("/var/lib/hifiberry")
-        except Exception as e:
-            logging.error("can't creeate directory {} ({})", mydir, e)
-        return "/var/lib/hifiberry/dspprogram.xml"
     else:
+        mydir = "~/.hifiberry"
         logging.info(
             "not running as root, data will be stored in ~/.hifiberry")
-        return os.path.expanduser("~/.hifiberry/dspprogram.xml")
+    try:
+        if not os.path.isdir(mydir):
+            os.makedirs(mydir)
+    except Exception as e:
+        logging.error("can't creeate directory {} ({})", mydir, e)
+
+    return os.path.expanduser(mydir + "/dspprogram.xml")
 
 
 class SigmaTCPHandler(BaseRequestHandler):

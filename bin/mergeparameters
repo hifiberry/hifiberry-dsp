@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+
+from hifiberrydsp.parser.sigmaparams import merge_params_main
+
+if __name__ == '__main__':
+    merge_params_main()
