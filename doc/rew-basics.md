@@ -43,8 +43,7 @@ have a look at www.hifiberry.com
 If the DSP toolkit isn't already installed, you can install it with 
 a simple script:
 
-bash <(curl https://raw.githubusercontent.com/hifiberry/\
-hifiberry-dsp/master/install-dsptoolkit)
+bash <(curl https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/install-dsptoolkit)
 Check if it is installed correctly by running "dsptoolkit"
 ```
 dsptoolkit
