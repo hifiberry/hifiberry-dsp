@@ -52,7 +52,7 @@ Command line utility
 
 The dsptoolkit command is the main command line tool to communicate 
 with the DSP TCP server. The command line parameters are documented
-in doc/dsptoollkit.md
+in doc/dsptoolkit.md
 
 
 REW integration
