@@ -108,7 +108,7 @@ To support this, you have to add metadata to the DSP profile.
 The first step is to export more data from SigmaStudio. Select 
 "Export system files" from the action menu.
 
-![SigmaStudio Export system files](img/ss-system.png)
+![SigmaStudio Export system files](img/ss-export-system.png)
 
 This will create a lot of files, but for the metadata we'll only need 
 the .params file. This file contains a description of all controls,
