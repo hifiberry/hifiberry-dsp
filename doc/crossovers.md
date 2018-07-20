@@ -18,7 +18,7 @@ A mixing/crossover matrix allows you to mix each input channel onto
 each output channel and also apply filtering.
 In SigmaStudio it looks like this:
 
-![crossover matrix](crossover-matrix.png)
+![crossover matrix](img/crossover-matrix.png)
 
 We provide an example profile here:
 https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/sample_files/xml/4way-iir.xml
