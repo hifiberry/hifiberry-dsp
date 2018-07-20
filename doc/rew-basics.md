@@ -257,7 +257,7 @@ If your speakers are identical, you should apply the same filters to
 both speakers, especially if you use the full frequency range 
 (20-20.000Hz).
 
-### Use equalisation wisely
+### Use equalisations wisely
 
 Most problems will be in the low frequencies (0-200Hz). If you're 
 speakers frequency response is reasonably flat (it doesn't need to 
