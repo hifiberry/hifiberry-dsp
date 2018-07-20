@@ -3,13 +3,16 @@ Changelog HiFiBerry DSP toolkit
 
 0.12
  - moved data to /var/lib/hifiberry
+ - added "mergeparameters" command line tool
 
 0.11 (20180719)
  - Bugfix: REW filters are working again
- - implemented store and store-filter commands that persist DSP settings to the EEPROM
+ - implemented store and store-filter commands that persist DSP settings 
+   to the EEPROM
  - renamed some command to make them more consistent
-    apply commands apply settings to the DSP RAM, these will be lost after a DSP reset
-    store commands store settings to the DSP's EEPROM
+    * apply- commands apply settings to the DSP RAM, these will be lost 
+      after a DSP reset
+    * store- commands store settings to the DSP's EEPROM
 
 0.10 (20180719)
  - settings files allow to overwrite parameters in the DSPProfile. 
