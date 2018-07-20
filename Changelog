@@ -1,6 +1,9 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.12.1 (20180720)
+ - fixed a bug, "mergeparameters" was not included in 0.12 release
+
 0.12 (20180720)
  - moved data to /var/lib/hifiberry
  - added "mergeparameters" command line tool
