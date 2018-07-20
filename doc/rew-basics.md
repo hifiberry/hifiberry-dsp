@@ -26,7 +26,7 @@ definitely improve the performance of you audio system.
 * [REW](https://www.roomeqwizard.com/)
 * HiFiBerry DSP toolkit
 
-![equipment](roomeq-equipment.jpg)
+![equipment](img/roomeq-equipment.jpg)
 
 While REW can run directly on the Raspberry Pi, we don't recommend it. 
 The Raspberry Pi is quite slow for this kinds of software which makes 
@@ -60,9 +60,7 @@ recommended to use a pre-configured profile as the 4-way profile
 dsptoolkit install-profile https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/sample_files/xml/4way-iir.xml 
 ```
 
-
-*TODO*: Documentation how to create you own DSP profile
-
+If you want to create your own DSP profiles, have a look at our [guide](dspprofiles.md).
 
 ## Install REW
 Download and install REW on your PC. While it also runs on the 
@@ -83,7 +81,7 @@ position. The height should be about the height of your head when
 you sit at this position.  We recommend to use a microphone stand 
 to position the microphone.
 
-![microphone](mic.jpg)
+![microphone](img/mic.jpg)
 
 You might require an USB extension cable. Just note that for long 
 extensions you will need an active USB extension cable. You can 
@@ -94,26 +92,26 @@ get these at your favourite computer shop.
 Connect the optical output of your PC or sound card to the optical 
 input of the HiFiBerry DSP/DAC or 4-channel amplifier.
 
-![TOSLink input](toslink-input.jpg)
+![TOSLink input](img/toslink-input.jpg)
 
 ## Configure REW
 Make sure, you select your measurement microphone as the input device 
 for REW in the setting dialogue. If your microphone comes with a 
 calibration file, you can configure it under the "Mic/Meter" tab.
 
-![REW preferences](rew-prefs.png)
+![REW preferences](img/rew-prefs.png)
 
 While you can configure the equalisation option later, we recommend 
 also to set the correct equalisation options. You should 
 select the Generic equalisation type:
 
-![REW EQ preferences](rew-eq.png)
+![REW EQ preferences](img/rew-eq.png)
 
 ## Measure the frequency response on your listening position
 
 Now create a new measurement by clicking the Measure button.
 
-![REW start measurement](rew-start.png)
+![REW start measurement](img/rew-start.png)
 
 Make sure the frequency range is 20-20.000 Hz. During the measurement 
 REW shows you the headroom of the mesurement. Ideally it should be 
@@ -124,7 +122,7 @@ reduce the output level.
 When the measurement is finished, REW will show you the 
 frequency response of your system:
 
-![REW frequency response](rew-fr.png)
+![REW frequency response](img/rew-fr.png)
 
 Note that this the the frequency response at the position of your 
 microphone. It will look differently if you move the microphone around. 
@@ -146,7 +144,7 @@ between both, but that's not a problem. REW will correct both.
 
 Select the optimisation dialog by clicking on the EQ button.
 
-![REW optimisations](rew-opti.png)
+![REW optimisations](img/rew-opti.png)
 
 Under "Equalizer" select "Generic". Make sure speaker type is 
 "Full range".
@@ -173,7 +171,7 @@ Then start the optimisation by clicking
 "Match response to target". REW will now do it's "magic" and calculate 
 correction filters for your setup.
 
-![REW optimisations](rew-opti-result.png)
+![REW optimisations](img/rew-opti-result.png)
 
 In the top-left diagram you will see the process, the correction filters and the expected frequency response.
 
@@ -231,7 +229,7 @@ If you run another measurement now, the frequency response should
 match the target response quite well. It won't be perfectly flat, 
 but that's fine.
 
-![REW frequency response](rew-fr2.png)
+![REW frequency response](img/rew-fr2.png)
 
 
 ## Save the settings onto the DSP's EEPROM
@@ -272,7 +270,7 @@ Don't over-optimise!
 The following pictures shows 2 equalisation setting: One full-range 
 optimisation and one only in the range of 20-200Hz.
 
-![REW optimisations](rew-opti-compare.png)
+![REW optimisations](img/rew-opti-compare.png)
 
 Which one sound better? In both cases you will still hear the 
 "personality" of your speakers, but they will sound a bit different. 
