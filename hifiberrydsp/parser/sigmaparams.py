@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+import sys
+import os.path
 
 from hifiberrydsp.parser.xmlprofile import ATTRIBUTE_BALANCE, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
@@ -137,17 +139,56 @@ class SigmastudioParamsFile():
 
     def merge_params_into_xml(self, xmlfile):
         xml = XmlProfile(xmlfile)
-        xml.update_metadata(self.param_list())
+        param_list = self.param_list()
+        xml.update_metadata(param_list)
         xml.write_xml(xmlfile)
+        return param_list
 
 
-def main():
-    print("*")
-    pf = SigmastudioParamsFile(
-        "/Users/matuschd/devel/python/hifiberry-dsp/sample_files/xml/4way-iir.params")
-    print(pf.param_list())
-    pf.merge_params_into_xml(
-        "/Users/matuschd/devel/python/hifiberry-dsp/sample_files/xml/4way-iir.xml")
+def basefilename(filename):
+    base = os.path.basename(filename)
+    return os.path.splitext(base)[0]
 
 
-main()
+def extension(filename):
+    base = os.path.basename(filename)
+    return os.path.splitext(base)[1]
+
+
+def merge_params_main(xmlfile=None, paramsfile=None):
+
+    if paramsfile == None:
+        # called from command line
+        try:
+            xmlfile = sys.argv[1]
+            paramsfile = sys.argv[2]
+        except:
+            print("call with {} xmlprofile paramsfile".format(sys.argv[0]))
+            sys.exit(1)
+
+    if extension(xmlfile) != ".xml":
+        print("DSP profile file does not have the extension xml, aborting")
+        sys.exit(1)
+
+    if extension(paramsfile) != ".params":
+        print("Parameters file does not have the extension params, aborting")
+        sys.exit(1)
+
+    if basefilename(xmlfile) != basefilename(paramsfile):
+        print('''Warning: the two files do not share the same base name. If you're merging an incorrect 
+parameter file into an XML profile, this might damage your system!
+        ''')
+
+    try:
+        pf = SigmastudioParamsFile(paramsfile)
+    except IOError as e:
+        print("can't read {} ({})".format(paramsfile, e))
+
+    try:
+        params = pf.merge_params_into_xml(xmlfile)
+    except IOError as e:
+        print("can't read or write {} ({})".format(xmlfile, e))
+
+    print("added parameters to XML profile:")
+    for param in sorted(params):
+        print(" ", param)
