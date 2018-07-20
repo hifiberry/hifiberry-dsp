@@ -16,6 +16,7 @@ Values can be
  
  Let's assume the following DSP profile:
  
+ ```
  <ROM>
   <beometa>
     <metadata type="IIR_L">37/80</metadata>
@@ -35,19 +36,25 @@ Values can be
   </beometa>
   ....
  </ROM>
+ ```
  
 A simple settings file for this DSP profile could look like this:
 
+```
 volumeLimitRegister: -10dB
+```
 
 Applying these settings would set the the volumeLimit to -10dB.
 
 You can check this by running the command
 
+```
  dsptoolkit get-limit
+```
  
 A more complex file:
 
+```
 volumeControlRegister: -3dB
 volumeLimitRegister: 90%
 mute: 0x1
@@ -56,7 +63,8 @@ IIR_L: lp:1500Hz, hp:300Hz:0.6, eq: 1200Hz:2:+3dB, vol:-1dB
 IIR_R1: vol: +3dB
 IIR_R2: vol: -3dB
 IIR_R3: vol: +0dB
+```
 
- In this case, the mute setting would be ignored as no mute attribute
- is available in the DSP profile. 
+In this case, the mute setting would be ignored as no mute attribute
+is available in the DSP profile. 
 
