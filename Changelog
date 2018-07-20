@@ -1,7 +1,7 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
-0.12
+0.12 (20180720)
  - moved data to /var/lib/hifiberry
  - added "mergeparameters" command line tool
 
