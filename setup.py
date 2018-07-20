@@ -25,6 +25,6 @@ setup(name='hifiberrydsp',
       packages=find_packages(),
       install_requires=['xmltodict', 'lxml',
                         'spidev', 'pyalsaaudio', 'zeroconf'],
-      scripts=['bin/dsptoolkit', 'bin/sigmatcpserver'],
+      scripts=['bin/dsptoolkit', 'bin/sigmatcpserver', 'bin/mergeparams'],
       keywords='audio raspberrypi dsp',
       zip_safe=False)

@@ -166,8 +166,62 @@ These memory locations are not static and they will change if you modify
 your DSP program. This means the process of creating metadata has to be
 repeated each time you add or remove controls in your DSP program or
 change connection between function blocks.
+
 As the process of creating metadata records takes quite a lot of time, 
-there is a tool that can automatically create the metadata.
+there is a tool that can automatically create the metadata. The tool has
+the name "mergeparameters". It accepts the XML file and params file as
+command line argument. 
 
+It will read known parameter names from the params file and add the
+metadata records to the DSP program:
 
-Coming soon ...
+```
+mergeparameters 4way-iir.xml 4way-iir.params 
+added parameters to XML profile:
+  IIR_L
+  IIR_L1
+  IIR_L2
+  IIR_L3
+  IIR_L4
+  IIR_R
+  IIR_R1
+  IIR_R2
+  IIR_R3
+  IIR_R4
+  balanceRegister
+  channelSelectRegister
+  muteRegister
+  volumeControlRegister
+  volumeLimitRegister
+````
+
+One metadata record that isn't generated is the checksum. It is used 
+to identify a program. While it is optional, it is **strongly recommended**
+to add a checksum. To calculate the checksum, push the DSP profile to 
+the dsp and then use the "get-checksum" command.
+
+Why is it important to have the checksum? If you're experimenting with
+different profile, there might be a situation where the DSP server thinks
+a specific program is installed, but there is really another program 
+running on the DSP. 
+Changing settings based on the wrong profile might result in all kinds
+of unwanted behaviour. In worst case the DSP program might generate a 
+high-level output signal that can damage your speakers.
+
+```
+dsptoolkit install-profile 4way-iir.xml
+dsptoolkit get-checksum
+ 8B924F2C2210B903CB4226C12C56EE44
+```
+
+Now add a metadata record to the XML profile
+
+```
+<metadata type="checksum">8B924F2C2210B903CB4226C12C56EE44</metadata>
+```
+
+Push the profile to the DSP again
+
+```
+dsptoolkit install-profile 4way-iir.xml
+```
