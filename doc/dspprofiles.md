@@ -27,7 +27,7 @@ dsptoolkit:
  right channels
 - IIR_L1,IIR_L2,IIR_L3,IIR_L4, IIR_R1,IIR_R2,IIR_R3,IIR_R4 - 
   a mixer/equalisation matrix to implement crossovers
-  ![crossover matrix](crossover-matrix.png)
+  ![crossover matrix](img/crossover-matrix.png)
   
 It is recommended to implement at least the Volume and VolumeLimit 
 controls. 
@@ -40,7 +40,7 @@ Select the Hardware configuration tab on top and config tab on the
 bottom and you should see a TCP control. Right click onto it to change
 the TCP/IP settings
 
-![SigmaStudio TCP/IP](ss-tcpip.png)
+![SigmaStudio TCP/IP](img/ss-tcpip.png)
 
 Enter the IP address of your system here, click "Open connection" and 
 close the settings again.
@@ -62,7 +62,7 @@ First open a capture window using the "View/Capture window menu".
 You should now see an additional "Capture window". This will record all
 transactions send to the DSP.
 
-![SigmaStudio Capture window](ss-capture.png)
+![SigmaStudio Capture window](img/ss-capture.png)
   
 The capture window should be empty. If it isn't click on the 
 "Clear all output data" button in the top-left of this window.
@@ -70,11 +70,11 @@ The capture window should be empty. If it isn't click on the
 Right-click onto the ADAU1451 and select 
 "Write latest compilation through DSP"
 
-![SigmaStudio Write EEPROM](ss-write-eeprom.png)
+![SigmaStudio Write EEPROM](img/ss-write-eeprom.png)
 
 Configure the properties as follows and click "OK"
 
-![SigmaStudio EEPROM settings](ss-eeprom-settings.png)
+![SigmaStudio EEPROM settings](img/ss-eeprom-settings.png)
 
 This will take some time and you should now see the transactions in the
 capture window.
@@ -83,7 +83,7 @@ capture window.
 
 Now mark all transactions in the capture window and right click onto 
 
-![SigmaStudio Add to sequence](ss-add-sequence.png)
+![SigmaStudio Add to sequence](img/ss-add-sequence.png)
   
 A new subwindow should open with the recorded transactions. Use the 
 save button in this window to export the sequence file. 
@@ -108,7 +108,7 @@ To support this, you have to add metadata to the DSP profile.
 The first step is to export more data from SigmaStudio. Select 
 "Export system files" from the action menu.
 
-![SigmaStudio Export system files](ss-system.png)
+![SigmaStudio Export system files](img/ss-system.png)
 
 This will create a lot of files, but for the metadata we'll only need 
 the .params file. This file contains a description of all controls,
