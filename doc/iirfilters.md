@@ -16,7 +16,9 @@ easyly without the need to use SigmaStudio to to filter adjustments
   defines a parametric equaliser with the given center frequency
   and quality. gain (in decibel) can be positive or negative
   
-Often IIR filters can be chained to define more complex filters, e.g.
+Often IIR filters can be chained to define more complex filters. To chain 
+filters, just create a filter list of multiple filters seperated by ",",
+e.g.
 
 lp:1500Hz, lp:1500Hz, hp:300Hz:0.6, eq:1200Hz:2:+3dB
 
