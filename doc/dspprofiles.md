@@ -151,4 +151,23 @@ Parameter Data :
 0x00, 0x00, 0x00, 0x00, 
 ```
 
+Based on these information you could create the metadata records 
+by yourself.
+
+A  metadata record is basically a name with an associated address
+```
+<metadata type="balanceRegister">525</metadata>
+```
+
+This declares that the balance setting is stored at the memory address
+525. You also see this address in the parameters file.
+
+These memory locations are not static and they will change if you modify
+your DSP program. This means the process of creating metadata has to be
+repeated each time you add or remove controls in your DSP program or
+change connection between function blocks.
+As the process of creating metadata records takes quite a lot of time, 
+there is a tool that can automatically create the metadata.
+
+
 Coming soon ...
