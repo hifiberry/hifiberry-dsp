@@ -51,164 +51,26 @@ The server accepts the following command line parameters:
 Command line utility
 ====================
 
-dsptoolkit is a tool that is used to directly access functions of the DSP 
-via the TCP server. This means it can run on another system.
-
-The general usage pattern is
-
-$ dsptoolkit command parameter
-
-The following command are supported. Note that some command need specific 
-parameters in the DSP profile. If the DSP profile does not support these,
-the command won't have any effect.
-
-* install-profile
-
-  writes a DSP profile to the DSP EEPROM and activates it. A profile 
-  installed with this command will be automatically started after a reset
-  
-* set-volume volume
-
-  set the volume. Volume values can be defined in real values (0-1), 
-  percent (0% to 100%) or decibels (use need to use negative values to 
-  reduce the volume)
-
-* get-volume
-
-  gets the current setting of the volume control register. 
-
-* set-limit
-
-  sets the volume limit. The effect is the same as setting volume. The 
-  idea of this setting is having a volume control that can be changed 
-  between 0 and 100% (or -inf dB to 0dB) and the limit setting to set 
-  the maximum volume of the system.
-
-* set-rew-filters|set-rew-filters-left|set-rew-filters-right filename
-
-  Deploys parametric equaliser settings calculated by REW to the 
-  equaliser filter banks (left, right or both).
-  Not all DSP profiles will support this setting
-  To make sure the filters are still active after a system reboot, make 
-  sure you use the store command.
-
-* set-fir-filters|set-fir-filters-left|set-fir-filters-right
-
-  Deploys a FIR (finite impulse response) filter to the left, right or 
-  both FIR filter banks.
-  A FIR filter file is a simple text file with one real number per line.
-  Not all DSP profiles will support this setting
-  To make sure the filters are still active after a system reboot, make 
-  sure you use the store command.
-
-* clear-iir-filters
-
-  Resets the IIR filter banks to default values. This is helpful if you 
-  deployed filters to the DSP that do not perform as expected
-
-* read-dec|red-int|read-hex address
-
-  Reads a memory word from the given address and interprets it as a 
-  decimal value, integer value or just displays it as a HEX value
-  Addresses are 2byte long and they can be defined as integers or hex 
-  values.
-  Hex values are defined by the prefix 0x (e.g. 0x01aa)
-
-* loop-read-dec|loop-read-int|loop-read-hex address
-  
-  Works exactly like the read-xxx command. However, it reads the values 
-  in a loop. This is often useful when debugging DSP programs as you can 
-  easily see if and how parameters change
-
-* write-reg address value
-
-  Writes a value to a 2-byte register. This command should be used to 
-  write the DSP register addresses. While it will also accept DSP RAM 
-  addresses, these are 4 bytes long and the command will only set the 
-  first 2 bytes of a RAM cell
-
-* write-mem address value
-
-  Writes a 4 byte value to a memory cell.
-  The value can be given as an integer or hex value. 
-  When using this command on register addresses, the command will write 
-  to 2 consecutive register addresses as addresses have a length of 
-  only 2 bytes.
-  
-* mute|unmute
- 
-  Mutes/unmutes the output. This only works if the profile supports
-  a mute register
-
-* servers
-
-  Find all servers on the local network using Zeroconf
-  
-* apply-settings settings-file
-
-  Apply the parameter settings from the given parameter file to the 
-  running program. 
-  
-* store-settings settings-file [xml-file]
-
-  Apply the parameter from the given parameter file to the 
-  running program. Also store them into the given DSP profile. 
-  This means, the deault settings of this DSP Profile will be changed.
-  There are 2 possible ways to merge this into a DSP profile:
-  1. If an XML file is given in the command line, the settings will be
-     applied to this DSP profile. The profile file will be edited. 
-     A backup version of teh DSP profile will be stored
-  2. If no xml-file parameter is given, dnstoolkit retrieves the 
-     currently running DSP program directly from the server, applies
-     the settings and pushed the profile back to the server. In this
-     case, the server not only activated this, but also stores the
-     changed settings to the EEPROM. They will then be automatically
-     activated after a reset of the DSP board.     
-
-* save
-
-  saves the current parameter RAM to the file system. This is recommended 
-  if you have deployed new filters or changed other settings that 
-  should be re-activated later
-  This does NOT save anything to EEPROM
-
-* load
-
-  restores the parameter RAM from the file system
-
-* store-filters
-
-  Store filters currently deployed in the IIR and FIR filter banks to 
-  the EEPROM
-  
-* store
-
-  Store all known paramater settings (filters, volume, balance) that
-  are currently active on the DSP to the DSP's EEPROM.
-  Reseting the EEPROM will than recover these settings
-  
-
-* reset
-
-  Resets the DSP. The program will be loaded from the EEPROM. The 
-  parameter RAM won't be stored and/or recovered from the file system.
-
+The dsptoolkit command is the main command line tool to communicate 
+with the DSP TCP server. The command line parameters are documented
+in doc/dsptoollkit.md
 
 
 REW integration
 ===============
 
 The software can be used to push filters created by Room Equalisation 
-Wizard 
-(REW) to the DSP.
+Wizard (REW) to the DSP.
+Have a look at the guide in /doc/rew-basics.md
 
 DSP profile format
 ==================
 
 DSP profiles can be generated directly in SigmaStudio. However, to 
 enable the full potential of DSP Profiles and allow DSPToolkit to 
-directly control the
-DSP program, you need to add some additional metadata to the XML file.
+directly control the DSP program, you need to add some additional 
+metadata to the XML file.
+The process to create a DSP profile is documented in /doc/dspprofiles.md
 
 IIR filter format
 =================
@@ -236,66 +98,4 @@ This defines a filter that consists of:
  - a 4th order low-pass at 1.5kHz (created from two 2nd order filters)
  - a 2nd order high-pass as 300Hz with a quality of 0.6
  - a parametric equaliser at 1.2kHz with a quality of 2.0 and +3dB gain  
-
-Settings file format
-====================
-
-A settings file is a text file that consists of lines of attribute:value 
-pairs. Attributes are register names defined in the profile metadata. 
-Values can be 
- - float values
- - integer values
- - decibel values (in format +xdb, -xdb)
- - percent values (for volume, will be converted to a -60db-0dB volume
-   control range)
- - IIR filter definitions (see above)
- 
- Example
- -------
- 
- Let's assume the following DSP profile:
- 
- <ROM>
-  <beometa>
-    <metadata type="IIR_L">37/80</metadata>
-    <metadata type="IIR_R">117/80</metadata>
-    <metadata type="IIR_L1">197/40</metadata>
-    <metadata type="IIR_R1">237/40</metadata>
-    <metadata type="IIR_L2">277/40</metadata>
-    <metadata type="IIR_R2">317/40</metadata>
-    <metadata type="IIR_L3">357/40</metadata>
-    <metadata type="IIR_R3">397/40</metadata>
-    <metadata type="IIR_L4">437/40</metadata>
-    <metadata type="IIR_R4">477/40</metadata>
-    <metadata type="balanceRegister">525</metadata>
-    <metadata type="channelSelectRegister">546</metadata>
-    <metadata type="volumeControlRegister">541</metadata>
-    <metadata type="volumeLimitRegister">542</metadata>
-  </beometa>
-  ....
- </ROM>
- 
-A simple settings file for this DSP profile could look like this:
-
-volumeLimitRegister: -10dB
-
-Applying these settings would set the the volumeLimit to -10dB.
-
-You can check this by running the command
-
- dsptoolkit get-limit
- 
-A more complex file:
-
-volumeControlRegister: -3dB
-volumeLimitRegister: 90%
-mute: 0x1
-balanceRegister: 0.8
-IIR_L: lp:1500Hz, hp:300Hz:0.6, eq: 1200Hz:2:+3dB, vol:-1dB
-IIR_R1: vol: +3dB
-IIR_R2: vol: -3dB
-IIR_R3: vol: +0dB
-
- In this case, the mute setting would be ignored as no mute attribute
- is available in the DSP profile. 
 
