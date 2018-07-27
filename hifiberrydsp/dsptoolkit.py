@@ -601,20 +601,20 @@ class CommandLine():
             # Download and store a local copy
             try:
                 xmlfile = urllib.request.urlopen(filename)
-            except IOError:
-                print("can't download {}".format(filename))
+            except IOError as e:
+                print("can't download {} ({})".format(filename, e))
                 sys.exit(1)
         else:
             try:
                 xmlfile = open(filename)
-            except IOError:
-                print("can't open {}".format(filename))
+            except IOError as e:
+                print("can't open {} ({})".format(filename, e))
                 sys.exit(1)
 
         try:
             data = xmlfile.read()
-        except IOError:
-            print("can't read {}".format(filename))
+        except IOError as e:
+            print("can't read {} ({})".format(filename, e))
             sys.exit(1)
 
         res = self.dsptk.install_profile_from_content(data)
