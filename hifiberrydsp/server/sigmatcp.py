@@ -334,12 +334,16 @@ class SigmaTCPHandler(BaseRequestHandler):
     @staticmethod
     def handle_write(data):
 
+        if len(data) < 14:
+            logging.error("Got incorrect write request, length < 14 bytes")
+            return None
+
         addr = int.from_bytes(data[12:14], byteorder='big')
         length = int.from_bytes(data[8:12], byteorder='big')
         if (length == 0):
             # Client might not implement length correctly and leave
             # it empty
-            length = length(data) - 14
+            length = len(data) - 14
 
         _safeload = data[1]  # TODO: use this
 
@@ -671,8 +675,11 @@ class SigmaTCPServerMain():
             alsasync = AlsaSync()
             alsasync.set_alsa_control(alsa_mixer_name)
             SigmaTCPHandler.alsasync = alsasync
+            volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
+            if volreg is not None or len(volreg) > 0:
+                reg = datatools.parse_int(volreg)
+                alsasync.set_volume_register(reg)
             alsasync.start()
-            # TODO: start sync
         else:
             logging.info("not using ALSA volume control")
             self.alsa_mixer_name = None
