@@ -80,6 +80,7 @@ class AlsaSync(Thread):
         Thread.__init__(self)
 
     def set_volume_register(self, volume_register):
+        logging.debug("Using volume register %s", volume_register)
         self.volume_register = volume_register
         # When setting a new Volume register, always update ALSA to
         # state of the DSP
@@ -193,20 +194,30 @@ class AlsaSync(Thread):
             self.update_alsa(self.dspvol)
 
     def run(self):
-        while not(self.finished):
-            if self.mixer is None:
-                logging.error(
-                    "ALSA mixer not available, aborting volume synchronisation")
-                break
+        reg_set = True
+        try:
+            while not(self.finished):
+                if self.mixer is None:
+                    logging.error(
+                        "ALSA mixer not available, aborting volume synchronisation")
+                    break
 
-            if self.volume_register is None:
-                # Voluem control register can chnge when a new program is
-                # uploaded, just go on and try again later
-                time.sleep(1)
-                continue
+                if self.volume_register is None:
+                    # Volume control register can change when a new program is
+                    # uploaded, just go on and try again later
+                    if reg_set:
+                        logging.error(
+                            "ALSA mixer not availble, volume register unknown in profile")
+                        reg_set = False
+                    time.sleep(1)
+                    continue
+                else:
+                    reg_set = True
 
-            self.check_sync()
-            time.sleep(self.pollinterval)
+                self.check_sync()
+                time.sleep(self.pollinterval)
+        except Exception as e:
+            logging.error("ALSA sync crashed: %s", e)
 
     def finish(self):
         self.finished = True

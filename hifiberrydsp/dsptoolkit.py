@@ -141,10 +141,14 @@ class DSPToolkit():
             return False
 
     def get_volume(self):
-        volctl = datatools.parse_int(
-            self.sigmatcp.request_metadata(ATTRIBUTE_VOL_CTL))
+        volctl = None
+        try:
+            volctl = datatools.parse_int(
+                self.sigmatcp.request_metadata(ATTRIBUTE_VOL_CTL))
+        except:
+            pass
 
-        if volctl:
+        if volctl is not None:
             return self.sigmatcp.read_decimal(volctl)
         else:
             logging.info("%s is undefined", ATTRIBUTE_VOL_CTL)
@@ -207,7 +211,7 @@ class DSPToolkit():
             data[0:0] = x
 
         x = list(self.sigmatcp.get_decimal_repr(0))
-        for i in range(len(coefficients), length):
+        for _i in range(len(coefficients), length):
             data[0:0] = x
 
         self.sigmatcp.write_memory(addr, data)
@@ -395,6 +399,7 @@ class CommandLine():
                     amplification2decibel(vol)))
             else:
                 print("Profile doesn't support volume control")
+                sys.exit(1)
 
     def cmd_set_limit(self):
         if len(self.args.parameters) > 0:
@@ -409,6 +414,7 @@ class CommandLine():
                     amplification2decibel(vol)))
             else:
                 print("Profile doesn't support volume control")
+                sys.exit(1)
 
     def cmd_get_volume(self):
         vol = self.dsptk.get_volume()
@@ -419,6 +425,7 @@ class CommandLine():
                 amplification2decibel(vol)))
         else:
             print("Profile doesn't support volume control")
+            sys.exit(1)
 
     def cmd_get_limit(self):
         vol = self.dsptk.get_limit()
@@ -429,6 +436,7 @@ class CommandLine():
                 amplification2decibel(vol)))
         else:
             print("Profile doesn't support volume limit")
+            sys.exit(1)
 
     def cmd_read(self, display=DISPLAY_FLOAT, loop=False, length=None):
         try:
