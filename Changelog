@@ -1,6 +1,11 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.12.2
+ - Bugfix in ALSA volume control  (did not work before deploying a new
+   profile)
+ - Better handling of incorrect write requests
+
 0.12.1 (20180720)
  - fixed a bug, "mergeparameters" was not included in 0.12 release
 
