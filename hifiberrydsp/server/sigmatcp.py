@@ -520,7 +520,11 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         data = SigmaTCPHandler.get_program_memory()
         m = hashlib.md5()
-        m.update(data)
+        try:
+            m.update(data)
+        except:
+            logging.error("Can't calculate checksum from %s", data)
+            return None
 
         logging.debug("length: %s, digest: %s", len(data), m.digest())
 
