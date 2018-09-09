@@ -518,10 +518,10 @@ class CommandLine():
             print(e)
 
     def cmd_set_rew_filters_left(self):
-        self.set_rew_filters(mode=MODE_LEFT)
+        self.cmd_rew_filters(mode=MODE_LEFT)
 
-    def cmd_set_rew_filters_right(self):
-        self.set_rew_filters(mode=MODE_RIGHT)
+    def cmd_rew_filters_right(self):
+        self.cmd_rew_filters(mode=MODE_RIGHT)
 
     def cmd_set_fir_filters(self, mode=MODE_BOTH):
         if len(self.args.parameters) > 0:
