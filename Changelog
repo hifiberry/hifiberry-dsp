@@ -1,6 +1,9 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.12.3
+ - Bugfix set-rew-filters
+
 0.12.2 (20180904)
  - Bugfix in ALSA volume control  (did not work before deploying a new
    profile)
