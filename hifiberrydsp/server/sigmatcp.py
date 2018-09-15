@@ -312,7 +312,11 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def get_meta(attribute):
-        xml = SigmaTCPHandler.get_checked_xml()
+        try:
+            xml = SigmaTCPHandler.get_checked_xml()
+        except:
+            return None
+
         if xml is None:
             return None
         else:
@@ -680,7 +684,7 @@ class SigmaTCPServerMain():
             alsasync.set_alsa_control(alsa_mixer_name)
             SigmaTCPHandler.alsasync = alsasync
             volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
-            if volreg is not None or len(volreg) > 0:
+            if volreg is not None and len(volreg) > 0:
                 reg = datatools.parse_int(volreg)
                 alsasync.set_volume_register(reg)
             alsasync.start()
