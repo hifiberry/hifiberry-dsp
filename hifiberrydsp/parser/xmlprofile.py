@@ -45,6 +45,8 @@ ATTRIBUTE_SPDIF_SOURCE = "spdifSource"
 ATTRIBUTE_SAMPLERATE = "samplerate"
 ATTRIBUTE_CHANNEL_SELECT = "channelSelectRegister"
 ATTRIBUTE_IIR_TEMPLATE = "IIR_%LR%%CHANNEL%"
+ATTRIBUTE_AUTOMUTE = "automute"
+ATTRIBUTE_AUTOMUTE_LEVEL = "automuteLevel"
 
 # A list of all metadata attributes that refer to registers
 REGISTER_ATTRIBUTES = [ATTRIBUTE_CHANNEL_SELECT,
@@ -57,7 +59,9 @@ REGISTER_ATTRIBUTES = [ATTRIBUTE_CHANNEL_SELECT,
                        ATTRIBUTE_VOL_CTL,
                        ATTRIBUTE_VOL_LIMIT,
                        ATTRIBUTE_INVERT_MUTE,
-                       ATTRIBUTE_SPDIF_SOURCE]
+                       ATTRIBUTE_SPDIF_SOURCE,
+                       ATTRIBUTE_AUTOMUTE,
+                       ATTRIBUTE_AUTOMUTE_LEVEL]
 
 MEMTYPE = {
     0: "DM0",
