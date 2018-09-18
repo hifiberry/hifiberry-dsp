@@ -59,6 +59,11 @@ recommended to use a pre-configured profile as the 4-way profile
 dsptoolkit install-profile https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/sample_files/xml/4way-iir.xml 
 ```
 
+If you're using the DAC+ DSP, you should use another profile
+```
+dsptoolkit install-profile https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/sample_files/xml/dacdsp-default.xml
+```
+
 If you want to create your own DSP profiles, have a look at our [guide](dspprofiles.md).
 
 ## Install REW
