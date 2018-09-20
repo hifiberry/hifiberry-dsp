@@ -280,13 +280,18 @@ class Biquad():
                     numc.append(float(c))
 
                 if len(numc) == 5:
-                    return Biquad(1, c[0], c[1], c[2], c[3], c[4])
+                    return Biquad(1, numc[0], numc[1], numc[2],
+                                  numc[3], numc[4],
+                                  "biquad from coefficients")
                 elif len(numc) == 6:
-                    return Biquad(c[0], c[1], c[2], c[3], c[4], c[5])
+                    return Biquad(numc[0], numc[1], numc[2], numc[3],
+                                  numc[4], numc[5],
+                                  "biquad from coefficients")
+
                 else:
                     logging.error("5 or 6 biquad coefficients expected")
-            except:
-                logging.error("can't parse biquad filter")
+            except Exception as e:
+                logging.error("can't parse biquad filter (%s)", e)
                 return None
         elif definition.startswith("pass"):
             return Biquad.pass_filter()
