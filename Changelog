@@ -1,6 +1,9 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+Next
+ - added delay parameters to dsptoolkit to also use delay lines
+
 0.13
  - added automute settings to DSP profiles
  - Bugfix REW filters right

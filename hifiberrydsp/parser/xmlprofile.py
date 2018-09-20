@@ -47,6 +47,7 @@ ATTRIBUTE_CHANNEL_SELECT = "channelSelectRegister"
 ATTRIBUTE_IIR_TEMPLATE = "IIR_%LR%%CHANNEL%"
 ATTRIBUTE_AUTOMUTE = "automute"
 ATTRIBUTE_AUTOMUTE_LEVEL = "automuteLevel"
+ATTRIBUTE_DELAY_TEMPLATE = "delay%NUM%"
 
 # A list of all metadata attributes that refer to registers
 REGISTER_ATTRIBUTES = [ATTRIBUTE_CHANNEL_SELECT,
