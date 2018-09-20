@@ -11,10 +11,10 @@ DEFAULTPROFILE=4way-default.xml
 PATH=$BASEDIR/bin:$PATH
 PYTHONPATH=$BASEDIR:$PYTHONPATH
 
-for f in dacdsp-default.xml dacdsp-noautomute.xml; do 
+for f in dacdsp-default.xml dacdsp-noautomute.xml beocreate-default.xml; do 
  cp $DEFAULTPROFILE $f
 done
 
 dsptoolkit store-settings ../settings/invert-mute.txt dacdsp-default.xml
 dsptoolkit store-settings ../settings/no_automute.txt dacdsp-noautomute.xml
-
+dsptoolkit store-settings ../settings/beocreate-default.txt beocreate-default.xml
