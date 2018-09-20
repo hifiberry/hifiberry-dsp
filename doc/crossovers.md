@@ -164,6 +164,21 @@ IIR_R4: hp: 2000Hz, vol:-3dB, eq:5000Hz,2,+2dB
 Note that you will need measurement equipment to correctly design these
 filters.
 
+### Delays for specific channels 
+
+It might be necessary to delay a channel a bit (often the tweeter). If the profile
+supports delays, you can configure them also with settings:
+
+```
+delay1: 100
+```
+
+Note that the delay is defined in samples. At 48kHz the lengths of a sample is roughly 
+0.02ms. So a delay 100 means approximately 2ms delay. If your profile is using a 
+different sample rate, you need to do the calculations according to your sample rate
+(which is the internal DSP sample rate, NOT the sample rate of music you want to  
+play back).
+
 ## Write the settings to the EEPROM
 
 If your crossover is working as expected, you should save it to the 
