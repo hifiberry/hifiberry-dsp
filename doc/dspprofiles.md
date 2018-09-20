@@ -27,7 +27,10 @@ dsptoolkit:
  right channels
 - IIR_L1,IIR_L2,IIR_L3,IIR_L4, IIR_R1,IIR_R2,IIR_R3,IIR_R4 - 
   a mixer/equalisation matrix to implement crossovers
+- Delay1 - Delay9
+  up to 9 delays for individual channels
   ![crossover matrix](img/crossover-matrix.png)
+
   
 It is recommended to implement at least the Volume and VolumeLimit 
 controls. 
@@ -110,7 +113,14 @@ The first step is to export more data from SigmaStudio. Select
 
 ![SigmaStudio Export system files](img/ss-export-system.png)
 
-This will create a lot of files, but for the metadata we'll only need 
+This will create a lot of files. 
+Note if you used the project filename also for the XML file, exporting 
+the system files will overwrite this file, as it will also create a 
+projectname.xml that will overwrite the profile that you've just created.
+Therefore you should rename the profile file before exporting the system
+files.
+
+The only file that is really needed for the metadata is 
 the .params file. This file contains a description of all controls,
 their addresses in memory and their settings.
 
