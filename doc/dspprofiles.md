@@ -27,9 +27,10 @@ dsptoolkit:
  right channels
 - IIR_L1,IIR_L2,IIR_L3,IIR_L4, IIR_R1,IIR_R2,IIR_R3,IIR_R4 - 
   a mixer/equalisation matrix to implement crossovers
-  ![crossover matrix](img/crossover-matrix.png)
 - Delay1 - Delay9
   up to 9 delays for individual channels
+  ![crossover matrix](img/crossover-matrix.png)
+
   
 It is recommended to implement at least the Volume and VolumeLimit 
 controls. 
