@@ -24,6 +24,7 @@ by Robert Bristow-Johnson  <rbj@audioimagination.com>
 '''
 
 import math
+import logging
 
 from hifiberrydsp.datatools import parse_frequency, parse_decibel
 
@@ -260,6 +261,7 @@ class Biquad():
                 dbgain = parse_decibel(dbgain)
                 return Biquad.peaking_eq(f, q, dbgain, fs)
             except:
+                logging.error("can't parse ea filter")
                 return None
         elif definition.startswith("vol:"):
             try:
@@ -267,13 +269,31 @@ class Biquad():
                 db = parse_decibel(db)
                 return Biquad.volume(db)
             except:
+                logging.error("can't parse vol filter")
+                return None
+        elif definition.startswith("coeff:"):
+            try:
+                coeffs = definition.split(":")
+                coeffs = coeffs[1:]
+                numc = []
+                for c in coeffs:
+                    numc.append(float(c))
+
+                if len(numc) == 5:
+                    return Biquad(1, c[0], c[1], c[2], c[3], c[4])
+                elif len(numc) == 6:
+                    return Biquad(c[0], c[1], c[2], c[3], c[4], c[5])
+                else:
+                    logging.error("5 or 6 biquad coefficients expected")
+            except:
+                logging.error("can't parse biquad filter")
                 return None
         elif definition.startswith("pass"):
             return Biquad.pass_filter()
         elif definition == "mute" or definition == "null":
             return Biquad.mute()
         else:
-            print("unknown", definition)
+            logging.error("can't parse %s filter", definition)
             return None
 
 
