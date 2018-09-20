@@ -30,7 +30,7 @@ from hifiberrydsp.parser.xmlprofile import ATTRIBUTE_BALANCE, \
     ATTRIBUTE_IIR_TEMPLATE, ATTRIBUTE_MUTE_REG, \
     ATTRIBUTE_CHANNEL_SELECT, ATTRIBUTE_INVERT_MUTE, \
     ATTRIBUTE_SPDIF_SOURCE, ATTRIBUTE_AUTOMUTE,  \
-    ATTRIBUTE_AUTOMUTE_LEVEL, \
+    ATTRIBUTE_AUTOMUTE_LEVEL, ATTRIBUTE_DELAY_TEMPLATE, \
     XmlProfile
 
 
@@ -56,6 +56,11 @@ for lr in ["L", "R"]:
         attribute = ATTRIBUTE_IIR_TEMPLATE.replace(
             "%LR%", lr).replace("%CHANNEL%", str(channel))
         PARAMETER_MAPPING[name] = attribute
+
+for num in range(1, 10):
+    name = "delay{}".format(num)
+    attribute = ATTRIBUTE_DELAY_TEMPLATE.replace("%NUM%", str(num))
+    PARAMETER_MAPPING[name] = attribute
 
 
 class SigmastudioParamsFile():
