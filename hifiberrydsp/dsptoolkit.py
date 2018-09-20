@@ -779,8 +779,8 @@ class CommandLine():
                 print("can't write %s", xmlfile)
                 sys.exit(1)
 
-            print("Updated {}, backuup copy {}".format(xmlfile,
-                                                       backupfile))
+            print("Updated {}, backup copy {}".format(xmlfile,
+                                                      backupfile))
 
     def store_attributes(self, attributes):
         '''
