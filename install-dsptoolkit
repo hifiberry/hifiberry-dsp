@@ -7,7 +7,7 @@ for i in sigmatcp; do
  sudo systemctl disable $i
 done
 
-mkdir -p /var/lib/hifiberry
+sudo mkdir -p /var/lib/hifiberry
 
 LOC=`which dsptoolkit`
 mkdir ~/.dsptoolkit
