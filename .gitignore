@@ -1,4 +1,4 @@
-.settings
+devenv.sh.settings
 *.pyc
 .project
 .pydevproject
