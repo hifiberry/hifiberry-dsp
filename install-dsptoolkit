@@ -1,5 +1,5 @@
 #!/bin/sh
-sudo apt-get install -y python3-pip
+sudo apt-get install -y python3-pip libxslt1-dev libxml2-dev zlib1g-dev
 sudo pip3 install --upgrade hifiberrydsp
 
 for i in sigmatcp; do
@@ -7,7 +7,7 @@ for i in sigmatcp; do
  sudo systemctl disable $i
 done
 
-mkdir -p /var/lib/hifiberry
+sudo mkdir -p /var/lib/hifiberry
 
 LOC=`which dsptoolkit`
 mkdir ~/.dsptoolkit
