@@ -47,10 +47,7 @@ state.sndrpihifiberry {
    type INTEGER
    count 2
    range '0 - 255'
-   dbmin -60
-   dbmax 0
-   dbvalue.0 -60
-   dbvalue.1 -60
+   tlv '0000000100000008ffffe89000000017'
   }
  }
 }
@@ -75,6 +72,7 @@ class AlsaSync(Thread):
         self.dspdata = None
         self.dspvol = None
         self.alsavol = None
+        self.softvol = None
         self.mixername = None
 
         Thread.__init__(self)
@@ -108,13 +106,19 @@ class AlsaSync(Thread):
 
         self.mixername = alsa_control
 
-    def update_alsa(self, value):
+    def update_alsa(self, value, mixer=None):
         if value is None:
             return
 
         from alsaaudio import MIXER_CHANNEL_ALL
         vol = int(value)
-        self.mixer.setvolume(vol, MIXER_CHANNEL_ALL)
+
+        if mixer is None:
+            mixer = self.mixer
+
+        if mixer is not None:
+            mixer.setvolume(vol, MIXER_CHANNEL_ALL)
+
         self.alsavol = vol
 
     def update_dsp(self, value):
