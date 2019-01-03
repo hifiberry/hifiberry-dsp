@@ -10,7 +10,7 @@ done
 sudo mkdir -p /var/lib/hifiberry
 
 LOC=`which dsptoolkit`
-mkdir ~/.dsptoolkit
+sudo mkdir ~/.dsptoolkit
 
 # Create systemd config for the TCP server
 LOC=`which sigmatcpserver`
