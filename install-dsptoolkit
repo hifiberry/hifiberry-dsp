@@ -37,3 +37,5 @@ for i in sigmatcp; do
  sudo systemctl enable $i
 done
 
+echo "dtparam=spi=on" >> /boot/config.txt
+
