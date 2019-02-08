@@ -1,7 +1,10 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
-0.15
+0.16 (20190208)
+ - added more REW filters
+
+0.15 (20190208)
  - added more VolumeLimit attributes
  - added mute attributes for each input channel
  - dsptoolkit runs withour zeroconf
