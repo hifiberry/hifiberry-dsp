@@ -29,7 +29,12 @@ import sys
 import urllib.request
 import socket
 
-from zeroconf import Zeroconf, ServiceBrowser
+try:
+    from zeroconf import Zeroconf, ServiceBrowser
+    zeroconf_enabled = True
+except:
+    zeroconf_enabled = False
+
 
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.client.sigmatcp import SigmaTCPClient
@@ -671,14 +676,17 @@ class CommandLine():
             print("Checksums do not match {} != {}".format(cs1, cs2))
 
     def cmd_servers(self):
-        zeroconf = Zeroconf()
-        listener = ZeroConfListener()
-        ServiceBrowser(zeroconf, ZEROCONF_TYPE, listener)
-        print("Looking for devices")
-        time.sleep(5)
-        zeroconf.close()
-        for name, info in listener.devices.items():
-            print("{}: {}".format(name, info))
+        if zeroconf_enabled:
+            zeroconf = Zeroconf()
+            listener = ZeroConfListener()
+            ServiceBrowser(zeroconf, ZEROCONF_TYPE, listener)
+            print("Looking for devices")
+            time.sleep(5)
+            zeroconf.close()
+            for name, info in listener.devices.items():
+                print("{}: {}".format(name, info))
+        else:
+            print("Zeroconf library not available")
 
     def cmd_store_settings(self):
 
