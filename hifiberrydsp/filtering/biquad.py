@@ -151,7 +151,7 @@ class Biquad():
     def low_shelf(self, f0, q, dbgain, fs):
         w0 = Biquad.omega(f0, fs)
         alpha = Biquad.alpha(w0, q)
-        a = self._a(dbgain)
+        a = Biquad.a(dbgain)
         b0 = a * ((a + 1) - (a - 1) * math.cos(w0) + 2 * math.sqrt(a) * alpha)
         b1 = 2 * a * ((a - 1) - (a + 1) * math.cos(w0))
         b2 = a * ((a + 1) - (a - 1) * math.cos(w0) - 2 * math.sqrt(a) * alpha)
