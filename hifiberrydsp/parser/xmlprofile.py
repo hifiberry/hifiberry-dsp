@@ -35,6 +35,9 @@ ATTRIBUTE_VOL_LIMIT = "volumeLimitRegister"
 ATTRIBUTE_VOL_LIMIT_PI = "volumeLimitPiRegister"
 ATTRIBUTE_VOL_LIMIT_SPDIF = "volumeLimitSPDIFRegister"
 ATTRIBUTE_VOL_LIMIT_AUX = "volumeLimitAuxRegister"
+ATTRIBUTE_MUTE_PI = "mutePiRegister"
+ATTRIBUTE_MUTE_SPDIF = "muteSPDIFRegister"
+ATTRIBUTE_MUTE_AUX = "muteAuxRegister"
 ATTRIBUTE_BALANCE = "balanceRegister"
 ATTRIBUTE_VOL_RANGE = "volumeControlRangeDb"
 ATTRIBUTE_IIR_FILTER_LEFT = "IIR_L"
@@ -65,7 +68,13 @@ REGISTER_ATTRIBUTES = [ATTRIBUTE_CHANNEL_SELECT,
                        ATTRIBUTE_INVERT_MUTE,
                        ATTRIBUTE_SPDIF_SOURCE,
                        ATTRIBUTE_AUTOMUTE,
-                       ATTRIBUTE_AUTOMUTE_LEVEL]
+                       ATTRIBUTE_AUTOMUTE_LEVEL,
+                       ATTRIBUTE_VOL_LIMIT_PI,
+                       ATTRIBUTE_VOL_LIMIT_SPDIF,
+                       ATTRIBUTE_VOL_LIMIT_AUX,
+                       ATTRIBUTE_MUTE_PI,
+                       ATTRIBUTE_MUTE_SPDIF,
+                       ATTRIBUTE_MUTE_AUX, ]
 
 MEMTYPE = {
     0: "DM0",
