@@ -20,8 +20,10 @@ the command won't have any effect.
 * set-volume volume
 
   set the volume. Volume values can be defined in real values (0-1), 
-  percent (0% to 100%) or decibels (use need to use negative values to 
+  percent (0% to 100%) or decibels (you need to use negative values to 
   reduce the volume)
+  For negative db values, you need to prefix these with --, e.g.
+    dsptoolkit set-volume -- -3db
 
 * get-volume
 
@@ -33,6 +35,8 @@ the command won't have any effect.
   idea of this setting is having a volume control that can be changed 
   between 0 and 100% (or -inf dB to 0dB) and the limit setting to set 
   the maximum volume of the system.
+  For negative db values, you need to prefix these with --, e.g.
+    dsptoolkit set-limit -- -3db
 
 * set-rew-filters|set-rew-filters-left|set-rew-filters-right filename
 
