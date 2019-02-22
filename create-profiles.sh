@@ -7,7 +7,7 @@ cd `dirname $0`
 BASEDIR=`pwd`
 cd sample_files/xml
 
-DEFAULTPROFILE=4way-default.xml
+DEFAULTPROFILE=4way-iir-delay-mixer.xml
 PATH=$BASEDIR/bin:$PATH
 PYTHONPATH=$BASEDIR:$PYTHONPATH
 
