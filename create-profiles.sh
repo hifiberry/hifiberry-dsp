@@ -18,3 +18,7 @@ done
 dsptoolkit store-settings ../settings/invert-mute.txt dacdsp-default.xml
 dsptoolkit store-settings ../settings/no_automute.txt dacdsp-noautomute.xml
 dsptoolkit store-settings ../settings/beocreate-default.txt beocreate-default.xml
+
+dsptoolkit store-settings ../settings/full-volume.txt dacdsp-default.xml
+dsptoolkit store-settings ../settings/full-volume.txt dacdsp-noautomute.xml
+
