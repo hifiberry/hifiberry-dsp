@@ -1,1 +1,1 @@
-automuteLevel: 0.00
+automute: 0
