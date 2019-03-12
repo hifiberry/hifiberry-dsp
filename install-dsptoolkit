@@ -1,5 +1,6 @@
 #!/bin/sh
-sudo apt-get install -y python3-pip libxslt1-dev libxml2-dev zlib1g-dev
+sudo apt-get update
+sudo apt-get install -y python3-pip libxslt1-dev libxml2-dev zlib1g-dev python3-lxml python-lxml libxml2-dev libxslt-dev python-dev
 sudo pip3 install --upgrade hifiberrydsp
 
 for i in sigmatcp; do
