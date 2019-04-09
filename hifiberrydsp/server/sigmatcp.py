@@ -41,12 +41,16 @@ from hifiberrydsp.parser.xmlprofile import XmlProfile, ATTRIBUTE_VOL_CTL
 from hifiberrydsp.alsa.alsasync import AlsaSync
 from hifiberrydsp import datatools
 
+
 from hifiberrydsp.server.constants import \
     COMMAND_READ, COMMAND_READRESPONSE, COMMAND_WRITE, \
     COMMAND_EEPROM_FILE, COMMAND_CHECKSUM, COMMAND_CHECKSUM_RESPONSE, \
     COMMAND_WRITE_EEPROM_CONTENT, COMMAND_XML, COMMAND_XML_RESPONSE, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, COMMAND_GET_META, \
     COMMAND_META_RESPONSE, COMMAND_PROGMEM, COMMAND_PROGMEM_RESPONSE, \
+    COMMAND_DATAMEM, COMMAND_DATAMEM_RESPONSE, \
+    COMMAND_GPIO, COMMAND_GPIO_RESPONSE, \
+    GPIO_READ, GPIO_WRITE, GPIO_SELFBOOT, \
     HEADER_SIZE, \
     DEFAULT_PORT, \
     ZEROCONF_TYPE
@@ -208,6 +212,25 @@ class SigmaTCPHandler(BaseRequestHandler):
 
                     result = self._response_packet(
                         COMMAND_PROGMEM_RESPONSE, 0, len(dump)) + \
+                        dump.encode('ascii')
+
+                elif data[0] == COMMAND_GPIO:
+                    logging.error("GPIO command not yet implemented")
+
+                elif data[0] == COMMAND_DATAMEM:
+                    try:
+                        data = self.get_data_memory()
+                    except IOError:
+                        data = []  # empty response
+
+                    # format program memory dump
+                    dump = ""
+                    for i in range(0, len(data), 4):
+                        dump += "{:02X}{:02X}{:02X}{:02X}\n".format(
+                            data[i], data[i + 1], data[i + 2], data[i + 3])
+
+                    result = self._response_packet(
+                        COMMAND_DATAMEM_RESPONSE, 0, len(dump)) + \
                         dump.encode('ascii')
 
                 elif data[0] == COMMAND_GET_META:
@@ -391,15 +414,17 @@ class SigmaTCPHandler(BaseRequestHandler):
                     logging.debug("writeXbytes %s %s", addr, len(data))
                     SigmaTCPHandler.spi.write(addr, data)
 
-#                    if ("Page" in paramname):
-#                        logging.debug("Page write, delaying 100ms")
-#                        time.sleep(0.1)
-
                     # Sleep after erase operations
                     if ("g_Erase" in paramname):
                         logging.debug(
                             "found erase command, waiting 10 seconds to finish")
                         time.sleep(10)
+
+                    # Delay after a page write
+                    if ("Page_" in paramname):
+                        logging.debug(
+                            "found page write command, waiting 0.5 seconds to finish")
+                        time.sleep(0.5)
 
                 if instr == "delay":
                     logging.debug("delay")
@@ -503,9 +528,18 @@ class SigmaTCPHandler(BaseRequestHandler):
         end_index = memory.find(dsp.PROGRAM_END_SIGNATURE)
 
         if end_index < 0:
-            logging.error("couldn't find program end signature, "
-                          "something is wrong with the DSP program memory")
-            return None
+            memsum = 0
+            for i in memory:
+                memsum = memsum + i
+
+            if (memsum > 0):
+                logging.error("couldn't find program end signature," +
+                              " using full program memory")
+                end_index = dsp.PROGRAM_LENGTH - dsp.WORD_LENGTH
+            else:
+                logging.error("SPI returned only zeros - communication"
+                              "error")
+                return None
         else:
             end_index = end_index + len(dsp.PROGRAM_END_SIGNATURE)
 
@@ -514,6 +548,20 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         # logging.debug("%s", memory[0:end_index])
         return memory[0:end_index]
+
+    @staticmethod
+    def get_data_memory():
+        '''
+        Calculate a checksum of the program memory of the DSP
+        '''
+        dsp = SigmaTCPHandler.dsp
+        memory = SigmaTCPHandler.get_memory_block(dsp.DATA_ADDR,
+                                                  dsp.DATA_LENGTH)
+        logging.debug("Data lengths = %s words",
+                      dsp.DATA_LENGTH / dsp.WORD_LENGTH)
+
+        # logging.debug("%s", memory[0:end_index])
+        return memory[0:dsp.DATA_LENGTH]
 
     @staticmethod
     def program_checksum(cached=True):
