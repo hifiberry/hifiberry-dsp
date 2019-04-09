@@ -32,7 +32,7 @@ from hifiberrydsp import datatools
 from hifiberrydsp.server.constants import \
     COMMAND_READ, COMMAND_WRITE, COMMAND_EEPROM_FILE, COMMAND_CHECKSUM, \
     COMMAND_WRITE_EEPROM_CONTENT, COMMAND_GET_META, \
-    COMMAND_META_RESPONSE, \
+    COMMAND_META_RESPONSE, COMMAND_GPIO, COMMAND_GPIO_RESPONSE, \
     DEFAULT_PORT, \
     HEADER_SIZE, \
     SigmaTCPException
@@ -85,6 +85,20 @@ class SigmaTCPClient():
         packet = self.generic_request(COMMAND_CHECKSUM)
         self.socket.send(packet)
         data = self.socket.recv(HEADER_SIZE + 16)
+        # remove the header
+        data = data[HEADER_SIZE:]
+        return data
+
+    def readwrite_gpio(self, rw, pin, value):
+        if self.socket is None:
+            if self.autoconnect:
+                self.connect()
+            else:
+                raise SigmaTCPException("Not connected")
+
+        packet = self.gpio_request(rw, pin, value)
+        self.socket.send(packet)
+        data = self.socket.recv(HEADER_SIZE + 1)
         # remove the header
         data = data[HEADER_SIZE:]
         return data
@@ -195,6 +209,18 @@ class SigmaTCPClient():
         packet[3] = (length >> 8) & 0xff
         packet[4] = length & 0xff
         return packet + attribute
+
+    @staticmethod
+    def gpio_request(readwrite, pin, value):
+        length = 17
+        packet = bytearray(length)
+        packet[0] = COMMAND_GPIO
+        packet[3] = (length >> 8) & 0xff
+        packet[4] = length & 0xff
+        packet[14] = readwrite
+        packet[15] = pin
+        packet[16] = value
+        return packet
 
     @staticmethod
     def write_request(addr, data):
