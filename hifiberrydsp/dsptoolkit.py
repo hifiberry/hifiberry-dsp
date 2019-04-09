@@ -51,6 +51,9 @@ from hifiberrydsp.parser.xmlprofile import  \
 from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     COMMAND_PROGMEM_RESPONSE, COMMAND_XML, COMMAND_XML_RESPONSE, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
+    COMMAND_DATAMEM, COMMAND_DATAMEM_RESPONSE, \
+    COMMAND_GPIO, COMMAND_GPIO_RESPONSE, \
+    GPIO_READ, GPIO_WRITE, GPIO_RESET, GPIO_SELFBOOT, \
     ZEROCONF_TYPE
 from hifiberrydsp.parser.settings import SettingsFile
 
@@ -427,6 +430,8 @@ class CommandLine():
             "store-filters": self.cmd_store_filters,
             "store": self.cmd_store,
             "version": self.cmd_version,
+            "get-memory": self.cmd_get_memory,
+            "selfboot": self.cmd_selfboot,
         }
         self.dsptk = DSPToolkit()
 
@@ -642,6 +647,11 @@ class CommandLine():
                                          COMMAND_PROGMEM_RESPONSE)
         print(mem.decode("utf-8", errors="replace"))
 
+    def cmd_get_Data(self):
+        mem = self.dsptk.generic_request(COMMAND_DATAMEM,
+                                         COMMAND_DATAMEM_RESPONSE)
+        print(mem.decode("utf-8", errors="replace"))
+
     def cmd_get_meta(self):
         if len(self.args.parameters) > 0:
             attribute = self.args.parameters[0]
@@ -743,6 +753,19 @@ class CommandLine():
         else:
             print("Checksums do not match {} != {}".format(cs1, cs2))
 
+    def cmd_selfboot(self):
+        val = 0
+        if len(self.args.parameters) > 0:
+            val = parse_int(self.args.parameters[0])
+            rw = GPIO_WRITE
+        else:
+            rw = GPIO_READ
+
+        logging.error("dsptk selfboot %s %s", val, rw)
+
+        res = self.dsptk.sigmatcp.readwrite_gpio(rw, GPIO_SELFBOOT, val)
+        print(res)
+
     def cmd_servers(self):
         if zeroconf_enabled:
             zeroconf = Zeroconf()
@@ -800,6 +823,10 @@ class CommandLine():
     def cmd_store(self):
         self.store_attributes(REGISTER_ATTRIBUTES)
         print("Stored filter settings")
+
+    def cmd_get_memory(self):
+        print("Not yet implemented")
+        sys.exit(1)
 
     def read_register_and_xml(self, settingsfile, xmlfile):
         if xmlfile is not None:
