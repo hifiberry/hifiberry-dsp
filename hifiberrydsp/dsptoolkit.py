@@ -431,7 +431,7 @@ class CommandLine():
             "store": self.cmd_store,
             "version": self.cmd_version,
             "get-memory": self.cmd_get_memory,
-            "selfboot": self.cmd_selfboot,
+            #            "selfboot": self.cmd_selfboot,
         }
         self.dsptk = DSPToolkit()
 
