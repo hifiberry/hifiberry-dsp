@@ -1,7 +1,8 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
-0.17 (not yet released)
+0.17 (20190409)
+ - improved stability when writing to EEPROM
  - added more metadata records
 
 0.16 (20190208)
