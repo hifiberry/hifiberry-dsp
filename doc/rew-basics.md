@@ -249,7 +249,7 @@ Not happy with the results and you want to start with a new measurement
 and another optimisation? You can remove all filter settings 
 using the DSP toolkit
 
-```dsptoolkit clear-filters```
+```dsptoolkit remove-iir-filters```
 
 ## Tips & tricks
 
