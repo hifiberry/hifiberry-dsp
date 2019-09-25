@@ -24,10 +24,12 @@ SOFTWARE.
 import logging
 import argparse
 import os
+import signal
 import time
 import sys
 import urllib.request
 import socket
+import threading
 
 try:
     from zeroconf import Zeroconf, ServiceBrowser
@@ -72,6 +74,8 @@ DISPLAY_BIN = 2
 
 GLOBAL_REGISTER_FILE = "/etc/dspparameter.dat"
 GLOBAL_PROGRAM_FILE = "/etc/dspprogram.xml"
+
+TIMEOUT = 10
 
 
 class REW():
@@ -928,6 +932,11 @@ class CommandLine():
                             help='hostname or IP address of the server to connect to',
                             required=False,
                             default="127.0.0.1")
+        parser.add_argument('--timeout',
+                            help='timeout in seconds',
+                            type=int,
+                            required=False,
+                            default=TIMEOUT)
         parser.add_argument('command',
                             choices=sorted(self.command_map.keys()))
         parser.add_argument('parameters', nargs='*')
@@ -937,7 +946,34 @@ class CommandLine():
         self.dsptk.set_ip(self.args.host)
 
         # Run the command
-        self.command_map[self.args.command]()
+        cmd = self.args.command
+        if not "loop" in cmd:
+            timer = TimeoutThread(self.args.timeout)
+            timer.start()
+
+        self.command_map[cmd]()
+        timer.finish()
+
+
+class TimeoutThread(threading.Thread):
+
+    def __init__(self, timeout):
+        threading.Thread.__init__(self)
+        self.loopdelay = 0.2
+        self.timeout = timeout
+        self.finished = False
+
+    def run(self):
+        while not self.finished:
+            time.sleep(self.loopdelay)
+            self.timeout = self.timeout - self.loopdelay
+
+            if self.timeout <= 0:
+                print("timeout waiting from response from server")
+                os.kill(os.getpid(), signal.SIGTERM)
+
+    def finish(self):
+        self.finished = True
 
 
 if __name__ == "__main__":
