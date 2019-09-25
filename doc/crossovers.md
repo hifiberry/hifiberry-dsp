@@ -158,7 +158,7 @@ So you might add some filters to increase or decrease the volume at
 a specific frequency:
 
 ```
-IIR_R4: hp: 2000Hz, vol:-3dB, eq:5000Hz,2,+2dB
+IIR_R4: hp: 2000Hz, vol:-3dB, eq:5000Hz:2:+2dB
 ```
 
 Note that you will need measurement equipment to correctly design these
