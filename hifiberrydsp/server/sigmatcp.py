@@ -41,7 +41,6 @@ from hifiberrydsp.parser.xmlprofile import XmlProfile, ATTRIBUTE_VOL_CTL
 from hifiberrydsp.alsa.alsasync import AlsaSync
 from hifiberrydsp import datatools
 
-
 from hifiberrydsp.server.constants import \
     COMMAND_READ, COMMAND_READRESPONSE, COMMAND_WRITE, \
     COMMAND_EEPROM_FILE, COMMAND_CHECKSUM, COMMAND_CHECKSUM_RESPONSE, \
@@ -748,7 +747,14 @@ class SigmaTCPServerMain():
                 'vendor': 'HiFiBerry',
                 'version': hifiberrydsp.__version__}
         hostname = socket.gethostname()
-        ip = socket.gethostbyname(hostname)
+        try:
+            ip = socket.gethostbyname(hostname)
+        except Exception:
+            logging.error("can't get IP for hostname %s, "
+                          "not initialising Zeroconf",
+                          hostname)
+            return
+
         self.zeroconf_info = ServiceInfo(ZEROCONF_TYPE,
                                          "{}.{}".format(
                                              hostname, ZEROCONF_TYPE),
@@ -775,7 +781,13 @@ class SigmaTCPServerMain():
                 logging.info("no saved data found")
 
         logging.info("Announcing via zeroconf")
-        self.announce_zeroconf()
+        try:
+            self.announce_zeroconf()
+        except Exception as e:
+            logging.debug("Exception while initialising Zeroconf")
+            logging.exception(e)
+
+        logging.debug("done")
 
         logging.info("Starting TCP server")
         try:
