@@ -30,7 +30,7 @@ from hifiberrydsp.parser.xmlprofile import ATTRIBUTE_BALANCE, \
     ATTRIBUTE_VOL_LIMIT_PI, ATTRIBUTE_VOL_LIMIT_SPDIF, \
     ATTRIBUTE_VOL_LIMIT_AUX, \
     ATTRIBUTE_MUTE_PI, ATTRIBUTE_MUTE_SPDIF, \
-    ATTRIBUTE_MUTE_AUX, \
+    ATTRIBUTE_MUTE_AUX, ATTRIBUTE_SPDIF_ENABLE, \
     ATTRIBUTE_IIR_TEMPLATE, ATTRIBUTE_MUTE_REG, \
     ATTRIBUTE_CHANNEL_SELECT, ATTRIBUTE_INVERT_MUTE, \
     ATTRIBUTE_SPDIF_SOURCE, ATTRIBUTE_AUTOMUTE, ATTRIBUTE_UNMUTE_DELAY, \
@@ -58,24 +58,25 @@ PARAMETER_MAPPING = {
     "mutepi": ATTRIBUTE_MUTE_PI,
     "mutespdif": ATTRIBUTE_MUTE_SPDIF,
     "muteaux": ATTRIBUTE_MUTE_AUX,
+    "enableSPDIF": ATTRIBUTE_SPDIF_ENABLE,
 }
 
 for lr in ["L", "R"]:
-    for channel in range( 1, 5 ):
-        name = "iir_{}{}".format( lr.lower(), channel )
-        attribute = ATTRIBUTE_IIR_TEMPLATE.replace( 
-            "%LR%", lr ).replace( "%CHANNEL%", str( channel ) )
+    for channel in range(1, 5):
+        name = "iir_{}{}".format(lr.lower(), channel)
+        attribute = ATTRIBUTE_IIR_TEMPLATE.replace(
+            "%LR%", lr).replace("%CHANNEL%", str(channel))
         PARAMETER_MAPPING[name] = attribute
 
-for num in range( 1, 10 ):
-    name = "delay{}".format( num )
-    attribute = ATTRIBUTE_DELAY_TEMPLATE.replace( "%NUM%", str( num ) )
+for num in range(1, 10):
+    name = "delay{}".format(num)
+    attribute = ATTRIBUTE_DELAY_TEMPLATE.replace("%NUM%", str(num))
     PARAMETER_MAPPING[name] = attribute
 
 
 class SigmastudioParamsFile():
 
-    def __init__( self, filename ):
+    def __init__(self, filename):
         self.parameter_start_address = {}
         self.parameter_end_address = {}
 
@@ -84,10 +85,10 @@ class SigmastudioParamsFile():
         plen = 0
         pdata = False
 
-        with open( filename ) as params:
+        with open(filename) as params:
             for line in params:
                 try:
-                    name, value = line.split( "=" )
+                    name, value = line.split("=")
                     name = name.strip().lower()
                     value = value.strip().lower()
 
@@ -98,15 +99,15 @@ class SigmastudioParamsFile():
                         paramname = value
 
                     if name == "parameter address":
-                        address = int( value )
+                        address = int(value)
 
                 except ValueError:
 
-                    if line.lower().startswith( "parameter data :" ):
+                    if line.lower().startswith("parameter data :"):
                         pdata = True
 
                     if line.strip() == "" and cellname is not None:
-                        self.process_cell( cellname, paramname, address, plen )
+                        self.process_cell(cellname, paramname, address, plen)
                         cellname = None
                         paramname = None
                         address = None
@@ -115,22 +116,22 @@ class SigmastudioParamsFile():
 
                     else:
                         if pdata:
-                            if line.startswith( "0x" ):
+                            if line.startswith("0x"):
                                 plen += 1
 
-    def process_cell( self, cellname, paramname, address, length ):
+    def process_cell(self, cellname, paramname, address, length):
 
-        name = cellname.split( "." )[-1]
+        name = cellname.split(".")[-1]
 
         for cell in PARAMETER_MAPPING:
             if "." in cell:
-                cell_key, param_key = cell.split( "." )
+                cell_key, param_key = cell.split(".")
             else:
                 cell_key = cell
                 param_key = None
 
             if cell_key == name:
-                if param_key is None or paramname.endswith( param_key ):
+                if param_key is None or paramname.endswith(param_key):
 
                     attrib = PARAMETER_MAPPING[cell]
 
@@ -143,40 +144,40 @@ class SigmastudioParamsFile():
                         self.parameter_end_address[attrib] = address + \
                             length - 1
 
-    def param_list( self ):
+    def param_list(self):
         result = {}
         for param in self.parameter_start_address:
             address = self.parameter_start_address[param]
             if param in self.parameter_end_address:
                 end_address = self.parameter_end_address[param]
                 length = end_address - address + 1
-                address = "{}/{}".format( address, length )
+                address = "{}/{}".format(address, length)
             else:
-                address = str( address )
+                address = str(address)
 
             result[param] = address
 
         return result
 
-    def merge_params_into_xml( self, xmlfile ):
-        xml = XmlProfile( xmlfile )
+    def merge_params_into_xml(self, xmlfile):
+        xml = XmlProfile(xmlfile)
         param_list = self.param_list()
-        xml.update_metadata( param_list )
-        xml.write_xml( xmlfile )
+        xml.update_metadata(param_list)
+        xml.write_xml(xmlfile)
         return param_list
 
 
-def basefilename( filename ):
-    base = os.path.basename( filename )
-    return os.path.splitext( base )[0]
+def basefilename(filename):
+    base = os.path.basename(filename)
+    return os.path.splitext(base)[0]
 
 
-def extension( filename ):
-    base = os.path.basename( filename )
-    return os.path.splitext( base )[1]
+def extension(filename):
+    base = os.path.basename(filename)
+    return os.path.splitext(base)[1]
 
 
-def merge_params_main( xmlfile=None, paramsfile=None ):
+def merge_params_main(xmlfile=None, paramsfile=None):
 
     if paramsfile == None:
         # called from command line
@@ -184,32 +185,32 @@ def merge_params_main( xmlfile=None, paramsfile=None ):
             xmlfile = sys.argv[1]
             paramsfile = sys.argv[2]
         except:
-            print( "call with {} xmlprofile paramsfile".format( sys.argv[0] ) )
-            sys.exit( 1 )
+            print("call with {} xmlprofile paramsfile".format(sys.argv[0]))
+            sys.exit(1)
 
-    if extension( xmlfile ) != ".xml":
-        print( "DSP profile file does not have the extension xml, aborting" )
-        sys.exit( 1 )
+    if extension(xmlfile) != ".xml":
+        print("DSP profile file does not have the extension xml, aborting")
+        sys.exit(1)
 
-    if extension( paramsfile ) != ".params":
-        print( "Parameters file does not have the extension params, aborting" )
-        sys.exit( 1 )
+    if extension(paramsfile) != ".params":
+        print("Parameters file does not have the extension params, aborting")
+        sys.exit(1)
 
-    if basefilename( xmlfile ) != basefilename( paramsfile ):
-        print( '''Warning: the two files do not share the same base name. If you're merging an incorrect
+    if basefilename(xmlfile) != basefilename(paramsfile):
+        print('''Warning: the two files do not share the same base name. If you're merging an incorrect
 parameter file into an XML profile, this might damage your system!
-        ''' )
+        ''')
 
     try:
-        pf = SigmastudioParamsFile( paramsfile )
+        pf = SigmastudioParamsFile(paramsfile)
     except IOError as e:
-        print( "can't read {} ({})".format( paramsfile, e ) )
+        print("can't read {} ({})".format(paramsfile, e))
 
     try:
-        params = pf.merge_params_into_xml( xmlfile )
+        params = pf.merge_params_into_xml(xmlfile)
     except IOError as e:
-        print( "can't read or write {} ({})".format( xmlfile, e ) )
+        print("can't read or write {} ({})".format(xmlfile, e))
 
-    print( "added parameters to XML profile:" )
-    for param in sorted( params ):
-        print( " ", param )
+    print("added parameters to XML profile:")
+    for param in sorted(params):
+        print(" ", param)
