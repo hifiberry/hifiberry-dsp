@@ -37,7 +37,6 @@ try:
 except:
     zeroconf_enabled = False
 
-
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.client.sigmatcp import SigmaTCPClient
 from hifiberrydsp.filtering.biquad import Biquad
@@ -62,7 +61,6 @@ from hifiberrydsp.parser.settings import SettingsFile
 from hifiberrydsp import datatools
 import hifiberrydsp
 
-
 MODE_BOTH = 0
 MODE_LEFT = 1
 MODE_RIGHT = 2
@@ -75,7 +73,7 @@ DISPLAY_BIN = 2
 GLOBAL_REGISTER_FILE = "/etc/dspparameter.dat"
 GLOBAL_PROGRAM_FILE = "/etc/dspprogram.xml"
 
-TIMEOUT = 10
+TIMEOUT = 0
 
 
 class REW():
@@ -933,7 +931,7 @@ class CommandLine():
                             required=False,
                             default="127.0.0.1")
         parser.add_argument('--timeout',
-                            help='timeout in seconds',
+                            help='timeout in seconds (disabled, if 0)',
                             type=int,
                             required=False,
                             default=TIMEOUT)
@@ -947,12 +945,15 @@ class CommandLine():
 
         # Run the command
         cmd = self.args.command
-        if not "loop" in cmd:
+        timer = None
+        if not "loop" in cmd and self.args.timeout > 0:
             timer = TimeoutThread(self.args.timeout)
             timer.start()
 
         self.command_map[cmd]()
-        timer.finish()
+
+        if timer is not None:
+            timer.finish()
 
 
 class TimeoutThread(threading.Thread):
