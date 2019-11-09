@@ -1,6 +1,10 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+xxxx (xxxxxxxx)
+- make sure TCP server starts even if local hostname can't be resolved
+- make timeout optional, default will be no timeout
+
 0.17.1 (20190925)
  - added timeout to dsptoolkit command line utility
 
