@@ -338,7 +338,7 @@ class DSPToolkit():
                 if i < length_right:
                     self.sigmatcp.write_biquad(addr_right + i * 5, f)
             i += 1
-            if i > maxlen:
+            if i >= maxlen:
                 break
 
         self.hibernate(False)
