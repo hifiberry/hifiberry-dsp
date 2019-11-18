@@ -47,6 +47,7 @@ from hifiberrydsp.parser.xmlprofile import  \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
+    ATTRIBUTE_CUSTOM_FILTER_LEFT, ATTRIBUTE_CUSTOM_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
     ATTRIBUTE_MUTE_REG, REGISTER_ATTRIBUTES, XmlProfile
 from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
@@ -214,8 +215,17 @@ class DSPToolkit():
 
         (addr_left, length_left) = datatools.parse_int_length(
             self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_LEFT))
+        # Beocreate profiles use different naming
+        if length_left <= 0:
+            (addr_left, length_left) = datatools.parse_int_length(
+                self.sigmatcp.request_metadata(ATTRIBUTE_CUSTOM_FILTER_LEFT))
+
         (addr_right, length_right) = datatools.parse_int_length(
             self.sigmatcp.request_metadata(ATTRIBUTE_IIR_FILTER_RIGHT))
+        # Beocreate profiles use different naming
+        if length_right <= 0:
+            (addr_right, length_right) = datatools.parse_int_length(
+                self.sigmatcp.request_metadata(ATTRIBUTE_CUSTOM_FILTER_RIGHT))
 
         if mode == MODE_LEFT:
             maxlen = length_left
@@ -229,7 +239,7 @@ class DSPToolkit():
         maxlen = maxlen / 5
 
         if len(filters) > maxlen and (cutoff_long == False):
-            raise(DSPError("{} filters given, but filter bank has only {} slots".format(
+            raise(DSPError("{} filters given, but filter bank has only {:.0f} slots".format(
                 len(filters), maxlen)))
 
         self.hibernate(True)
@@ -308,10 +318,10 @@ class CommandLine():
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
             "get-limit": self.cmd_get_limit,
-            "apply-rew-filters": self.cmd_set_rew_filter_boths,
+            "apply-rew-filters": self.cmd_set_rew_filters_both,
             "apply-rew-filters-left": self.cmd_set_rew_filters_left,
             "apply-rew-filters-right": self.cmd_set_rew_filters_right,
-            "apply-iir-filters": self.cmd_set_iir_filter_boths,
+            "apply-iir-filters": self.cmd_set_iir_filters_both,
             "apply-iir-filters-left": self.cmd_set_iir_filters_left,
             "apply-iir-filters-right": self.cmd_set_iir_filters_right,
             "apply-fir-filters": self.cmd_set_fir_filters,
@@ -500,8 +510,8 @@ class CommandLine():
             filters = REW.readfilters(self.args.parameters[0],
                                       self.dsptk.get_samplerate())
         elif format == GENERIC:
-            filters = REW.readfilters(self.args.parameters[0],
-                                      self.dsptk.get_samplerate())
+            filters = BiquadParser.readfilters(self.args.parameters[0],
+                                               self.dsptk.get_samplerate())
 
         self.dsptk.clear_iir_filters(mode)
         try:
