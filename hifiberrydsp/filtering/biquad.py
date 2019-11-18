@@ -1,16 +1,13 @@
 '''
-Copyright (c) 2018 Modul 9/HiFiBerry
-
+Copyright (c) 2019 Modul 9/HiFiBerry
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
-
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -18,7 +15,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
 Formulas from "Cookbook formulae for audio EQ biquad filter coefficients"
 by Robert Bristow-Johnson  <rbj@audioimagination.com>
 '''
@@ -26,12 +22,24 @@ by Robert Bristow-Johnson  <rbj@audioimagination.com>
 import math
 import logging
 
-from hifiberrydsp.datatools import parse_frequency, parse_decibel
+
+def parse_frequency(f_str):
+    if f_str.endswith("hz"):
+        f_str = f_str[0:-2]
+    return float(f_str)
+
+
+def parse_decibel(dbstr):
+    dbstr = dbstr.strip()
+    if dbstr.endswith("db"):
+        dbstr = dbstr[0:-2]
+    return float(dbstr)
 
 
 class Biquad():
 
-    def __init__(self, a0, a1, a2, b0, b1, b2, description):
+    def __init__(self, a0, a1, a2, b0, b1, b2, description,
+                 filtertype=None, f0=None, q=None, db=None):
         self.a0 = a0
         self.a1 = a1
         self.a2 = a2
@@ -40,6 +48,11 @@ class Biquad():
         self.b2 = b2
         self.description = description
 
+        self.filtertype = filtertype
+        self.f0 = f0
+        self.q = q
+        self.db = db
+
     def normalized(self):
         return Biquad(1,
                       self.a1 / self.a0,
@@ -47,7 +60,26 @@ class Biquad():
                       self.b0 / self.a0,
                       self.b1 / self.a0,
                       self.b2 / self.a0,
-                      self.description)
+                      self.description,
+                      self.filtertype,
+                      self.f0,
+                      self.q,
+                      self.db)
+
+    def coefficients_a(self, a0=False):
+        if a0:
+            return [self.a0, self.a1, self.a2]
+        else:
+            return [self.a1, self.a2]
+
+    def coefficients_b(self):
+        return [self.b0, self.b1, self.b2]
+
+    def coefficients_b_a(self, a0=False):
+        if a0:
+            return [self.b0, self.b1, self.b2, self.a0, self.a1, self.a2]
+        else:
+            return [self.b0, self.b1, self.b2, self.a1, self.a2]
 
     def __str__(self):
         return ("Biquad {} ({},{},{},{},{},{})".format(self.description,
@@ -66,7 +98,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "Low pass {}Hz".format(f0))
+                      "Low pass {}Hz".format(f0),
+                      "lp", f0, q)
 
     @classmethod
     def high_pass(cls, f0, q, fs):
@@ -79,7 +112,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "High pass {}Hz".format(f0))
+                      "High pass {}Hz".format(f0),
+                      "hp", f0, q)
 
     @classmethod
     def band_pass_peak_q(cls, f0, q, fs):
@@ -92,7 +126,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "Band pass peak {}Hz".format(f0))
+                      "Band pass peak {}Hz".format(f0),
+                      "bandpasspeak", f0, q)
 
     @classmethod
     def band_pass(cls, f0, q, fs):
@@ -105,7 +140,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "Band pass {}Hz".format(f0))
+                      "Band pass {}Hz".format(f0),
+                      "bp", f0, q)
 
     @classmethod
     def notch(cls, f0, q, fs):
@@ -118,7 +154,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "Notch pass {}Hz".format(f0))
+                      "Notch pass {}Hz".format(f0),
+                      "notch", f0, q)
 
     @classmethod
     def all_pass(cls, f0, q, fs):
@@ -131,7 +168,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "All pass {}Hz".format(f0))
+                      "All pass {}Hz".format(f0),
+                      "allpass", f0, q)
 
     @classmethod
     def peaking_eq(self, f0, q, dbgain, fs):
@@ -145,7 +183,8 @@ class Biquad():
         a1 = -2 * math.cos(w0)
         a2 = 1 - alpha / a
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "Peaking Eq {}Hz {}dB".format(f0, dbgain))
+                      "Peaking Eq {}Hz {}dB".format(f0, dbgain),
+                      "eq", f0, q, dbgain)
 
     @classmethod
     def low_shelf(self, f0, q, dbgain, fs):
@@ -159,7 +198,8 @@ class Biquad():
         a1 = -2 * ((a - 1) + (a + 1) * math.cos(w0))
         a2 = (a + 1) + (a - 1) * math.cos(w0) - 2 * math.sqrt(a) * alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "Low shelf {}Hz {}dB".format(f0, dbgain))
+                      "Low shelf {}Hz {}dB".format(f0, dbgain),
+                      "ls", f0, q, dbgain)
 
     @classmethod
     def high_shelf(cls, f0, q, dbgain, fs):
@@ -173,12 +213,14 @@ class Biquad():
         a1 = 2 * ((a - 1) - (a + 1) * math.cos(w0))
         a2 = (a + 1) - (a - 1) * math.cos(w0) - 2 * math.sqrt(a) * alpha
         return Biquad(a0, a1, a2, b0, b1, b2,
-                      "High shelf {}Hz {}dB".format(f0, dbgain))
+                      "High shelf {}Hz {}dB".format(f0, dbgain),
+                      "hs", f0, q, dbgain)
 
     @classmethod
     def plain(self):
-        return Biquad(1, 0, 0, 1, 0, 0, "Null filter")
-    ''' 
+        return Biquad(1, 0, 0, 1, 0, 0, "Null filter", "null")
+
+    '''
     from A pratical guide for digital audio IIR filters
     http://freeverb3.sourceforge.net/iir_filter.shtml
     '''
@@ -191,7 +233,8 @@ class Biquad():
         b1 = b0
         a1 = n * (w - 1)
         return Biquad(1, a1, 0, b0, b1, 0,
-                      "Low pass 1st {}Hz".format(f0))
+                      "Low pass 1st {}Hz".format(f0),
+                      "lowpass1st", f0, q)
 
     @classmethod
     def high_pass_firstorder(cls, f0, q, fs):
@@ -201,17 +244,19 @@ class Biquad():
         b1 = -b0
         a1 = n * (w - 1)
         return Biquad(1, a1, 0, b0, b1, 0,
-                      "High pass 1st {}Hz".format(f0))
+                      "High pass 1st {}Hz".format(f0),
+                      "highpass1st", f0, q)
 
     @classmethod
     def volume(cls, db):
         b0 = pow(10, db / 20)
         return Biquad(1, 0, 0, b0, 0, 0,
-                      "Volume change {}db".format(db))
+                      "Volume change {}db".format(db),
+                      "volumechange", None, None, db)
 
     @classmethod
     def mute(cls):
-        return Biquad(1, 0, 0, 0, 0, 0, "Null")
+        return Biquad(1, 0, 0, 0, 0, 0, "Null", "mute")
 
     @classmethod
     def pass_filter(cls):

@@ -57,6 +57,8 @@ from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     GPIO_READ, GPIO_WRITE, GPIO_RESET, GPIO_SELFBOOT, \
     ZEROCONF_TYPE
 from hifiberrydsp.parser.settings import SettingsFile
+from hifiberrydsp.parser.rew import REWParser
+from hifiberrydsp.parser.biquad import BiquadParser
 
 from hifiberrydsp import datatools
 import hifiberrydsp
@@ -75,102 +77,8 @@ GLOBAL_PROGRAM_FILE = "/etc/dspprogram.xml"
 
 TIMEOUT = 0
 
-
-class REW():
-
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def readfilters(filename, fs=48000):
-        filters = []
-
-        with open(filename) as file:
-            for line in file.readlines():
-                if line.startswith("Filter"):
-                    parts = line.split()
-                    if len(parts) >= 12 and parts[2] == "ON" and \
-                            parts[3] == "PK" and \
-                            parts[4] == "Fc" and parts[6] == "Hz" and \
-                            parts[7] == "Gain" and parts[9] == "dB" and \
-                            parts[10] == "Q":
-
-                        fc = float(parts[5])
-                        gain = float(parts[8])
-                        q = float(parts[11])
-                        logging.info("Filter EQ fc=%s, q=%s, gaion=%s, fs=%s",
-                                     fc, q, gain, fs)
-                        filters.append(
-                            Biquad.peaking_eq(fc, q, gain, fs))
-                    elif len(parts) >= 6 and parts[2] == "ON" and \
-                            parts[3] == "LP" and \
-                            parts[4] == "Fc" and parts[6] == "Hz":
-
-                        fc = float(parts[5])
-                        logging.info("Filter LP fc=%s", fc)
-                        filters.append(
-                            Biquad.low_pass(fc, 0.707, fs))
-                    elif len(parts) >= 9 and parts[2] == "ON" and \
-                            parts[3] == "LPQ" and \
-                            parts[4] == "Fc" and parts[6] == "Hz" and \
-                            parts[7] == "Q":
-                        fc = float(parts[5])
-                        q = float(parts[8])
-                        logging.info("Filter LPQ fc=%s, q=%s", fc, q)
-                        filters.append(
-                            Biquad.low_pass(fc, q, fs))
-                    elif len(parts) >= 10 and parts[2] == "ON" and \
-                            parts[3] == "LS" and \
-                            parts[4] == "Fc" and parts[6] == "Hz" and \
-                            parts[7] == "Gain" and parts[9] == "dB":
-                        fc = float(parts[5])
-                        db = float(parts[8])
-                        q = 0.707
-                        logging.info("Filter LS fc=%s, db=%s", fc, db)
-                        filters.append(
-                            Biquad.low_shelf(fc, q, db, fs))
-                    elif len(parts) >= 6 and parts[2] == "ON" and \
-                            parts[3] == "HP" and \
-                            parts[4] == "Fc" and parts[6] == "Hz":
-
-                        fc = float(parts[5])
-                        logging.info("Filter HP fc=%s", fc)
-                        filters.append(
-                            Biquad.high_pass(fc, 0.707, fs))
-                    elif len(parts) >= 9 and parts[2] == "ON" and \
-                            parts[3] == "HPQ" and \
-                            parts[4] == "Fc" and parts[6] == "Hz" and \
-                            parts[7] == "Q":
-                        fc = float(parts[5])
-                        q = float(parts[8])
-                        logging.info("Filter HPQ fc=%s, q=%s", fc, q)
-                        filters.append(
-                            Biquad.high_pass(fc, q, fs))
-                    elif len(parts) >= 10 and parts[2] == "ON" and \
-                            parts[3] == "HS" and \
-                            parts[4] == "Fc" and parts[6] == "Hz" and \
-                            parts[7] == "Gain" and parts[9] == "dB":
-                        fc = float(parts[5])
-                        db = float(parts[8])
-                        q = 0.707
-                        logging.info("Filter HS fc=%s, db=%s", fc, db)
-                        filters.append(
-                            Biquad.high_shelf(fc, q, db, fs))
-                    elif len(parts) >= 7 and parts[2] == "ON" and \
-                            parts[3] == "NO" and \
-                            parts[4] == "Fc" and parts[6] == "Hz":
-                        fc = float(parts[5])
-                        q = 0.707
-                        logging.info("Filter NO fc=%s", fc, db)
-                        filters.append(
-                            Biquad.notch(fc, q, fs))
-
-                    else:
-                        if len(parts) >= 4 and parts[3] != "None":
-                            print("Filter type " + parts[3] +
-                                  " not yet supported")
-
-            return filters
+GENERIC = 0
+REW = 1
 
 
 class DSPError(Exception):
@@ -400,9 +308,12 @@ class CommandLine():
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
             "get-limit": self.cmd_get_limit,
-            "apply-rew-filters": self.cmd_set_rew_filters,
+            "apply-rew-filters": self.cmd_set_rew_filter_boths,
             "apply-rew-filters-left": self.cmd_set_rew_filters_left,
             "apply-rew-filters-right": self.cmd_set_rew_filters_right,
+            "apply-iir-filters": self.cmd_set_iir_filter_boths,
+            "apply-iir-filters-left": self.cmd_set_iir_filters_left,
+            "apply-iir-filters-right": self.cmd_set_iir_filters_right,
             "apply-fir-filters": self.cmd_set_fir_filters,
             "apply-fir-filter-right": self.cmd_set_fir_filter_right,
             "apply-fir-filter-left": self.cmd_set_fir_filter_left,
@@ -580,13 +491,17 @@ class CommandLine():
         self.dsptk.clear_iir_filters(MODE_BOTH)
         print("Filters removed")
 
-    def cmd_set_rew_filters(self, mode=MODE_BOTH):
+    def set_iir_filters(self, mode=MODE_BOTH, format=GENERIC):
         if len(self.args.parameters) == 0:
             print("Missing filename argument")
             sys.exit(1)
 
-        filters = REW.readfilters(self.args.parameters[0],
-                                  self.dsptk.get_samplerate())
+        if format == REW:
+            filters = REW.readfilters(self.args.parameters[0],
+                                      self.dsptk.get_samplerate())
+        elif format == GENERIC:
+            filters = REW.readfilters(self.args.parameters[0],
+                                      self.dsptk.get_samplerate())
 
         self.dsptk.clear_iir_filters(mode)
         try:
@@ -598,10 +513,22 @@ class CommandLine():
             print(e)
 
     def cmd_set_rew_filters_left(self):
-        self.cmd_set_rew_filters(mode=MODE_LEFT)
+        self.set_iir_filters(mode=MODE_LEFT, format=REW)
 
     def cmd_set_rew_filters_right(self):
-        self.cmd_set_rew_filters(mode=MODE_RIGHT)
+        self.set_iir_filters(mode=MODE_RIGHT, format=REW)
+
+    def cmd_set_rew_filters_both(self):
+        self.set_iir_filters(mode=MODE_BOTH, format=REW)
+
+    def cmd_set_iir_filters_left(self):
+        self.set_iir_filters(mode=MODE_LEFT, format=GENERIC)
+
+    def cmd_set_iir_filters_right(self):
+        self.set_iir_filters(mode=MODE_RIGHT, format=GENERIC)
+
+    def cmd_set_iir_filters_both(self):
+        self.set_iir_filters(mode=MODE_BOTH, format=GENERIC)
 
     def cmd_set_fir_filters(self, mode=MODE_BOTH):
         if len(self.args.parameters) > 0:
