@@ -25,7 +25,7 @@ import logging
 
 import requests
 
-BASEURL = "http://localhost:6981/api"
+BASEURL = "https;//optimizer.hifiberry.com/api"
 
 
 def read_csv(filename):
@@ -33,6 +33,8 @@ def read_csv(filename):
     f = []
     db = []
     phase = []
+
+    logging.debug("reading %s", filename)
 
     with open(filename) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
@@ -50,11 +52,14 @@ def read_csv(filename):
     return {"f": f, "db": db, "phase":phase }
 
 
-def call_api(command, data, params={}):
-    url = BASEURL + "/" + command
+def call_api(baseurl, command, data, params={}):
+    url = baseurl + "/" + command
+
+    logging.debug("calling %s", url)
 
     result = requests.post(url, json={"measurement": data, **params})
     if result.status_code != 200:
+        logging.warn("got error code %s from web service", result.status_code)
         return None
 
     return result.json()
@@ -66,7 +71,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--url',
-                        default="https;//optimizer.hifiberry.com",
+                        default=BASEURL,
                         help='URL of he optimizer')
     parser.add_argument('-v', '--verbose',
                         help="increase output verbosity",
