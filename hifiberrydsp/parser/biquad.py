@@ -35,7 +35,7 @@ class BiquadParser():
 
         with open(filename) as file:
             for line in file.readlines():
-                line = line.trim()
+                line = line.strip()
                 if len(line) == 0:
                     continue
 
@@ -43,9 +43,11 @@ class BiquadParser():
                     continue
 
                 try:
-                    bq = Biquad.create_filter()
+                    bq = Biquad.create_filter(line, fs)
                     filters.append(bq)
-                except:
-                    logging.warning("can't parse line ")
+                except Exception as e:
+                    print(e)
+                    logging.warning("can't parse line %s", line)
 
             return filters
+
