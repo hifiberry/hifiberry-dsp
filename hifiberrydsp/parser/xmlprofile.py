@@ -39,9 +39,13 @@ ATTRIBUTE_MUTE_PI = "mutePiRegister"
 ATTRIBUTE_MUTE_SPDIF = "muteSPDIFRegister"
 ATTRIBUTE_MUTE_AUX = "muteAuxRegister"
 ATTRIBUTE_BALANCE = "balanceRegister"
+ATTRIBUTE_LOUDNESS = "loudnessRegister"
+ATTRIBUTE_LOUDNESS_LEVELS = "loudnessLevelRegisters"
 ATTRIBUTE_VOL_RANGE = "volumeControlRangeDb"
 ATTRIBUTE_IIR_FILTER_LEFT = "IIR_L"
 ATTRIBUTE_IIR_FILTER_RIGHT = "IIR_R"
+ATTRIBUTE_TONECONTROL_FILTER_LEFT = "tonecontrol_L"
+ATTRIBUTE_TONECONTROL_FILTER_RIGHT = "tonecontrol_R"
 ATTRIBUTE_CUSTOM_FILTER_LEFT = "customFilterRegisterBankLeft"
 ATTRIBUTE_CUSTOM_FILTER_RIGHT = "customFilterRegisterBankRight"
 ATTRIBUTE_FIR_FILTER_LEFT = "FIR_L"
@@ -80,7 +84,8 @@ REGISTER_ATTRIBUTES = [ATTRIBUTE_CHANNEL_SELECT,
                        ATTRIBUTE_MUTE_SPDIF,
                        ATTRIBUTE_MUTE_AUX,
                        ATTRIBUTE_UNMUTE_DELAY,
-                       ATTRIBUTE_SPDIF_ENABLE]
+                       ATTRIBUTE_SPDIF_ENABLE,
+                       ATTRIBUTE_LOUDNESS]
 
 MEMTYPE = {
     0: "DM0",
