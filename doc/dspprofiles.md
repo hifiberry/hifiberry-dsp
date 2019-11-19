@@ -84,7 +84,8 @@ capture window.
 
 ## Export the DSP profile 
 
-Now mark all transactions in the capture window and right click onto 
+Now mark all transactions in the capture window and right click on
+"Add to sequence"
 
 ![SigmaStudio Add to sequence](img/ss-add-sequence.png)
   
