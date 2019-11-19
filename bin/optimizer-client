@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 '''
 Copyright (c) 2018 Modul 9/HiFiBerry
 
@@ -25,7 +27,7 @@ import logging
 
 import requests
 
-BASEURL = "https;//optimizer.hifiberry.com/api"
+BASEURL = "https://optimizer.hifiberry.com/api"
 
 
 def read_csv(filename):
@@ -115,12 +117,12 @@ def main():
         "filtercount": args.filtercount
         }
 
-    res = call_api(args.command, data, params)
+    res = call_api(args.url, args.command, data, params)
     if args.json:
         print(res)
     else:
         if args.command == "range":
-            print("{}-{}Hz".format(res["f_min"], res["f_max"]))
+            print("{}-{}Hz".format(res["fmin"], res["fmax"]))
         elif args.command == "optimize":
             for eq in res["eqdefinitions"]:
                 print(eq)
