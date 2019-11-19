@@ -29,6 +29,6 @@ setup(name='hifiberrydsp',
       scripts=['bin/dsptoolkit',
                'bin/sigmatcpserver',
                'bin/mergeparameters'
-               'bin/optiizer-client'],
+               'bin/optimizer-client'],
       keywords='audio raspberrypi dsp',
       zip_safe=False)
