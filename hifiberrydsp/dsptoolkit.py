@@ -44,7 +44,7 @@ from hifiberrydsp.filtering.volume import decibel2amplification, \
     percent2amplification, amplification2decibel, amplification2percent
 from hifiberrydsp.datatools import parse_int
 from hifiberrydsp.parser.xmlprofile import  \
-    ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, \
+    ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, ATTRIBUTE_LOUDNESS, \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_CUSTOM_FILTER_LEFT, ATTRIBUTE_CUSTOM_FILTER_RIGHT, \
@@ -127,6 +127,16 @@ class DSPToolkit():
             logging.info("%s is undefined", ATTRIBUTE_VOL_LIMIT)
             return False
 
+    def set_loudness(self, volume):
+        volctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_LOUDNESS))
+        if volctl is not None:
+            self.sigmatcp.write_decimal(volctl, volume)
+            return True
+        else:
+            logging.info("%s is undefined", ATTRIBUTE_LOUDNESS)
+            return False
+
     def get_volume(self):
         volctl = None
         try:
@@ -148,6 +158,15 @@ class DSPToolkit():
             return self.sigmatcp.read_decimal(volctl)
         else:
             logging.info("%s is undefined", ATTRIBUTE_VOL_LIMIT)
+
+    def get_loudness(self):
+        volctl = datatools.parse_int(
+            self.sigmatcp.request_metadata(ATTRIBUTE_LOUDNESS))
+
+        if volctl:
+            return self.sigmatcp.read_decimal(volctl)
+        else:
+            logging.info("%s is undefined", ATTRIBUTE_LOUDNESS)
 
     def set_balance(self, value):
         '''
@@ -318,6 +337,8 @@ class CommandLine():
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
             "get-limit": self.cmd_get_limit,
+            "set-loudness": self.cmd_set_loudness,
+            "get-loudness": self.cmd_get_loudness,
             "apply-rew-filters": self.cmd_set_rew_filters_both,
             "apply-rew-filters-left": self.cmd_set_rew_filters_left,
             "apply-rew-filters-right": self.cmd_set_rew_filters_right,
