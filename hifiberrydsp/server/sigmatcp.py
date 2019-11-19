@@ -186,7 +186,9 @@ class SigmaTCPHandler(BaseRequestHandler):
                 elif data[0] == COMMAND_XML:
                     try:
                         data = self.get_and_check_xml()
-                    except IOError:
+                    except IOError as e:
+                        logging.debug("IOerror when reading XML file:")
+                        logging.exception(e)
                         data = None
 
                     if data is not None:
@@ -438,8 +440,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                 dspprogram.write(xmldata)
 
         except Exception as e:
-            e.print_stack_trace()
             logging.error("exception during EEPROM write: %s", e)
+            logging.exception(e)
             return b'\00'
 
         return b'\01'
