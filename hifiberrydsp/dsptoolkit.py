@@ -438,6 +438,21 @@ class CommandLine():
                 print("Profile doesn't support volume control")
                 sys.exit(1)
 
+    def cmd_set_loudness(self):
+        if len(self.args.parameters) > 0:
+            vol = self.string_to_volume(self.args.parameters[0])
+        else:
+            print("Volume parameter missing")
+            sys.exit(1)
+
+        if vol is not None:
+            if self.dsptk.set_loudness(vol):
+                print("Limit set to {}dB".format(
+                    amplification2decibel(vol)))
+            else:
+                print("Profile doesn't support loudness")
+                sys.exit(1)
+
     def cmd_get_volume(self):
         vol = self.dsptk.get_volume()
         if vol is not None:
@@ -458,6 +473,17 @@ class CommandLine():
                 amplification2decibel(vol)))
         else:
             print("Profile doesn't support volume limit")
+            sys.exit(1)
+
+    def cmd_get_loudness(self):
+        vol = self.dsptk.get_loudness()
+        if vol is not None:
+            print("Limit: {:.4f} / {:.0f}% / {:.0f}db".format(
+                vol,
+                amplification2percent(vol),
+                amplification2decibel(vol)))
+        else:
+            print("Profile doesn't support loudness")
             sys.exit(1)
 
     def cmd_read(self, display=DISPLAY_FLOAT, loop=False, length=None):
