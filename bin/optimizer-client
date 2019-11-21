@@ -22,8 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+import os
 import csv
 import logging
+import json
 
 import requests
 
@@ -58,6 +60,7 @@ def call_api(baseurl, command, data, params={}):
     url = baseurl + "/" + command
 
     logging.debug("calling %s", url)
+    logging.debug("params: %s", params)
 
     result = requests.post(url, json={"measurement": data, **params})
     if result.status_code != 200:
@@ -82,7 +85,7 @@ def main():
                         type=int,
                         default=4,
                         help='number of filters to use')
-    parser.add_argument('-s', '--samplerate',
+    parser.add_argument('-r', '--samplerate',
                         type=int,
                         default=48000,
                         help='sample rate')
@@ -92,6 +95,13 @@ def main():
     parser.add_argument('-c', '--curve',
                         default="flat",
                         help='target curve')
+    parser.add_argument('-s', '--settings',
+                        help='settings file')
+    parser.add_argument('-t', '--targetcurve',
+                        help='target curve file')
+    parser.add_argument('-a', '--auth-token',
+                        default="",
+                        help='authentication token')
     parser.add_argument("--json",
                         action="store_true")
     parser.add_argument("command",
@@ -111,11 +121,36 @@ def main():
 
     data = read_csv(args.responsefile)
 
+    # Read settings file if one is given
+    settings = []
+    if args.settings:
+        try:
+            if os.path.isfile(args.settings):
+                with open(args.settings) as json_file:
+                    settings = json.load(json_file)
+        except Exception as e:
+            logging.error("Can't read %s: %s", args.settings, e)
+
+    # Read target curve from a file if one is given
+    curve = None
+    if args.targetcurve:
+        try:
+            if os.path.isfile(args.targetcurve):
+                with open(args.targetcurve) as json_file:
+                    curve = json.load(json_file)
+        except Exception as e:
+            logging.error("Can't read %s: %s", args.settings, e)
+
     params = {
         "optimizer": args.optimizer,
         "curve": args.curve,
-        "filtercount": args.filtercount
+        "filtercount": args.filtercount,
+        "settings": settings,
+        "auth-token": args.auth_token
         }
+
+    if curve is not None:
+        params["curve"] = curve
 
     res = call_api(args.url, args.command, data, params)
     if args.json:
