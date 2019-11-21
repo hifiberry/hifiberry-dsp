@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
-from collections import Iterable
+from collections.abc import Iterable
 
 import logging
 
@@ -29,7 +29,7 @@ from hifiberrydsp.filtering.volume import percent2amplification, \
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.parser.xmlprofile import XmlProfile
 from hifiberrydsp.hardware.adau145x import Adau145x
-from hifiberrydsp.datatools import int_data, parse_int
+from hifiberrydsp.datatools import int_data
 
 
 class SettingsFile():
@@ -75,14 +75,14 @@ class SettingsFile():
         result = []
         for f in filters:
             try:
-                filter = Biquad.create_filter(f, self.fs)
-            except Exception as e:
-                filter = None
+                biquad = Biquad.create_filter(f, self.fs)
+            except Exception:
+                biquad = None
 
-            if filter == None:
+            if biquad == None:
                 logging.error("can't parse filter definition %s", f)
             else:
-                result.append(filter)
+                result.append(biquad)
         return result
 
     def get_updates(self, xmlprofile):
