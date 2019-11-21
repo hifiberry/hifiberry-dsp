@@ -211,11 +211,13 @@ parameter file into an XML profile, this might damage your system!
         pf = SigmastudioParamsFile(paramsfile)
     except IOError as e:
         print("can't read {} ({})".format(paramsfile, e))
+        sys.exit(1)
 
     try:
         params = pf.merge_params_into_xml(xmlfile)
     except IOError as e:
         print("can't read or write {} ({})".format(xmlfile, e))
+        sys.exit(1)
 
     print("added parameters to XML profile:")
     for param in sorted(params):
