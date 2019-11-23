@@ -121,7 +121,10 @@ class XmlProfile():
         self.filename = filename
         self.eeprom = DummyEepromWriter(self.dsp)
         if filename is not None:
-            self.read_from_file(filename)
+            try:
+                self.read_from_file(filename)
+            except IOError:
+                pass
 
     def read_from_file(self, filename):
         logging.info("reading profile %s", filename)
