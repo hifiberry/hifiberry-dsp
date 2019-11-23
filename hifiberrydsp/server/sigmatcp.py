@@ -186,8 +186,12 @@ class SigmaTCPHandler(BaseRequestHandler):
                 elif data[0] == COMMAND_XML:
                     try:
                         data = self.get_and_check_xml()
+
                     except IOError as e:
-                        logging.debug("IOerror when reading XML file:")
+                        logging.debug("IOerror when reading XML file: %s", e)
+                        data = None
+                    except Exception as e:
+                        logging.debug("Unexpected error when reading XML file: %s", e)
                         logging.exception(e)
                         data = None
 

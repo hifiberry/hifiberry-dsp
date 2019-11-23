@@ -124,6 +124,7 @@ class XmlProfile():
             try:
                 self.read_from_file(filename)
             except IOError:
+                self.doc = None
                 pass
 
     def read_from_file(self, filename):
@@ -133,6 +134,7 @@ class XmlProfile():
                 self.doc = xmltodict.parse(fd.read())
         except IOError:
             logging.error("can't read file %s", filename)
+            return
 
         self.update()
 
@@ -271,7 +273,10 @@ class XmlProfile():
         outfile.write(xmltodict.unparse(self.doc, pretty=True))
 
     def __str__(self):
-        return xmltodict.unparse(self.doc, pretty=True)
+        if self.doc is None:
+            return ""
+        else:
+            return xmltodict.unparse(self.doc, pretty=True)
 
 
 class DummyEepromWriter():
