@@ -1,7 +1,10 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
-0.18 (xxxxxxxx)
+0.19 (xxxxxxxx)
+- bugfix for get-xml when no DSP profile is available
+
+0.18 (20191120)
 - make sure TCP server starts even if local hostname can't be resolved
 - make timeout optional, default will be no timeout
 - add more metadata fields
