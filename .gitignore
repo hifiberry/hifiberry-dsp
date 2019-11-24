@@ -7,3 +7,5 @@ hifiberrydsp.egg-info
 .DS_Store
 *.bak
 tmp
+/devenv.sh
+/update
