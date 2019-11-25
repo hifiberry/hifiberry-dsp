@@ -24,12 +24,14 @@ import logging
 
 
 def parse_frequency(f_str):
+    f_str = f_str.lower()
     if f_str.endswith("hz"):
         f_str = f_str[0:-2]
     return float(f_str)
 
 
 def parse_decibel(dbstr):
+    dbstr = dbstr.lower()
     dbstr = dbstr.strip()
     if dbstr.endswith("db"):
         dbstr = dbstr[0:-2]
