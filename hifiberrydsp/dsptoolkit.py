@@ -554,8 +554,8 @@ class CommandLine():
             sys.exit(1)
 
         if format == REW:
-            filters = REW.readfilters(self.args.parameters[0],
-                                      self.dsptk.get_samplerate())
+            filters = REWParser.readfilters(self.args.parameters[0],
+                                            self.dsptk.get_samplerate())
         elif format == GENERIC:
             filters = BiquadParser.readfilters(self.args.parameters[0],
                                                self.dsptk.get_samplerate())
