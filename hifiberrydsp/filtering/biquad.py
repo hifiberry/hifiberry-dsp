@@ -22,18 +22,19 @@ by Robert Bristow-Johnson  <rbj@audioimagination.com>
 import math
 import logging
 
+from hifiberrydsp.datatools import parse_decibel, parse_frequency
 
-def parse_frequency(f_str):
-    if f_str.endswith("hz"):
-        f_str = f_str[0:-2]
-    return float(f_str)
-
-
-def parse_decibel(dbstr):
-    dbstr = dbstr.strip()
-    if dbstr.endswith("db"):
-        dbstr = dbstr[0:-2]
-    return float(dbstr)
+# def parse_frequency(f_str):
+#     if f_str.endswith("hz"):
+#         f_str = f_str[0:-2]
+#     return float(f_str)
+#
+#
+# def parse_decibel(dbstr):
+#     dbstr = dbstr.strip()
+#     if dbstr.endswith("db"):
+#         dbstr = dbstr[0:-2]
+#     return float(dbstr)
 
 
 class Biquad():
@@ -298,6 +299,24 @@ class Biquad():
                 q = 0.707
             f = parse_frequency(f)
             return Biquad.high_pass(f, q, fs)
+        elif definition.startswith("ls:"):
+            try:
+                (_ls, f, dbgain, q) = definition.split(":")
+            except:
+                (_ls, f, dbgain) = definition.split(":")
+                q = 0.707
+            f = parse_frequency(f)
+            dbgain = parse_decibel(dbgain)
+            return Biquad.low_shelf(f, q, dbgain, fs)
+        elif definition.startswith("hs:"):
+            try:
+                (_ls, f, dbgain, q) = definition.split(":")
+            except:
+                (_ls, f, dbgain) = definition.split(":")
+                q = 0.707
+            f = parse_frequency(f)
+            dbgain = parse_decibel(dbgain)
+            return Biquad.high_shelf(f, q, dbgain, fs)
         elif definition.startswith("eq:"):
             try:
                 (_eq, f, q, dbgain) = definition.split(":")

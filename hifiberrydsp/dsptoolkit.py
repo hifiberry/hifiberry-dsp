@@ -30,6 +30,7 @@ import sys
 import urllib.request
 import socket
 import threading
+from hifiberrydsp.filtering import biquad
 
 try:
     from zeroconf import Zeroconf, ServiceBrowser
@@ -42,14 +43,16 @@ from hifiberrydsp.client.sigmatcp import SigmaTCPClient
 from hifiberrydsp.filtering.biquad import Biquad
 from hifiberrydsp.filtering.volume import decibel2amplification, \
     percent2amplification, amplification2decibel, amplification2percent
-from hifiberrydsp.datatools import parse_int
+from hifiberrydsp.datatools import parse_int, parse_frequency, parse_decibel
 from hifiberrydsp.parser.xmlprofile import  \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, ATTRIBUTE_LOUDNESS, \
     ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_CUSTOM_FILTER_LEFT, ATTRIBUTE_CUSTOM_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
-    ATTRIBUTE_MUTE_REG, REGISTER_ATTRIBUTES, XmlProfile
+    ATTRIBUTE_MUTE_REG, ATTRIBUTE_TONECONTROL_FILTER_LEFT, \
+    ATTRIBUTE_TONECONTROL_FILTER_LEFT, \
+    REGISTER_ATTRIBUTES, XmlProfile, ATTRIBUTE_TONECONTROL_FILTER_RIGHT
 from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     COMMAND_PROGMEM_RESPONSE, COMMAND_XML, COMMAND_XML_RESPONSE, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
@@ -230,6 +233,37 @@ class DSPToolkit():
     def generic_request(self, request_code, response_code=None):
         return self.sigmatcp.request_generic(request_code, response_code)
 
+    def set_tonecontrol_filters(self, lowshelf=None, highshelf=None, mode=MODE_BOTH):
+        (addr_left, length_left) = datatools.parse_int_length(
+            self.sigmatcp.request_metadata(ATTRIBUTE_TONECONTROL_FILTER_LEFT))
+        (addr_right, length_right) = datatools.parse_int_length(
+            self.sigmatcp.request_metadata(ATTRIBUTE_TONECONTROL_FILTER_RIGHT))
+
+        if mode == MODE_LEFT:
+            maxlen = length_left
+        elif mode == MODE_RIGHT:
+            maxlen = length_right
+        else:
+            maxlen = min(length_left, length_right)
+
+        assert maxlen % 5 == 0
+        maxlen = maxlen / 5
+
+        if maxlen < 2:
+            raise(DSPError("DSPprofile doesn't have tone controls or too short"))
+
+        if lowshelf is not None:
+            if mode == MODE_LEFT or mode == MODE_BOTH:
+                self.sigmatcp.write_biquad(addr_left, lowshelf)
+            if mode == MODE_RIGHT or mode == MODE_BOTH:
+                self.sigmatcp.write_biquad(addr_right, lowshelf)
+
+        if highshelf is not None:
+            if mode == MODE_LEFT or mode == MODE_BOTH:
+                self.sigmatcp.write_biquad(addr_left + 5, highshelf)
+            if mode == MODE_RIGHT or mode == MODE_BOTH:
+                self.sigmatcp.write_biquad(addr_right + 5, highshelf)
+
     def set_filters(self, filters, mode=MODE_BOTH, cutoff_long=False):
 
         (addr_left, length_left) = datatools.parse_int_length(
@@ -349,6 +383,7 @@ class CommandLine():
             "apply-fir-filter-right": self.cmd_set_fir_filter_right,
             "apply-fir-filter-left": self.cmd_set_fir_filter_left,
             "clear-iir-filters": self.cmd_clear_iir_filters,
+            "tone-control": self.cmd_tonecontrol,
             "reset": self.cmd_reset,
             "read-dec": self.cmd_read,
             "loop-read-dec": self.cmd_loop_read_dec,
@@ -568,6 +603,43 @@ class CommandLine():
                 print(f.description)
         except DSPError as e:
             print(e)
+
+    def cmd_tonecontrol(self):
+        if len(self.args.parameters) > 2:
+            filtertype = self.args.parameters[0].lower()
+            frequency = parse_frequency(self.args.parameters[1])
+            dbgain = parse_decibel(self.args.parameters[2])
+        else:
+            print("parameter missing, need type frequency db, e.g. ls 200Hz 3db")
+            sys.exit(1)
+
+        if frequency <= 0:
+            print("frequency {} invalid".format(frequency))
+            sys.exit(1)
+
+        if filtertype not in ["ls", "hs"]:
+            print("filter type {} unsupported".format(type))
+            sys.exit(1)
+
+        filterdef = "{}:{}:{}".format(filtertype, frequency, dbgain)
+        tonefilter = Biquad.create_filter(filterdef,
+                                          self.dsptk.get_samplerate())
+        if tonefilter is None:
+            print("can't handle filter {}".format(filterdef))
+            sys.exit(1)
+
+        if filtertype[0] == "l":
+            low = tonefilter
+            high = None
+        else:
+            low = None
+            high = tonefilter
+
+        try:
+            self.dsptk.set_tonecontrol_filters(low, high)
+        except Exception as e:
+            print(e)
+            sys.exit(1)
 
     def cmd_set_rew_filters_left(self):
         self.set_iir_filters(mode=MODE_LEFT, format=REW)
