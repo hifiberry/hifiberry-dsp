@@ -1,7 +1,7 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
-0.19 (xxxxxxxx)
+0.19 (20191126)
 - implemented simple tone controls (high/low shelf)
 - bugfix for get-xml when no DSP profile is available
 - bugfix in REW filters
