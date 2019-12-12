@@ -101,5 +101,5 @@ Checking bytes 18/19 for 0x048A seems to indicate that SoundSync is active.
 
 ## Other
 
-More about channel status bits:
+- More about channel status bits 
 https://www.av-iq.com/avcat/images/documents/pdfs/digaudiochannelstatusbits.pdf
