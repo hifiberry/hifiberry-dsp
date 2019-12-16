@@ -62,6 +62,7 @@ ATTRIBUTE_AUTOMUTE_LEVEL = "automuteLevel"
 ATTRIBUTE_UNMUTE_DELAY = "unmuteDelay"
 ATTRIBUTE_DELAY_TEMPLATE = "delay%NUM%"
 ATTRIBUTE_SPDIF_ENABLE = "enableSPDIFRegister"
+ATTRIBUTE_SPDIF_ACTIVE = "readSPDIFOnRegister"
 
 # A list of all metadata attributes that refer to registers
 REGISTER_ATTRIBUTES = [ATTRIBUTE_CHANNEL_SELECT,

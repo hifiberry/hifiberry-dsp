@@ -37,8 +37,10 @@ import xmltodict
 from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
 from hifiberrydsp.datatools import int_data
-from hifiberrydsp.parser.xmlprofile import XmlProfile, ATTRIBUTE_VOL_CTL
+from hifiberrydsp.parser.xmlprofile import \
+    XmlProfile, ATTRIBUTE_VOL_CTL, ATTRIBUTE_SPDIF_ACTIVE
 from hifiberrydsp.alsa.alsasync import AlsaSync
+from hifiberrydsp.lg.soundsync import SoundSync
 from hifiberrydsp import datatools
 
 from hifiberrydsp.server.constants import \
@@ -89,6 +91,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     dspprogramfile = dspprogramfile()
     parameterfile = parameterfile()
     alsasync = None
+    lgsoundsync = None
     updating = False
     xml = None
     checksum_error = False
@@ -142,7 +145,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                     if (command_length > 0) and (len(data) < command_length):
                         read_more = True
                         logging.debug(
-                            "Expect %s bytes from header information (read), but have only %s", command_length, len(data))
+                            "Expect %s bytes from header information (read), but have only %s",
+                            command_length, len(data))
                         continue
 
                     result = self.handle_read(data)
@@ -161,7 +165,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                     if (command_length > 0) and (len(data) < command_length):
                         read_more = True
                         logging.debug(
-                            "Expect %s bytes from header information (write), but have only %s", command_length, len(data))
+                            "Expect %s bytes from header information (write), but have only %s",
+                            command_length, len(data))
                         continue
 
                     self.handle_write(data)
@@ -668,6 +673,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.info("preparing for memory update")
         SigmaTCPHandler.checksum = None
         SigmaTCPHandler.update_alsasync(clear=True)
+        SigmaTCPHandler.update_lgsoundsync(clear=True)
         SigmaTCPHandler.updating = True
 
     @staticmethod
@@ -695,6 +701,29 @@ class SigmaTCPHandler(BaseRequestHandler):
         reg = datatools.parse_int(volreg)
         SigmaTCPHandler.alsasync.set_volume_register(reg)
 
+    @staticmethod
+    def update_lgsoundsync(clear=False):
+        if SigmaTCPHandler.lgsoundsync is None:
+            logging.debug("LG SoundSync instance is None")
+            return
+
+        if clear:
+            SigmaTCPHandler.lgsoundsync.set_registers(None, None)
+            return
+
+        logging.debug("checking profile for SPDIF state and volume control support")
+        volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
+        spdifreg = SigmaTCPHandler.get_meta(ATTRIBUTE_SPDIF_ACTIVE)
+        if volreg is None or len(volreg) == 0 or \
+            spdifreg is None or len(spdifreg) == 0:
+            SigmaTCPHandler.lgsoundsync.set_registers(None, None)
+            logging.debug("disabled LG SoundSync")
+
+        logging.info("enabling LG SoundSync")
+        volr = datatools.parse_int(volreg)
+        spdifr = datatools.parse_int(spdifreg)
+        SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr)
+
 
 class ProgramRefresher(Thread):
 
@@ -706,6 +735,7 @@ class ProgramRefresher(Thread):
         SigmaTCPHandler.program_checksum(cached=False)
         # update volume register for ALSA control
         SigmaTCPHandler.update_alsasync()
+        SigmaTCPHandler.update_lgsoundsync()
         SigmaTCPHandler.updating = False
 
 
@@ -745,8 +775,16 @@ class SigmaTCPServerMain():
             logging.info("not using ALSA volume control")
             self.alsa_mixer_name = None
 
+        if "--lgsoundsync" in sys.argv:
+            logging.info("initializing LG SoundSync")
+            SigmaTCPHandler.lgsoundsync = SoundSync()
+            SigmaTCPHandler.lgsoundsync.start()
+            SigmaTCPHandler.update_lgsoundsync()
+        else:
+            logging.info("not enabling LG SoundSync")
+
         if "--restore" in sys.argv:
-            self.restore = False
+            self.restore = True
 
     def announce_zeroconf(self):
         desc = {'name': 'SigmaTCP',
@@ -803,6 +841,9 @@ class SigmaTCPServerMain():
 
         if SigmaTCPHandler.alsasync is not None:
             SigmaTCPHandler.alsasync.finish()
+
+        if SigmaTCPHandler.lgsoundsync is not None:
+            SigmaTCPHandler.lgsoundsync.finish()
 
         logging.info("Removing from zeroconf")
         self.shutdown_zeroconf()
