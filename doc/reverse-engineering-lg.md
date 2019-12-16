@@ -97,6 +97,10 @@ It seems the volume information is encoded multiple times. It might be the
 easiest way to use Bytes 16/17 and map the range 0x100f - 0x164F to the volume
 range 0-100%.
 
+This gives the simple formula:
+
+value = 0x100f + percent * 0x0010
+
 Checking bytes 18/19 for 0x048A seems to indicate that SoundSync is active.
 
 ## Other
