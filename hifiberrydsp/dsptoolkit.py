@@ -879,7 +879,7 @@ class CommandLine():
         print("Stored filter settings")
 
     def cmd_store(self):
-        self.store_attributes(REGISTER_ATTRIBUTES)
+        self.store_attributes()
         print("Stored filter settings")
 
     def cmd_get_memory(self):
@@ -943,7 +943,7 @@ class CommandLine():
             print("Updated {}, backup copy {}".format(xmlfile,
                                                       backupfile))
 
-    def store_attributes(self, attributes):
+    def store_attributes(self, attributes=None):
         '''
         Store specific attributes from RAM into DSP EEPROM
         '''
@@ -958,6 +958,14 @@ class CommandLine():
 
         replace = {}
 
+        if attributes is None:
+            print("checking attribute tags from XML profile")
+            attributes = xmlprofile.get_storable_registers()
+
+        if len(attributes) == 0:
+            print("no storable attributes found in XML, using default set")
+            attributes = REGISTER_ATTRIBUTES
+
         for attribute in attributes:
             (addr, length) = xmlprofile.get_addr_length(attribute)
             if addr is None:
@@ -969,6 +977,8 @@ class CommandLine():
                 replace[addr] = data
                 addr += 1
                 length -= 1
+
+            print("storing {}".format(attribute))
 
         xmlprofile.replace_eeprom_cells(replace)
         xmlprofile.replace_ram_cells(replace)
