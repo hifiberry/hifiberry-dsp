@@ -266,6 +266,7 @@ class XmlProfile():
             attribute = metadata["@type"]
             if attribute in md:
                 md_new.append(OrderedDict([('@type', attribute),
+                                           ('@storable', "yes"),
                                            ('#text', metadata_dict[attribute])]))
                 del md[attribute]
             else:
