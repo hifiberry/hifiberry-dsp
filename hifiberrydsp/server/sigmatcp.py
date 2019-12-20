@@ -353,7 +353,11 @@ class SigmaTCPHandler(BaseRequestHandler):
         if xml is None:
             return None
         else:
-            return xml.get_meta(attribute)
+            try:
+                return xml.get_meta(attribute)
+            except:
+                logging.error("can't get attribute %s from XML", attribute)
+                return None
 
     @staticmethod
     def handle_read(data):
@@ -776,15 +780,20 @@ class SigmaTCPServerMain():
             self.alsa_mixer_name = None
 
         if "--lgsoundsync" in sys.argv:
-            logging.info("initializing LG SoundSync")
-            SigmaTCPHandler.lgsoundsync = SoundSync()
-            SigmaTCPHandler.lgsoundsync.start()
-            SigmaTCPHandler.update_lgsoundsync()
+            try:
+                logging.info("initializing LG SoundSync")
+                SigmaTCPHandler.lgsoundsync = SoundSync()
+                SigmaTCPHandler.lgsoundsync.start()
+                SigmaTCPHandler.update_lgsoundsync()
+            except Exception as e:
+                logging.exception(e)
         else:
             logging.info("not enabling LG SoundSync")
 
         if "--restore" in sys.argv:
             self.restore = True
+
+        logging.info("server initialization finished")
 
     def announce_zeroconf(self):
         desc = {'name': 'SigmaTCP',

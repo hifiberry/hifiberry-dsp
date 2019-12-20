@@ -229,6 +229,21 @@ class XmlProfile():
             if (t == name):
                 return metadata["#text"]
 
+    def get_storable_registers(self):
+        storables = []
+        for metadata in self.doc["ROM"]["beometa"]["metadata"]:
+            try:
+                storable = metadata["@storable"]
+                if storable is not None:
+                    storable = storable.lower()
+
+                if (storable in ["y", "yes", "1", "true"]):
+                    storables.append(metadata["@type"])
+            except KeyError:
+                pass
+
+        return storables
+
     def get_addr_length(self, attribute):
         addr = self.get_meta(attribute)
         return parse_int_length(addr)
