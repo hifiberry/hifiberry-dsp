@@ -332,10 +332,10 @@ class DSPToolkit():
         if mutereg is not None:
             if mute:
                 self.sigmatcp.write_memory(
-                    mutereg, self.sigmatcp.int_data(1))
+                    mutereg, datatools.int_data(1))
             else:
                 self.sigmatcp.write_memory(
-                    mutereg, self.sigmatcp.int_data(0))
+                    mutereg, datatools.int_data(0))
             return True
         else:
             return False
