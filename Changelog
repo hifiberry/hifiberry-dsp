@@ -1,6 +1,11 @@
 Changelog HiFiBerry DSP toolkit
 ===============================
 
+0.20 (2020xxxx)
+- added config file /etc/sigmatcp.conf
+- added notify_on_updated setting in [server] to define an URL that
+  should be notified on DSP profile changes
+
 0.19 (20191126)
 - implemented simple tone controls (high/low shelf)
 - bugfix for get-xml when no DSP profile is available
