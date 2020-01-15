@@ -33,6 +33,8 @@ from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
 from zeroconf import ServiceInfo, Zeroconf
 import xmltodict
+import configparser
+import requests
 
 from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
@@ -56,6 +58,10 @@ from hifiberrydsp.server.constants import \
     DEFAULT_PORT, \
     ZEROCONF_TYPE
 import hifiberrydsp
+
+# URL to notify on DSP program updates
+this = sys.modules[__name__]
+this.notify_on_updates = None
 
 
 def parameterfile():
@@ -741,6 +747,11 @@ class ProgramRefresher(Thread):
         SigmaTCPHandler.update_alsasync()
         SigmaTCPHandler.update_lgsoundsync()
         SigmaTCPHandler.updating = False
+        if this.notify_on_updates is not None:
+            r = requests.post(this.notify_on_updates)
+            logging.info("sent update notify to %s, HTTP status %s",
+                          this.notify_on_updates, r.status_code)
+            
 
 
 class SigmaTCPServer(ThreadingMixIn, TCPServer):
@@ -765,7 +776,9 @@ class SigmaTCPServerMain():
         self.restore = False
 
         self.server = SigmaTCPServer()
-        if "--alsa" in sys.argv:
+        
+        params = self.parse_config()
+        if params["alsa"]:
             logging.info("initializiong ALSA mixer control")
             alsasync = AlsaSync()
             alsasync.set_alsa_control(alsa_mixer_name)
@@ -779,7 +792,7 @@ class SigmaTCPServerMain():
             logging.info("not using ALSA volume control")
             self.alsa_mixer_name = None
 
-        if "--lgsoundsync" in sys.argv:
+        if params["lgsoundsync"]:
             try:
                 logging.info("initializing LG SoundSync")
                 SigmaTCPHandler.lgsoundsync = SoundSync()
@@ -789,11 +802,54 @@ class SigmaTCPServerMain():
                 logging.exception(e)
         else:
             logging.info("not enabling LG SoundSync")
+            
+        if this.notify_on_updates is not None:
+            logging.info("Sending notifies on program updates to %s",
+                         this.notify_on_updates)
 
-        if "--restore" in sys.argv:
+        if params["restore"]:
             self.restore = True
 
-        logging.info("server initialization finished")
+        
+    def parse_config(self):
+        config = configparser.ConfigParser()
+        config.optionxform = lambda option: option
+    
+        config.read("/etc/sigmatcp.conf")
+
+        params = {}
+    
+        try:
+            params["alsa"] = config.getboolean("server","alsa")
+        except:
+            params["alsa"] = False
+            
+        if  "--alsa" in sys.argv:
+            params["alsa"] = True
+
+        try:            
+            params["lgsoundsync"] = config.getboolean("server","lgsoundsync") 
+        except:
+            params["lgsoundsync"] = False
+            
+        if "--lgsoundsync" in sys.argv:
+            params["lgsoundsync"] = True
+
+
+        try:            
+            this.notify_on_updates = config.get("server","notify_on_updates") 
+        except:
+            this.notify_on_updates = None
+            
+
+
+        if "--restore" in sys.argv:
+            params["restore"] = True
+        else:
+            params["restore"] = False
+            
+        return params
+            
 
     def announce_zeroconf(self):
         desc = {'name': 'SigmaTCP',
