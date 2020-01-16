@@ -1,23 +1,22 @@
 Settings file format
 ====================
 
-A settings file is a text file that consists of lines of attribute:value 
-pairs. Attributes are register names defined in the profile metadata. 
-Values can be 
- - float values
- - integer values
- - decibel values (in format +xdb, -xdb)
- - percent values (for volume, will be converted to a -60db-0dB volume
-   control range)
- - IIR filter definitions (see above)
- 
- Example
- -------
- 
- Let's assume the following DSP profile:
- 
- ```
- <ROM>
+A settings file is a text file that consists of lines of attribute:value pairs. Attributes are register names defined in the profile metadata.  
+Values can be
+
+- float values
+- integer values
+- decibel values (in format +xdb, -xdb)
+- percent values (for volume, will be converted to a -60db-0dB volume control range)
+- IIR filter definitions (see above)
+
+Example
+-------
+
+Let's assume the following DSP profile:
+
+```xml
+<ROM>
   <beometa>
     <metadata type="IIR_L">37/80</metadata>
     <metadata type="IIR_R">117/80</metadata>
@@ -35,9 +34,9 @@ Values can be
     <metadata type="volumeLimitRegister">542</metadata>
   </beometa>
   ....
- </ROM>
- ```
- 
+</ROM>
+```
+
 A simple settings file for this DSP profile could look like this:
 
 ```
@@ -48,10 +47,10 @@ Applying these settings would set the the volumeLimit to -10dB.
 
 You can check this by running the command
 
+```bash
+dsptoolkit get-limit
 ```
- dsptoolkit get-limit
-```
- 
+
 A more complex file:
 
 ```
@@ -65,6 +64,4 @@ IIR_R2: vol: -3dB
 IIR_R3: vol: +0dB
 ```
 
-In this case, the mute setting would be ignored as no mute attribute
-is available in the DSP profile. 
-
+In this case, the mute setting would be ignored as no mute attribute is available in the DSP profile.
