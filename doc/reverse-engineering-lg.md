@@ -1,16 +1,12 @@
 # Reverse engineering LG SoundSync
 
-LG TVs have a feature calles "SoundSync (optical)" that allows the TV to control the
-volume of a sound bar or speaker that is connected via SPDIF.
+LG TVs have a feature called "SoundSync (optical)" that allows the TV to control the volume of a sound bar or speaker that is connected via SPDIF.
 As this might be useful, let's see if we can find out how this works.
 
 ## Basics
 
 SPDIF is a one-way protocol. There is no feedback from the receiver to the sender.
-Therefore no negotiation between sender and receiver is possible. SPDIF sends a 
-left/right data stream. In addition to the PCM data, additional status and user bits
-can be set. Unfortunately there is no common standard to encode control information 
-into these bits.
+Therefore no negotiation between sender and receiver is possible. SPDIF sends a left/right data stream. In addition to the PCM data, additional status and user bits can be set. Unfortunately there is no common standard to encode control information into these bits.
 
 I would expected that LG uses some of these bits to send additional control information.
 Let's have a look.
@@ -93,9 +89,7 @@ Looks like this changes some status bits - cool :-)
 
 ## Conclusions
 
-It seems the volume information is encoded multiple times. It might be the 
-easiest way to use Bytes 16/17 and map the range 0x100f - 0x164F to the volume
-range 0-100%.
+It seems the volume information is encoded multiple times. It might be the easiest way to use Bytes 16/17 and map the range 0x100f - 0x164F to the volume range 0-100%.
 
 This gives the simple formula:
 
