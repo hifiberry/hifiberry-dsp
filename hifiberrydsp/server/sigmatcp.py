@@ -849,10 +849,13 @@ class SigmaTCPServerMain():
         if "--lgsoundsync" in sys.argv:
             params["lgsoundsync"] = True
             
-        this.command_after_startup = config.get("server","command_after_startup", None)
+        try:
+            this.command_after_startup = config.get("server","command_after_startup")
+        except:
+            this.command_after_startup = None
 
         try:            
-            this.notify_on_updates = config.get("server","notify_on_updates", None) 
+            this.notify_on_updates = config.get("server","notify_on_updates") 
         except:
             this.notify_on_updates = None
             
