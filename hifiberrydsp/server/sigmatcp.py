@@ -62,6 +62,7 @@ import hifiberrydsp
 # URL to notify on DSP program updates
 this = sys.modules[__name__]
 this.notify_on_updates = None
+this.command_after_startup = None
 
 
 def parameterfile():
@@ -88,6 +89,18 @@ def dspprogramfile():
 
     return os.path.expanduser(mydir + "/dspprogram.xml")
 
+
+def startup_notify():
+    if this.command_after_startup is None:
+        return 
+    
+    # TCP server still needs to start
+    time.sleep(2)
+    
+    logging.info("calling %s", this.command_after_startup)
+    os.system(this.command_after_startup)
+    
+    
 
 class SigmaTCPHandler(BaseRequestHandler):
 
@@ -779,7 +792,7 @@ class SigmaTCPServerMain():
         
         params = self.parse_config()
         if params["alsa"]:
-            logging.info("initializiong ALSA mixer control")
+            logging.info("initializing ALSA mixer control")
             alsasync = AlsaSync()
             alsasync.set_alsa_control(alsa_mixer_name)
             SigmaTCPHandler.alsasync = alsasync
@@ -816,6 +829,7 @@ class SigmaTCPServerMain():
         config.optionxform = lambda option: option
     
         config.read("/etc/sigmatcp.conf")
+        logging.info("1")
 
         params = {}
     
@@ -834,7 +848,8 @@ class SigmaTCPServerMain():
             
         if "--lgsoundsync" in sys.argv:
             params["lgsoundsync"] = True
-
+            
+        this.command_after_startup = config.get("server","command_after_startup")
 
         try:            
             this.notify_on_updates = config.get("server","notify_on_updates") 
@@ -897,6 +912,10 @@ class SigmaTCPServerMain():
             logging.exception(e)
 
         logging.debug("done")
+        
+        logging.info(this.command_after_startup)
+        notifier_thread = Thread(target = startup_notify)
+        notifier_thread.start()
 
         logging.info("Starting TCP server")
         try:
