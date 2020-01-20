@@ -83,7 +83,11 @@ for lr in ["L", "R"]:
         
 for ch in ["A","B","C","D", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" ]:
         name = "eq_{}".format(ch.lower())
-        attribute = "IIR_%LR%%CHANNEL%".replace("%CHANNEL%", ch)
+        attribute = "IIR_%CHANNEL%".replace("%CHANNEL%", ch)
+        PARAMETER_MAPPING[name] = attribute
+        
+        name = "iir_{}".format(ch.lower())
+        attribute = "IIR_%CHANNEL%".replace("%CHANNEL%", ch)
         PARAMETER_MAPPING[name] = attribute
         
         name = "delay_{}".format(ch.lower())
