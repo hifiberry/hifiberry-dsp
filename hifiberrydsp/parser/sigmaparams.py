@@ -32,19 +32,22 @@ from hifiberrydsp.parser.xmlprofile import ATTRIBUTE_BALANCE, \
     ATTRIBUTE_VOL_LIMIT_AUX, \
     ATTRIBUTE_MUTE_PI, ATTRIBUTE_MUTE_SPDIF, \
     ATTRIBUTE_MUTE_AUX, ATTRIBUTE_SPDIF_ENABLE, \
-    ATTRIBUTE_IIR_TEMPLATE, ATTRIBUTE_MUTE_REG, \
+    ATTRIBUTE_MUTE_REG, \
     ATTRIBUTE_CHANNEL_SELECT, ATTRIBUTE_INVERT_MUTE, \
     ATTRIBUTE_SPDIF_SOURCE, ATTRIBUTE_AUTOMUTE, ATTRIBUTE_UNMUTE_DELAY, \
-    ATTRIBUTE_AUTOMUTE_LEVEL, ATTRIBUTE_DELAY_TEMPLATE, \
+    ATTRIBUTE_AUTOMUTE_LEVEL, ATTRIBUTE_INPUT_SELECT,\
     ATTRIBUTE_LOUDNESS, ATTRIBUTE_LOUDNESS_LEVELS, \
     XmlProfile
 
 PARAMETER_MAPPING = {
     "balance": ATTRIBUTE_BALANCE,
+    "balancevalue": ATTRIBUTE_BALANCE,
     "loudness.target": ATTRIBUTE_LOUDNESS,
     "loudness.level_low": ATTRIBUTE_LOUDNESS_LEVELS,
     "volume.target": ATTRIBUTE_VOL_CTL,
     "volumelimit.target": ATTRIBUTE_VOL_LIMIT,
+    "mastervol.target": ATTRIBUTE_VOL_CTL,
+    "masterlimit.target": ATTRIBUTE_VOL_LIMIT,
     "channelselect": ATTRIBUTE_CHANNEL_SELECT,
     "mute": ATTRIBUTE_MUTE_REG,
     "invertmute": ATTRIBUTE_INVERT_MUTE,
@@ -64,20 +67,32 @@ PARAMETER_MAPPING = {
     "mutepi": ATTRIBUTE_MUTE_PI,
     "mutespdif": ATTRIBUTE_MUTE_SPDIF,
     "muteaux": ATTRIBUTE_MUTE_AUX,
-    "enableSPDIF": ATTRIBUTE_SPDIF_ENABLE,
+    "enablespdif": ATTRIBUTE_SPDIF_ENABLE,
+    "toslinkenable": ATTRIBUTE_SPDIF_ENABLE,
+    "inputselect": ATTRIBUTE_INPUT_SELECT,
 }
+
 
 for lr in ["L", "R"]:
     for channel in range(1, 5):
         name = "iir_{}{}".format(lr.lower(), channel)
-        attribute = ATTRIBUTE_IIR_TEMPLATE.replace(
+        attribute = "IIR_%LR%%CHANNEL%".replace(
             "%LR%", lr).replace("%CHANNEL%", str(channel))
         PARAMETER_MAPPING[name] = attribute
+        
+        
+for ch in ["A","B","C","D", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" ]:
+        name = "eq_{}".format(ch.lower())
+        attribute = "IIR_%LR%%CHANNEL%".replace("%CHANNEL%", ch)
+        PARAMETER_MAPPING[name] = attribute
+        
+        name = "delay_{}".format(ch.lower())
+        attribute = "delay%CHANNEL%Register".replace("%CHANNEL%", ch)
+        PARAMETER_MAPPING[name] = attribute
 
-for num in range(1, 10):
-    name = "delay{}".format(num)
-    attribute = ATTRIBUTE_DELAY_TEMPLATE.replace("%NUM%", str(num))
-    PARAMETER_MAPPING[name] = attribute
+        name = "vol_{}".format(ch.lower())
+        attribute = "levels%CHANNEL%Register".replace("%CHANNEL%", ch)
+        PARAMETER_MAPPING[name] = attribute
 
 
 class SigmastudioParamsFile():
@@ -128,7 +143,7 @@ class SigmastudioParamsFile():
     def process_cell(self, cellname, paramname, address, length):
 
         name = cellname.split(".")[-1]
-
+        
         for cell in PARAMETER_MAPPING:
             if "." in cell:
                 cell_key, param_key = cell.split(".")
