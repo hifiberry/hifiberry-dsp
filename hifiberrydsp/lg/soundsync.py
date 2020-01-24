@@ -1,5 +1,6 @@
 '''
 Copyright (c) 2018 Modul 9/HiFiBerry
+              2020 Christoffer Sawicki
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,96 +32,92 @@ from hifiberrydsp.filtering.volume import percent2amplification
 from hifiberrydsp import datatools
 from hifiberrydsp.hardware.spi import SpiHandler
 
-
 class SoundSync(Thread):
     '''
-    Implements reverse-engineered LG sound sync to set main volume control
+    Implements reverse-engineered LG Sound Sync to set main volume control
     '''
 
     def __init__(self):
-
-        self.alsa_control = None
-        self.volume_register = None
         self.dsp = Adau145x
-        self.volume_register_length = self.dsp.WORD_LENGTH
-        self.finished = False
-        self.pollinterval = 0.3
         self.spi = SpiHandler
-        self.dspdata = None
-        self.dspvol = None
-        self.lgsoundsyncdetected = False
+
+        self.finished = False
+        self.detected = False
+
+        self.volume_register = None
+        self.spdif_active_register = None
 
         Thread.__init__(self)
 
-    def set_registers(self, volume_register, spdif_register):
-        logging.info("LG soundsync: using volume at %s and SPDIF active at %s",
-                      volume_register, spdif_register)
+    def set_registers(self, volume_register, spdif_active_register):
+        logging.info("LG Sound Sync: Using volume register at %s and SPDIF active register at %s",
+                     volume_register, spdif_active_register)
         self.volume_register = volume_register
-        self.spdif_register = spdif_register
+        self.spdif_active_register = spdif_active_register
 
     def update_volume(self):
-
-        if self.volume_register is None or self.spdif_register is None:
+        if self.volume_register is None or self.spdif_active_register is None:
             return False
 
-        # Read SPDIF status registers
-        data = self.spi.read(0xf617, 6)
-        if len(data) != 6:
-            logging.error("internal error: could not read 6 bytes from SPI")
+        if not self.is_spdif_active():
             return False
 
+        volume = self.try_read_volume()
+
+        if volume is None:
+            return False
+
+        self.write_volume(volume)
+
+        return True
+
+    def is_spdif_active(self):
+        data = self.spi.read(self.spdif_active_register, 4)
+        [spdif_active] = struct.unpack(">l", data)
+        return spdif_active != 0
+
+    def try_read_volume(self):
+        spdif_status_register = 0xf617
+        return self.parse_volume_from_status(self.spi.read(spdif_status_register, 6))
+
+    @staticmethod
+    def parse_volume_from_status(data):
         _b1, vol, volid, _b2 = struct.unpack(">BHHB", data)
 
         if volid != 0x048a:
-            return False
+            return None
 
-        if vol < 0x100f or vol > 0x164f:
-            return False
+        if not 0x100f <= vol <= 0x164f:
+            return None
 
-        # Read SPDIF enable register
-        data = self.spi.read(self.spdif_register, 4)
-        [spdif_active] = struct.unpack(">l", data)
-        if spdif_active == 0:
-            return False
+        return (vol - 0x100f) / 16
 
-        volpercent = (vol - 0x100f) / 16
-        if volpercent < 0 or volpercent > 100:
-            logging.error("internal error, got volume = %s, "
-                          "but should be in 0-100 range", volpercent)
-        # convert percent to multiplier
-        volume = percent2amplification(volpercent)
-
-        # write multiplier to DSP
-        dspdata = datatools.int_data(self.dsp.decimal_repr(volume),
-                                     self.volume_register_length)
+    def write_volume(self, volume):
+        assert 0 <= volume <= 100
+        dspdata = datatools.int_data(self.dsp.decimal_repr(percent2amplification(volume)),
+                                     self.dsp.WORD_LENGTH)
         self.spi.write(self.volume_register, dspdata)
-        return True
+
+    POLL_INTERVAL = 0.3
 
     def run(self):
         try:
-            while not(self.finished):
+            while not self.finished:
+                previously_detected = self.detected
 
-                sync = self.lgsoundsyncdetected
+                self.detected = self.update_volume()
 
-                if self.update_volume():
-                    self.lgsoundsyncdetected = True
+                if not previously_detected and self.detected:
+                    logging.info("LG Sound Sync started")
+                elif previously_detected and not self.detected:
+                    logging.info("LG Sound Sync stopped")
+
+                if self.detected:
+                    time.sleep(self.POLL_INTERVAL)
                 else:
-                    self.lgsoundsyncdetected = False
-
-                if sync != self.lgsoundsyncdetected:
-                    if self.lgsoundsyncdetected:
-                        logging.info("LG SoundSync started")
-                    else:
-                        logging.info("LG SoundSync stopped")
-
-                if self.lgsoundsyncdetected:
-                    time.sleep(self.pollinterval)
-                else:
-                    time.sleep(self.pollinterval * 10)
-
-        except Exception as e:
-            logging.error("ALSA sync crashed: %s", e)
+                    time.sleep(self.POLL_INTERVAL * 10)
+        except Exception:
+            logging.exception("LG Sound Sync crashed")
 
     def finish(self):
         self.finished = True
-
