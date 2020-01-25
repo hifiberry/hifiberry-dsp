@@ -727,7 +727,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     @staticmethod
     def update_lgsoundsync(clear=False):
         if SigmaTCPHandler.lgsoundsync is None:
-            logging.debug("LG SoundSync instance is None")
+            logging.debug("LG Sound Sync instance is None")
             return
 
         if clear:
@@ -740,9 +740,9 @@ class SigmaTCPHandler(BaseRequestHandler):
         if volreg is None or len(volreg) == 0 or \
             spdifreg is None or len(spdifreg) == 0:
             SigmaTCPHandler.lgsoundsync.set_registers(None, None)
-            logging.debug("disabled LG SoundSync")
+            logging.debug("disabled LG Sound Sync")
 
-        logging.info("enabling LG SoundSync")
+        logging.info("enabling LG Sound Sync")
         volr = datatools.parse_int(volreg)
         spdifr = datatools.parse_int(spdifreg)
         SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr)
@@ -807,14 +807,14 @@ class SigmaTCPServerMain():
 
         if params["lgsoundsync"]:
             try:
-                logging.info("initializing LG SoundSync")
+                logging.info("initializing LG Sound Sync")
                 SigmaTCPHandler.lgsoundsync = SoundSync()
                 SigmaTCPHandler.lgsoundsync.start()
                 SigmaTCPHandler.update_lgsoundsync()
             except Exception as e:
                 logging.exception(e)
         else:
-            logging.info("not enabling LG SoundSync")
+            logging.info("not enabling LG Sound Sync")
             
         if this.notify_on_updates is not None:
             logging.info("Sending notifies on program updates to %s",
