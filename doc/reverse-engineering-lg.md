@@ -1,6 +1,6 @@
-# Reverse engineering LG SoundSync
+# Reverse engineering LG Sound Sync
 
-LG TVs have a feature called "SoundSync (optical)" that allows the TV to control the volume of a sound bar or speaker that is connected via SPDIF.
+LG TVs have a feature called "Sound Sync (optical)" that allows the TV to control the volume of a sound bar or speaker that is connected via SPDIF.
 As this might be useful, let's see if we can find out how this works.
 
 ## Basics
@@ -95,7 +95,7 @@ This gives the simple formula:
 
 value = 0x100f + percent * 0x0010
 
-Checking bytes 18/19 for 0x048A seems to indicate that SoundSync is active.
+Checking bytes 18/19 for 0x048A seems to indicate that Sound Sync is active.
 
 ## Other
 
