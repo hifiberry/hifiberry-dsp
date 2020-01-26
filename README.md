@@ -1,4 +1,5 @@
 ![Python package](https://github.com/hifiberry/hifiberry-dsp/workflows/Python%20package/badge.svg)
+![PyPI download total](https://img.shields.io/pypi/dt/ansicolortags.svg)](https://pypi.python.org/pypi/ansicolortags/)
 
 # HiFiberry DSP
 
