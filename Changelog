@@ -9,6 +9,7 @@ Changelog HiFiBerry DSP toolkit
   a command that should be called when the server has started (e.g.
   for systemd integration)
 - fixed bug in MUTE control
+- added LG Sound Sync (experimental)
 
 0.19 (20191126)
 - implemented simple tone controls (high/low shelf)
