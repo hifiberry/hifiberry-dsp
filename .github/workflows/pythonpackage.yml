@@ -5,7 +5,7 @@ on: [push]
 jobs:
   build:
 
-    runs-on: ubuntu-18.04-gcc-8
+    runs-on: ubuntu-latest
     strategy:
       max-parallel: 4
       matrix:
