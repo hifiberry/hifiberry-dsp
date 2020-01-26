@@ -87,15 +87,20 @@ Looks like this changes some status bits - cool :-)
 0xf62: 00 00 00 00 00 00 00 00 00 00 02 A0 00 00 00 13 5F 04 8A 60 02 00 8C 04
 ```
 
+## Update: Data from a LG OLED55C9 (with volume 53%)
+
+```
+0xf61: 00 00 00 00 00 00 00 00 00 00 02 B0 00 00 00 03 5F 04 8A 60 02 00 0C 04
+0xf62: 00 00 00 00 00 00 00 00 00 00 02 B0 00 00 00 03 5F 04 8A 60 02 00 0C 04
+```
+
 ## Conclusions
 
-It seems the volume information is encoded multiple times. It might be the easiest way to use Bytes 16/17 and map the range 0x100f - 0x164F to the volume range 0-100%.
+It seems the volume information is encoded multiple times.
 
-This gives the simple formula:
+It might be the easiest way to use byte 16.5 (half of byte 16 and 17) that gives the volume as 0-100.
 
-value = 0x100f + percent * 0x0010
-
-Checking bytes 18/19 for 0x048A seems to indicate that Sound Sync is active.
+Checking bytes 17.5/19 for 0xF048A seems to indicate that Sound Sync is active.
 
 ## Other
 
