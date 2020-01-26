@@ -1,0 +1,3 @@
+pyalsaaudio
+spi
+xmltodict
