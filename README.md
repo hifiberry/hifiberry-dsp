@@ -2,7 +2,7 @@
 [![PyPI version](https://badge.fury.io/py/hifiberrydsp.svg)](https://badge.fury.io/py/hifiberrydsp)
 [![PyPI license](https://img.shields.io/pypi/l/ansicolortags.svg)](https://pypi.python.org/pypi/hifiberrydsp/)
 [![PyPI download month](https://img.shields.io/pypi/dm/hifiberrydsp.svg)](https://pypi.python.org/pypi/hifiberrydsp/)
-[![GitHub contributors](https://img.shields.io/github/contributors/Naereen/StrapDown.js.svg)](https://GitHub.com/Naereen/StrapDown.js/graphs/contributors/)
+[![GitHub contributors](https://img.shields.io/github/contributors/hifiberry/hifiberry-dsp.svg)](https://GitHub.com/Naereen/StrapDown.js/graphs/contributors/)
 
 # HiFiberry DSP
 
