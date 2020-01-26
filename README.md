@@ -1,3 +1,5 @@
+![Python package](https://github.com/hifiberry/hifiberry-dsp/workflows/Python%20package/badge.svg)
+
 # HiFiberry DSP
 
 Software for HiFiBerry boards equipped with DSP. This package can be 
