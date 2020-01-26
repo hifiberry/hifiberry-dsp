@@ -39,31 +39,18 @@ to access DSP functions. It is compatible with SigmaStudio. That means
 you can directly deploy DSP programs from SigmaStudio and change 
 parameters online.
 
-The server automatically dumps the so-called parameter RAM to the file 
-system when it terminates. On startup, it checks for a parameter RAM 
-file and if it exists it writes it back to the parameter memory. This 
-ensures that parameters like volume controls, filter parameters, switch 
-settings will be automatically restored even if they are not saved in 
-the EEPROM. 
-
-The server accepts the following command line parameters:
-
--v         Verbose output.
---alsa     Create an ALSA volume control that is synced with the volume 
-           control of the running DSP program
-
 ## Command line utility
 
 The dsptoolkit command is the main command line tool to communicate 
 with the DSP TCP server. The command line parameters are documented
-in doc/dsptoolkit.md
+in [doc/dsptoolkit.md](doc/dsptoolkit.md)
 
 
 ## REW integration
 
 The software can be used to push filters created by Room Equalisation 
 Wizard (REW) to the DSP.
-Have a look at the guide in /doc/rew-basics.md
+Have a look at the guide in[doc/rew-basic.md](doc/rew-basics.md)
 
 ## DSP profile format
 
@@ -71,5 +58,5 @@ DSP profiles can be generated directly in SigmaStudio. However, to
 enable the full potential of DSP Profiles and allow DSPToolkit to 
 directly control the DSP program, you need to add some additional 
 metadata to the XML file.
-The process to create a DSP profile is documented in /doc/dspprofiles.md
+The process to create a DSP profile is documented in [doc/dspprofiles.md](/doc/dspprofiles.md)
 
