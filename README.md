@@ -1,12 +1,10 @@
-HiFiberry DSP
-*************
+# HiFiberry DSP
 
 Software for HiFiBerry boards equipped with DSP. This package can be 
 used to read/write data to HiFiBerry DSP boards using the Beocreate TCP 
 server.
 
-Installation
-============
+## Installation
 
 Before installing the dsptoolkit, you need to have a working Python 3
 installation (>=3.5) and a working pip. You also need to enable SPI as
@@ -29,8 +27,7 @@ command:
  bash <(curl https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/install-dsptoolkit)
 
 
-sigmatcpserver
-==============
+## sigmatcpserver
 
 This server runs in background and provides a TCP interface (port 8089) 
 to access DSP functions. It is compatible with SigmaStudio. That means 
@@ -50,23 +47,20 @@ The server accepts the following command line parameters:
 --alsa     Create an ALSA volume control that is synced with the volume 
            control of the running DSP program
 
-Command line utility
-====================
+## Command line utility
 
 The dsptoolkit command is the main command line tool to communicate 
 with the DSP TCP server. The command line parameters are documented
 in doc/dsptoolkit.md
 
 
-REW integration
-===============
+## REW integration
 
 The software can be used to push filters created by Room Equalisation 
 Wizard (REW) to the DSP.
 Have a look at the guide in /doc/rew-basics.md
 
-DSP profile format
-==================
+## DSP profile format
 
 DSP profiles can be generated directly in SigmaStudio. However, to 
 enable the full potential of DSP Profiles and allow DSPToolkit to 
