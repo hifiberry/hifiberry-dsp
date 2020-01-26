@@ -2,13 +2,10 @@ from setuptools import setup, find_packages
 
 import hifiberrydsp
 
-with open("README", "r") as fh:
-    long_description = fh.read()
-
 setup(name='hifiberrydsp',
       version=hifiberrydsp.__version__,
-      description='A DSP Toolkit',
-      long_description=long_description,
+      description='HiFiBerry DSP toolkit',
+      long_description='A collection of tools to configure HiFiBerry DSP boards and porogram them from SigmaStudio', 
       url='http://github.com/hifiberry/hifiberry-dsp',
       author='Daniel Matuschek',
       author_email='daniel@mhifiberry.com',
