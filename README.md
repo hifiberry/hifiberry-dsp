@@ -3,7 +3,6 @@
 [![PyPI license](https://img.shields.io/pypi/l/ansicolortags.svg)](https://pypi.python.org/pypi/hifiberrydsp/)
 [![PyPI download month](https://img.shields.io/pypi/dm/hifiberrydsp.svg)](https://pypi.python.org/pypi/hifiberrydsp/)
 [![GitHub contributors](https://img.shields.io/github/contributors/hifiberry/hifiberry-dsp.svg)](https://gitHub.com/hifiberry/hifiberry-dsp/graphs/contributors/)
-![Upload Python Package](https://github.com/hifiberry/hifiberry-dsp/workflows/Upload%20Python%20Package/badge.svg)
 
 # HiFiberry DSP
 
