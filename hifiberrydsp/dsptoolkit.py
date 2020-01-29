@@ -782,7 +782,6 @@ class CommandLine():
 
         data = [(value >> 8) & 0xff, value & 0xff]
         self.dsptk.sigmatcp.write_memory(reg, data)
-        sys.exit(1)
 
     def cmd_write_mem(self):
         if len(self.args.parameters) > 1:
@@ -796,7 +795,6 @@ class CommandLine():
                 (value >> 8) & 0xff,
                 value & 0xff]
         self.dsptk.sigmatcp.write_memory(reg, data)
-        sys.exit(1)
 
     def cmd_check_eeprom(self):
         checksum1 = self.dsptk.sigmatcp.program_checksum()
