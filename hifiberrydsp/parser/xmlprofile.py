@@ -90,21 +90,24 @@ MEMTYPE = {
     0: "DM0",
     1: "DM1",
     2: "PM",
+    3: "REG",
 }
 
 
 def replace_in_memory_block(data, startaddr, replace_dict):
-    assert len(data) % 4 == 0
+    cell_len = Adau145x.cell_len(startaddr)
+    
+    assert len(data) % cell_len == 0
 
-    endaddr = startaddr + len(data) / 4
+    endaddr = startaddr + len(data) / cell_len
 
     for repl_addr in replace_dict.keys():
         if repl_addr >= startaddr and repl_addr <= endaddr:
             content = replace_dict[repl_addr]
 
-            assert len(content) == 4
+            assert len(content) == cell_len
 
-            address_offset = (repl_addr - startaddr) * 4
+            address_offset = (repl_addr - startaddr) * cell_len
             logging.debug(
                 "replacing memory at address {} by {}", repl_addr, content)
 
@@ -295,6 +298,11 @@ class XmlProfile():
 
 
 class DummyEepromWriter():
+    """
+    This class simulates an EEPROM. 
+    It accepts SigmaStudio write commands and stored the content in memory.
+    This allows to modify these data and patch EEPROM write command by replacing some memory cells.
+    """
 
     def __init__(self, dsp):
         self.memory = dict()
@@ -303,6 +311,9 @@ class DummyEepromWriter():
         self.dsp = dsp
 
     def write_eeprom(self, addr, values):
+        """
+        Writes a list of values to EEPROM memory. Also keeps track of the highest address ever seen
+        """
         for v in values:
             self.memory[addr] = v
             addr += 1
@@ -361,6 +372,7 @@ class DummyEepromWriter():
             if (header[0] & 0x80) != 0:
                 finished = True
 
+            logging.error(header[1])
             mem_type = MEMTYPE[header[1] & 0x03]
 
             base_address = int.from_bytes(
