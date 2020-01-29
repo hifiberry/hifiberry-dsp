@@ -91,25 +91,40 @@ class SettingsFile():
 
         for attribute in self.values:
             (addr, length) = xmlprofile.get_addr_length(attribute)
+            
+            if addr is None and attribute.startswith("0x"):
+                # if it's not a setting form the profile, it might be
+                # a memory address
+                try:
+                    addr = int(attribute,16)
+                    length = 1
+                    if addr >= self.dsp.START_ADDRESS["REG"]:
+                        logging.error("Stroing registers  not supported")
+                        addr = None
+                except: 
+                    logging.error("can't parse address %s", addr)
+                    addr = None
+                        
             if addr is None:
                 continue
 
             val = self.values[attribute]
 
-            memory = self.param_to_bytes(val, length)
+            word_length = Adau145x.cell_len(addr)
+            memory = self.param_to_bytes(val, length, word_length=word_length)
 
-            if len(memory) <= self.dsp.WORD_LENGTH:
+            if len(memory) <= self.dsp.cell_len(addr):
                 replace[addr] = memory
             else:
                 # Split long replaced into single words
-                assert len(memory) % self.dsp.WORD_LENGTH == 0
+                assert len(memory) % word_length == 0
 
                 while len(memory) > 0:
-                    cellvalue = memory[0:self.dsp.WORD_LENGTH]
+                    cellvalue = memory[0:word_length]
                     replace[addr] = cellvalue
                     addr += 1
-                    memory = memory[self.dsp.WORD_LENGTH:]
-
+                    memory = memory[word_length:]
+                    
         return replace
 
     def update_xml_profile(self, xmlprofile):
@@ -117,14 +132,17 @@ class SettingsFile():
         xmlprofile.replace_eeprom_cells(replace)
         xmlprofile.replace_ram_cells(replace)
 
-    def param_to_bytes(self, value, max_length=1, ignore_limit=False):
+    def param_to_bytes(self, value, max_length=1, ignore_limit=False, word_length=None):
         biquad = False
+        
+        if word_length is None:
+            word_length = self.dsp.WORD_LENGTH
 
         if isinstance(value, float):
             value = self.dsp.decimal_repr(value)
-            res = int_data(value, self.dsp.WORD_LENGTH)
+            res = int_data(value, word_length )
         elif isinstance(value, int):
-            res = int_data(value, self.dsp.WORD_LENGTH)
+            res = int_data(value, word_length)
         elif isinstance(value, Biquad):
             res = []
             bqn = value.normalized()
@@ -136,7 +154,7 @@ class SettingsFile():
             vals.append(-bqn.a1)
             for v in vals:
                 dec = self.dsp.decimal_repr(v)
-                res = res + list(int_data(dec, self.dsp.WORD_LENGTH))
+                res = res + list(int_data(dec, word_length))
 
         elif isinstance(value, Iterable):
             res = []
@@ -147,8 +165,8 @@ class SettingsFile():
         else:
             raise RuntimeError("parameter type not implemented: %s",
                                type(value).__name__)
-
-        while len(res) < max_length * self.dsp.WORD_LENGTH:
+            
+        while len(res) < max_length * word_length:
             if biquad:
                 # Fill biquad filter banks with pass filters
                 passfilter = Biquad.pass_filter()
@@ -157,8 +175,7 @@ class SettingsFile():
             else:
                 # Fill with zeros
                 res.append(0)
-
-        if not(ignore_limit) and len(res) > (max_length * self.dsp.WORD_LENGTH):
+        if not(ignore_limit) and len(res) > (max_length * word_length):
             logging.error("parameter set too long (%s bytes), won't fit into %s words",
                           len(res),
                           max_length * self.dsp.WORD_LENGTH)
