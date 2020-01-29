@@ -52,6 +52,7 @@ class Adau145x():
         "DM0": 0x0000,
         "DM1": 0x6000,
         "PM": 0xc000,
+        "REG": 0xf000,
     }
 
     @staticmethod
