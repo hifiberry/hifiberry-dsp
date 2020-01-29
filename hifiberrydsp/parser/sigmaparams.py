@@ -100,6 +100,11 @@ for ch in ["A","B","C","D", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" ]:
 
 
 class SigmastudioParamsFile():
+    """
+    This class handles metadata in DSP profile files.
+    It can parse .params files exported by SigmaStudio and automatically create metadata records
+    in a XML DSP profile based on standard naming.
+    """
 
     def __init__(self, filename):
         self.parameter_start_address = {}
