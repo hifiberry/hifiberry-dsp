@@ -355,9 +355,68 @@ class DummyEepromWriter():
             addr += 4
 
         return checksum
+    
+    
+    def has_pattern_at_addr(self, address, pattern):
+        """
+        Check if memory cells starting at a given address match a specific pattern
+        """
+
+        if address + len(pattern) > self.end_addr:
+            return False
+        
+        for offset in range(0,len(pattern)):
+            pval = pattern[offset]
+            mem = self.memory[address+offset]
+            if pval != mem:
+                return False
+            else:
+                logging.error("found word %s", offset)
+            
+        return True
+  
+    def find_pattern(self, pattern, start_addr = 0):
+        """ 
+        Loop through memory and check if a specific pattern of 4-byte words can be found
+        """
+        for addr in range(start_addr,self.end_addr):
+            if self.has_pattern_at_addr(addr, pattern):
+                return addr
+        
+ 
+    def find_register_position(self, register_address, start_addr = 0):
+        """
+        Find a register setting in the EEPROM code. This is some guesswork and it might 
+        also replace data that are NOT register settings as registers aren't clearly
+        stored in EEPROM, but will be set from the DSP program. Therefore this routine
+        searches for "write register" patterns in the EEPROM code. 
+        """
+        
+        r_low = register_address & 0xff
+        r_high = register_address >> 8
+        
+        start_pattern = [0x00, 0x00, r_high, r_low, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00]
+        end_pattern = [0x00, 0x00, 0x00]
+        end_pattern_offset = 12
+
+        while start_addr < self.end_addr:
+        
+            position = self.find_pattern(start_pattern, start_addr)
+            if position is None:
+                return None
+            
+            if not(self.has_pattern_at_addr(position + end_pattern_offset, end_pattern)):
+                logging.debug("end pattern not found, trying again")
+                start_addr = position + 1
+                position = None
+            else:
+                break 
+
+        return position
+        
 
     def replace_memory_data(self, replace_dict):
-
+        
         # The modified data
         new_data = bytearray()
         addr = self.first_block_addr()
