@@ -91,5 +91,9 @@ class Adau145x():
             f = -32 + f
         return f
 
-    def program_end_signature(self):
-        return
+    @staticmethod
+    def cell_len(addr):
+        if addr < 0xf000:
+            return 4
+        else:
+            return 2
