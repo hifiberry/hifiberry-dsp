@@ -93,6 +93,10 @@ class Adau145x():
 
     @staticmethod
     def cell_len(addr):
+        '''
+        Return the length of a memory cell. For program and data RAM is is 4 byte, but registers
+        are only 2 byte long
+        '''
         if addr < 0xf000:
             return 4
         else:
