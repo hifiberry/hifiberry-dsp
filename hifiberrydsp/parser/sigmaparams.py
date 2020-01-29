@@ -107,6 +107,9 @@ class SigmastudioParamsFile():
     """
 
     def __init__(self, filename):
+        """
+        Opens a .params file and parse it
+        """
         self.parameter_start_address = {}
         self.parameter_end_address = {}
 
@@ -150,6 +153,13 @@ class SigmastudioParamsFile():
                                 plen += 1
 
     def process_cell(self, cellname, paramname, address, length):
+        """
+        Parses a single cell in the .params file. This usually maps to a 
+        DSP building block in SigmaStudio.
+        
+        Based on the PARAMETER_MAPPING, it will create the required 
+        metadata records
+        """
 
         name = cellname.split(".")[-1]
         
@@ -175,6 +185,9 @@ class SigmastudioParamsFile():
                             length - 1
 
     def param_list(self):
+        """
+        Get a list of all parameters that have been loadef from the .params file.
+        """
         result = {}
         for param in self.parameter_start_address:
             address = self.parameter_start_address[param]
@@ -190,6 +203,9 @@ class SigmastudioParamsFile():
         return result
 
     def merge_params_into_xml(self, xmlfile):
+        """
+        Add the metadata into a XML DSP project file.
+        """
         xml = XmlProfile(xmlfile)
         param_list = self.param_list()
         xml.update_metadata(param_list)
