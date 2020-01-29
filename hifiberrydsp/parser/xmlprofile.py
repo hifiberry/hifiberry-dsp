@@ -90,11 +90,14 @@ MEMTYPE = {
     0: "DM0",
     1: "DM1",
     2: "PM",
-    3: "REG",
 }
 
 
 def replace_in_memory_block(data, startaddr, replace_dict):
+    """
+    Replace memory cells in memory write commands in an XML profile
+    This function won't be applied to EEPROM write commands!
+    """
     cell_len = Adau145x.cell_len(startaddr)
     
     assert len(data) % cell_len == 0
@@ -324,6 +327,9 @@ class DummyEepromWriter():
         self.byte = None
 
     def as_bytes(self):
+        """
+        Return the full EEPROM content as a bytearray
+        """
         if self.bytes is not None:
             return self.bytes
 
@@ -334,14 +340,27 @@ class DummyEepromWriter():
         return res
 
     def get_header(self):
+        """
+        Get the EEPROM header bytes (16 byte). 
+        For the format, check the documentation in the ADAU1452 data sheet
+        """
         return self.as_bytes()[0:16]
 
     def first_block_addr(self):
+        """
+        Extract the address of the first block from the header
+        """
         return int.from_bytes(self.get_header()[1:4],
                               byteorder='big',
                               signed=False)
 
     def calc_checksum(self, eeprom_content):
+        """
+        Calculate a checksum of the full EEPROM content that needs to
+        be stored at the end of the EEPROM data.
+        Without a correct checksum, a DSP will not accept the EEPROM
+        data
+        """
         checksum = 0
         end = len(eeprom_content)
 
