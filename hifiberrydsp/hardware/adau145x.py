@@ -66,7 +66,7 @@ class Adau145x():
 
         # dual complement
         if (f < 0):
-            f = 512 + f
+            f = 256 + f
 
         # multiply by 2^24, then convert to integer
         f = f * (1 << 24)
@@ -85,11 +85,11 @@ class Adau145x():
                 val += octet
 
             p = val
-
+            
         f = float(p) / pow(2, 24)
 
-        if f >= 16:
-            f = -32 + f
+        if f >= 128:
+            f = -256 + f
         return f
 
     @staticmethod
