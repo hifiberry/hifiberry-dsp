@@ -98,9 +98,6 @@ class SettingsFile():
                 try:
                     addr = int(attribute,16)
                     length = 1
-                    if addr >= self.dsp.START_ADDRESS["REG"]:
-                        logging.error("Stroing registers  not supported")
-                        addr = None
                 except: 
                     logging.error("can't parse address %s", addr)
                     addr = None
