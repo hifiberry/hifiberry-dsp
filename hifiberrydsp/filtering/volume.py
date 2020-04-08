@@ -75,6 +75,7 @@ def amplification2percent(amplification, dbrange=60):
         return 100
 
     (a, b) = log_coefficients(dbrange)
+
     return (math.log(amplification / a) / b) * 100
 
 
