@@ -37,19 +37,20 @@ DIRECTION_TWO_WAY = 3
 
 ALSA_STATE_FILE = """
 state.sndrpihifiberry {
- control.99 {
-  iface MIXER
-  name %VOLUME%
-  value.0 230
-  value.1 230
-  comment {
-   access 'read write user'
-   type INTEGER
-   count 2
-   range '0 - 255'
-   tlv '0000000100000008ffffe89000000017'
-  }
- }
+    control.99 {
+                iface MIXER
+                name %VOLUME%
+                value -1
+                comment {
+                        access 'read write user'
+                        type INTEGER
+                        count 1
+                        range '-10239 - 400'
+                        dbmin -9999999
+                        dbmax 400
+                        dbvalue.0 -1
+                }
+        }
 }
 """
 
@@ -111,7 +112,9 @@ class AlsaSync(Thread):
             return
 
         from alsaaudio import MIXER_CHANNEL_ALL
-        vol = int(value)
+        logging.error("VOL= %s",value)
+        vol = round(value)
+        logging.error("VOL= %s",vol)
 
         if mixer is None:
             mixer = self.mixer
@@ -143,6 +146,7 @@ class AlsaSync(Thread):
         vol = 0
         for i in range(len(volumes)):
             channels += 1
+            logging.error("ALSA read: %s",volumes[i])
             vol += volumes[i]
 
         if channels > 0:
@@ -168,7 +172,7 @@ class AlsaSync(Thread):
         if dspdata != self.dspdata:
 
             # Convert to percent and round to full percent
-            vol = int(amplification2percent(self.dsp.decimal_val(dspdata)))
+            vol = round(amplification2percent(self.dsp.decimal_val(dspdata)))
 
             if vol < 0:
                 vol = 0
