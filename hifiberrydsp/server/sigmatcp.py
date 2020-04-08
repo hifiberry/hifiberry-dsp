@@ -829,7 +829,6 @@ class SigmaTCPServerMain():
         config.optionxform = lambda option: option
     
         config.read("/etc/sigmatcp.conf")
-        logging.info("1")
 
         params = {}
     
