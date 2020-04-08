@@ -112,9 +112,7 @@ class AlsaSync(Thread):
             return
 
         from alsaaudio import MIXER_CHANNEL_ALL
-        logging.error("VOL= %s",value)
         vol = round(value)
-        logging.error("VOL= %s",vol)
 
         if mixer is None:
             mixer = self.mixer
@@ -129,15 +127,17 @@ class AlsaSync(Thread):
             return
 
         # convert percent to multiplier
+        logging.debug("Updating DSP to %s",value)
         volume = percent2amplification(value)
 
         # write multiplier to DSP
         dspdata = datatools.int_data(self.dsp.decimal_repr(volume),
                                      self.volume_register_length)
-        self.spi.write(self.volume_register, dspdata)
+        # self.spi.write(self.volume_register, dspdata)
 
-        self.dspdata = dspdata
-        self.dspvol = value
+        #self.dspdata = dspdata
+        #self.dspvol = value
+    
 
     def read_alsa_data(self):
         from alsaaudio import Mixer
@@ -146,12 +146,11 @@ class AlsaSync(Thread):
         vol = 0
         for i in range(len(volumes)):
             channels += 1
-            logging.error("ALSA read: %s",volumes[i])
             vol += volumes[i]
 
         if channels > 0:
-            vol = vol / channels
-
+            vol = round(vol / channels)
+            
         if vol != self.alsavol:
             logging.debug(
                 "ALSA volume changed from {}% to {}%".format(self.alsavol, vol))
@@ -215,7 +214,7 @@ class AlsaSync(Thread):
                     # uploaded, just go on and try again later
                     if reg_set:
                         logging.error(
-                            "ALSA mixer not availble, volume register unknown in profile")
+                            "ALSA mixer not available, volume register unknown in profile")
                         reg_set = False
                     time.sleep(1)
                     continue
@@ -244,8 +243,8 @@ class AlsaSync(Thread):
                 asoundstate.name)
             logging.debug("runnning %s", command)
             os.system(command)
-        except:
-            logging.error("")
+        except Exception as e:
+            logging.error("Exception while creating also control: %s", e)
 
         try:
             from alsaaudio import Mixer
