@@ -133,10 +133,10 @@ class AlsaSync(Thread):
         # write multiplier to DSP
         dspdata = datatools.int_data(self.dsp.decimal_repr(volume),
                                      self.volume_register_length)
-        # self.spi.write(self.volume_register, dspdata)
+        self.spi.write(self.volume_register, dspdata)
 
-        #self.dspdata = dspdata
-        #self.dspvol = value
+        self.dspdata = dspdata
+        self.dspvol = value
     
 
     def read_alsa_data(self):
