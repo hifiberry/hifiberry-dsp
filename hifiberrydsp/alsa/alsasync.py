@@ -250,4 +250,4 @@ class AlsaSync(Thread):
             from alsaaudio import Mixer
             return Mixer(name)
         except:
-            logging.error("can't create mixer named %s")
+            logging.error("can't create mixer named %s", name)
