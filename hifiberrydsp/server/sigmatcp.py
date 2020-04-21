@@ -787,20 +787,24 @@ class SigmaTCPServerMain():
 
     def __init__(self, alsa_mixer_name="DSPVolume"):
         self.restore = False
+        self.abort = False
 
         self.server = SigmaTCPServer()
         
         params = self.parse_config()
         if params["alsa"]:
-            logging.info("initializing ALSA mixer control")
+            logging.info("initializing ALSA mixer control %s", alsa_mixer_name)
             alsasync = AlsaSync()
-            alsasync.set_alsa_control(alsa_mixer_name)
-            SigmaTCPHandler.alsasync = alsasync
-            volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
-            if volreg is not None and len(volreg) > 0:
-                reg = datatools.parse_int(volreg)
-                alsasync.set_volume_register(reg)
-            alsasync.start()
+            if alsasync.set_alsa_control(alsa_mixer_name):
+                SigmaTCPHandler.alsasync = alsasync
+                volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
+                if volreg is not None and len(volreg) > 0:
+                    reg = datatools.parse_int(volreg)
+                    alsasync.set_volume_register(reg)
+                alsasync.start()
+            else:
+                logging.error("can't create mixer controli - aborting")
+                self.abort=True
         else:
             logging.info("not using ALSA volume control")
             self.alsa_mixer_name = None
@@ -906,11 +910,11 @@ class SigmaTCPServerMain():
             except IOError:
                 logging.info("no saved data found")
 
-        logging.info("Announcing via zeroconf")
+        logging.info("announcing via zeroconf")
         try:
             self.announce_zeroconf()
         except Exception as e:
-            logging.debug("Exception while initialising Zeroconf")
+            logging.debug("exception while initialising Zeroconf")
             logging.exception(e)
 
         logging.debug("done")
@@ -918,11 +922,13 @@ class SigmaTCPServerMain():
         logging.info(this.command_after_startup)
         notifier_thread = Thread(target = startup_notify)
         notifier_thread.start()
-
-        logging.info("Starting TCP server")
+        
         try:
-            self.server.serve_forever()
+            if not(self.abort):
+                logging.info("starting TCP server")
+                self.server.serve_forever()
         except KeyboardInterrupt:
+            logging.info("aborting ")
             self.server.server_close()
 
         if SigmaTCPHandler.alsasync is not None:
@@ -931,7 +937,7 @@ class SigmaTCPServerMain():
         if SigmaTCPHandler.lgsoundsync is not None:
             SigmaTCPHandler.lgsoundsync.finish()
 
-        logging.info("Removing from zeroconf")
+        logging.info("removing from zeroconf")
         self.shutdown_zeroconf()
 
         logging.info("saving DSP data memory")
