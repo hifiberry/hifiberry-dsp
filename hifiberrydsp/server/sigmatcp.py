@@ -804,7 +804,7 @@ class SigmaTCPServerMain():
                     alsasync.set_volume_register(reg)
                 alsasync.start()
             else:
-                logging.error("can't create mixer controli - aborting")
+                logging.error("can't create mixer control - aborting")
                 self.abort=True
         else:
             logging.info("not using ALSA volume control")
