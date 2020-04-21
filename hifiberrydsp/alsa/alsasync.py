@@ -101,11 +101,14 @@ class AlsaSync(Thread):
                 logging.error(
                     "can't create ALSA mixer control %s (%s)",
                     alsa_control, e)
+            return False
 
         if self.mixer == None:
             logging.error("ALSA mixer %s not found", alsa_control)
+            return False
 
         self.mixername = alsa_control
+        return True
 
     def update_alsa(self, value, mixer=None):
         if value is None:
@@ -238,16 +241,9 @@ class AlsaSync(Thread):
             asoundstate.write(content)
             asoundstate.close()
 
-        try:
-            command = "/usr/sbin/alsactl -f {} restore".format(
-                asoundstate.name)
-            logging.debug("runnning %s", command)
-            os.system(command)
-        except Exception as e:
-            logging.error("Exception while creating also control: %s", e)
-
-        try:
-            from alsaaudio import Mixer
-            return Mixer(name)
-        except:
-            logging.error("can't create mixer named %s", name)
+        command = "/usr/sbin/alsactl -f {} restore".format(
+            asoundstate.name)
+        logging.debug("runnning %s", command)
+        os.system(command)
+        from alsaaudio import Mixer
+        return Mixer(name)
