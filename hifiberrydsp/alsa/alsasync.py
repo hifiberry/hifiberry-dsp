@@ -37,21 +37,19 @@ DIRECTION_TWO_WAY = 3
 
 ALSA_STATE_FILE = """
 state.sndrpihifiberry {
-    control.99 {
-                iface MIXER
-                name %VOLUME%
-                value -1
-                comment {
-                        access 'read write user'
-                        type INTEGER
-                        count 1
-                        range '-10239 - 400'
-                        dbmin -9999999
-                        dbmax 400
-                        dbvalue.0 -1
-                }
-        }
-}
+ control.99 {
+  iface MIXER
+  name %VOLUME%
+  value.0 230
+  value.1 230
+  comment {
+   access 'read write user'
+   type INTEGER
+   count 2
+   range '0 - 255'
+   tlv '0000000100000008ffffe89000000017'
+  }
+ }
 """
 
 
