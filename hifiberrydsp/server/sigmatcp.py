@@ -788,6 +788,7 @@ class SigmaTCPServerMain():
     def __init__(self, alsa_mixer_name="DSPVolume"):
         self.restore = False
         self.abort = False
+        self.zeroconf = None
 
         self.server = SigmaTCPServer()
         
