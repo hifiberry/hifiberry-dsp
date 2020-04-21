@@ -898,9 +898,9 @@ class SigmaTCPServerMain():
         if self.zeroconf is not None and self.zeroconf_info is not None:
             self.zeroconf.unregister_service(self.zeroconf_info)
 
-        self.zeroconf_info = None
-        self.zeroconf.close()
-        self.zeroconf = None
+            self.zeroconf_info = None
+            self.zeroconf.close()
+            self.zeroconf = None
 
     def run(self):
         if (self.restore):
