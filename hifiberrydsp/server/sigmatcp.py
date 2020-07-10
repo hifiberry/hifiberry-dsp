@@ -63,6 +63,7 @@ import hifiberrydsp
 this = sys.modules[__name__]
 this.notify_on_updates = None
 this.command_after_startup = None
+this.dsp=None
 
 
 def parameterfile():
@@ -364,6 +365,9 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def get_meta(attribute):
+        if attribute=="detected_dsp":
+            return this.dsp
+        
         try:
             xml = SigmaTCPHandler.get_checked_xml()
         except:
@@ -908,8 +912,10 @@ class SigmaTCPServerMain():
         dsp_detected = adau145x.Adau145x.detect_dsp()
         if dsp_detected:
             logging.info("detected ADAU14xx DSP")
+            this.dsp="ADAU15xx"
         else:
             logging.info("did not detect ADAU14xx DSP")
+            this.dsp=""
             
         
         if (self.restore):
