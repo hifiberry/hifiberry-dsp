@@ -37,19 +37,24 @@ DIRECTION_TWO_WAY = 3
 
 ALSA_STATE_FILE = """
 state.sndrpihifiberry {
- control.99 {
-  iface MIXER
-  name %VOLUME%
-  value.0 230
-  value.1 230
-  comment {
-   access 'read write user'
-   type INTEGER
-   count 2
-   range '0 - 255'
-   tlv '0000000100000008ffffe89000000017'
-  }
- }
+        control.99 {
+                iface MIXER
+                name %VOLUME%
+                value.0 255
+                value.1 255
+                comment {
+                        access 'read write user'
+                        type INTEGER
+                        count 2
+                        range '0 - 255'
+                        tlv '0000000100000008ffffdcc400000023'
+                        dbmin -9020
+                        dbmax -95
+                        dbvalue.0 -95
+                        dbvalue.1 -95
+                }
+        }
+}
 """
 
 
@@ -238,10 +243,18 @@ class AlsaSync(Thread):
             logging.debug("asoundstate file %s", content)
             asoundstate.write(content)
             asoundstate.close()
+            
+        
 
         command = "/usr/sbin/alsactl -f {} restore".format(
             asoundstate.name)
         logging.debug("runnning %s", command)
         os.system(command)
-        from alsaaudio import Mixer
-        return Mixer(name)
+        
+        try:
+            from alsaaudio import Mixer, mixers
+            logging.info("mixers: ", mixers())
+            return Mixer(name)
+        except:
+            from alsaaudio import cards, ALSAAudioError
+            raise ALSAAudioError("Mixer {} not found (cards: {})".format(name, cards()))
