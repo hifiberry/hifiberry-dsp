@@ -21,6 +21,9 @@ SOFTWARE.
 '''
 
 import math
+import logging
+
+from hifiberrydsp.hardware.spi import SpiHandler
 
 # ADAU1701 address range
 LSB_SIGMA = float(1) / math.pow(2, 23)
@@ -102,3 +105,16 @@ class Adau145x():
             return 4
         else:
             return 2
+        
+    @staticmethod
+    def detect_dsp(debug=False):
+        reg1 = int.from_bytes(SpiHandler.read(0xf003, 2), byteorder='big') 
+        reg2 = int.from_bytes(SpiHandler.read(0xf402, 2), byteorder='big') 
+        reg3 = int.from_bytes(SpiHandler.read(0xc000, 2), byteorder='big') 
+        logging.debug("register read returned %s %s %s", reg1, reg2, reg3)
+        if (reg1==0x001) and (reg2==0x0001) and (reg3==0x0000):
+            return True
+        else:
+            return False
+        
+    

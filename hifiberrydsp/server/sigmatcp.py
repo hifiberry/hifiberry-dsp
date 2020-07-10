@@ -903,6 +903,15 @@ class SigmaTCPServerMain():
             self.zeroconf = None
 
     def run(self):
+        
+        # Check if a DSP is detected
+        dsp_detected = adau145x.Adau145x.detect_dsp()
+        if dsp_detected:
+            logging.info("detected ADAU14xx DSP")
+        else:
+            logging.info("did not detect ADAU14xx DSP")
+            
+        
         if (self.restore):
             try:
                 logging.info("restoring saved data memory")

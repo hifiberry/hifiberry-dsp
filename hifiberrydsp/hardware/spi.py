@@ -35,7 +35,7 @@ def init_spi():
 
 class SpiHandler():
     '''
-    Implements acces to the SPI bus. Can be used by multiple threads.
+    Implements access to the SPI bus. Can be used by multiple threads.
 
     We assume that the SPI library is thread-safe and do not use 
     additional locking here.
