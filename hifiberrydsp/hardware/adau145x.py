@@ -113,11 +113,10 @@ class Adau145x():
         time.sleep(1)
         SpiHandler.write(0xf890, [1], debug)
         time.sleep(1)
-        reg1 = int.from_bytes(SpiHandler.read(0xf003, 2), byteorder='big') 
-        reg2 = int.from_bytes(SpiHandler.read(0xf402, 2), byteorder='big') 
-        reg3 = int.from_bytes(SpiHandler.read(0xc000, 2), byteorder='big') 
-        logging.debug("register read returned %s %s %s", reg1, reg2, reg3)
-        if (reg1==0x001) and (reg2==0x0001) and (reg3==0x0000):
+        reg1 = int.from_bytes(SpiHandler.read(0xf000, 2), byteorder='big') 
+        reg2 = int.from_bytes(SpiHandler.read(0xc000, 2), byteorder='big') 
+        logging.debug("register read returned %s %s", reg1, reg2)
+        if (reg1!=0) and (reg2==0):
             return True
         else:
             return False
