@@ -386,6 +386,8 @@ class SigmaTCPHandler(BaseRequestHandler):
     def handle_read(data):
         addr = int.from_bytes(data[10:12], byteorder='big')
         length = int.from_bytes(data[6:10], byteorder='big')
+        
+        logging.error("Handle read %s/%s",addr,length)
 
         spi_response = SigmaTCPHandler.spi.read(addr, length)
         logging.debug("read {} bytes from {}".format(length, addr))
