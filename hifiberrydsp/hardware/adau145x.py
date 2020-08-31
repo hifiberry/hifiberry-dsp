@@ -22,6 +22,7 @@ SOFTWARE.
 
 import math
 import logging
+import time
 
 from hifiberrydsp.hardware.spi import SpiHandler
 
@@ -108,6 +109,10 @@ class Adau145x():
         
     @staticmethod
     def detect_dsp(debug=False):
+        SpiHandler.write(0xf890, 0, debug)
+        time.sleep(1)
+        SpiHandler.write(0xf890, 1, debug)
+        time.sleep(1)
         reg1 = int.from_bytes(SpiHandler.read(0xf003, 2), byteorder='big') 
         reg2 = int.from_bytes(SpiHandler.read(0xf402, 2), byteorder='big') 
         reg3 = int.from_bytes(SpiHandler.read(0xc000, 2), byteorder='big') 
