@@ -74,3 +74,5 @@ dsptoolkit install-profile profile.xml
 ```
 
 If you're using HiFiBerryOS, copy it to /opt/beocreate/beo-dsp-programs. After a restart, you will find the new DSP profile in the selection of available profiles in the HiFiBerryOS sound settings.
+
+![hifiberryos](img/hbosdspprofile.png)
