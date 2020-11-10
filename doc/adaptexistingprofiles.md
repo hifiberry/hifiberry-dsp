@@ -42,7 +42,7 @@ While you can already deploy the DSP profile that you created, you won't be able
 This will create a lot of file, but you only need the .params file. It includes data of all controls and their adresses. Based on this, you could now create metadata by yourself, but there's an easier way in HiFiBerryOS. 
 Point your browser to http://hifiberry.local/misc/dspparamreader (replace the hifiberry.local by the name or IP address of your Pi)
 
-![dspparamreader1](img/dspparamreader1.png)
+![dspparamreader](img/dspparamreader.png)
 
 Drag and drop the params file to this web page.
 
