@@ -62,12 +62,15 @@ You might want to edit some data liek sample rate, profile name or model name.
 
 Last thing you need to add is the checksum of the profile. This isn't included in the params file. To get the checksum, make sure your program is deployed on the Pi and display it using dsp-toolkit:
 
-```# dsptoolkit get-checksum
+```
+# dsptoolkit get-checksum
 CB71C7D437125A4CE066798726B1D25D
 ```
 
 After adding this, the profile is ready. You can just copy it onto your Pi and either deploy it directly using
 
-```dsptoolkit install-profile profile.xml```
+```
+dsptoolkit install-profile profile.xml
+```
 
 If you're using HiFiBerryOS, copy it to /opt/beocreate/beo-dsp-programs. After a restart, you will find the new DSP profile in the selection of available profiles in the HiFiBerryOS sound settings.
