@@ -19,8 +19,9 @@ Check out
 https://www.raspberrypi-spy.co.uk/2014/08/enabling-the-spi-interface-on-the-raspberry-pi/
 
 You can then install the toolkit by just running
-
- sudo pip3 install --upgrade hifiberrydsp
+```bash
+sudo pip3 install --upgrade hifiberrydsp
+```
 
 This will only install the software, but not activate the server.
 Depending on your system, you might need to create a startup script 
@@ -30,8 +31,9 @@ If you're using a Debian based system (e.g. Debian, Raspbian), there
 is a script that does all the work for you. Just run the following 
 command:
 
- bash <(curl https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/install-dsptoolkit)
-
+```bash
+bash <(curl https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/install-dsptoolkit)
+```
 
 ## sigmatcpserver
 
