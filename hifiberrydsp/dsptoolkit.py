@@ -32,11 +32,11 @@ import socket
 import threading
 from hifiberrydsp.filtering import biquad
 
-try:
-    from zeroconf import Zeroconf, ServiceBrowser
-    zeroconf_enabled = True
-except:
-    zeroconf_enabled = False
+# try:
+#     from zeroconf import Zeroconf, ServiceBrowser
+#     zeroconf_enabled = True
+# except:
+#     zeroconf_enabled = False
 
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.client.sigmatcp import SigmaTCPClient
@@ -58,8 +58,8 @@ from hifiberrydsp.server.constants import COMMAND_PROGMEM, \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, \
     COMMAND_DATAMEM, COMMAND_DATAMEM_RESPONSE, \
     COMMAND_GPIO, COMMAND_GPIO_RESPONSE, \
-    GPIO_READ, GPIO_WRITE, GPIO_RESET, GPIO_SELFBOOT, \
-    ZEROCONF_TYPE
+    GPIO_READ, GPIO_WRITE, GPIO_RESET, GPIO_SELFBOOT
+#    ZEROCONF_TYPE
 from hifiberrydsp.parser.settings import SettingsFile
 from hifiberrydsp.parser.rew import REWParser
 from hifiberrydsp.parser.biquad import BiquadParser
@@ -403,7 +403,7 @@ class CommandLine():
             "unmute": self.cmd_unmute,
             "get-samplerate": self.cmd_samplerate,
             "check-eeprom": self.cmd_check_eeprom,
-            "servers": self.cmd_servers,
+#            "servers": self.cmd_servers,
             "apply-settings": self.cmd_apply_settings,
             "store-settings": self.cmd_store_settings,
             "store-filters": self.cmd_store_filters,
@@ -822,18 +822,18 @@ class CommandLine():
         res = self.dsptk.sigmatcp.readwrite_gpio(rw, GPIO_SELFBOOT, val)
         print(res)
 
-    def cmd_servers(self):
-        if zeroconf_enabled:
-            zeroconf = Zeroconf()
-            listener = ZeroConfListener()
-            ServiceBrowser(zeroconf, ZEROCONF_TYPE, listener)
-            print("Looking for devices")
-            time.sleep(5)
-            zeroconf.close()
-            for name, info in listener.devices.items():
-                print("{}: {}".format(name, info))
-        else:
-            print("Zeroconf library not available")
+#     def cmd_servers(self):
+#         if zeroconf_enabled:
+#             zeroconf = Zeroconf()
+#             listener = ZeroConfListener()
+#             ServiceBrowser(zeroconf, ZEROCONF_TYPE, listener)
+#             print("Looking for devices")
+#             time.sleep(5)
+#             zeroconf.close()
+#             for name, info in listener.devices.items():
+#                 print("{}: {}".format(name, info))
+#         else:
+#             print("Zeroconf library not available")
 
     def cmd_store_settings(self):
 

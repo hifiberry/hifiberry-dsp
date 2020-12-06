@@ -31,7 +31,7 @@ from threading import Thread
 
 from socketserver import BaseRequestHandler, TCPServer, ThreadingMixIn
 
-from zeroconf import ServiceInfo, Zeroconf
+# from zeroconf import ServiceInfo, Zeroconf
 import xmltodict
 import configparser
 import requests
@@ -879,34 +879,34 @@ class SigmaTCPServerMain():
         return params
             
 
-    def announce_zeroconf(self):
-        desc = {'name': 'SigmaTCP',
-                'vendor': 'HiFiBerry',
-                'version': hifiberrydsp.__version__}
-        hostname = socket.gethostname()
-        try:
-            ip = socket.gethostbyname(hostname)
-        except Exception:
-            logging.error("can't get IP for hostname %s, "
-                          "not initialising Zeroconf",
-                          hostname)
-            return
-
-        self.zeroconf_info = ServiceInfo(ZEROCONF_TYPE,
-                                         "{}.{}".format(
-                                             hostname, ZEROCONF_TYPE),
-                                         socket.inet_aton(ip),
-                                         DEFAULT_PORT, 0, 0, desc)
-        self.zeroconf = Zeroconf()
-        self.zeroconf.register_service(self.zeroconf_info)
-
-    def shutdown_zeroconf(self):
-        if self.zeroconf is not None and self.zeroconf_info is not None:
-            self.zeroconf.unregister_service(self.zeroconf_info)
-
-            self.zeroconf_info = None
-            self.zeroconf.close()
-            self.zeroconf = None
+#     def announce_zeroconf(self):
+#         desc = {'name': 'SigmaTCP',
+#                 'vendor': 'HiFiBerry',
+#                 'version': hifiberrydsp.__version__}
+#         hostname = socket.gethostname()
+#         try:
+#             ip = socket.gethostbyname(hostname)
+#         except Exception:
+#             logging.error("can't get IP for hostname %s, "
+#                           "not initialising Zeroconf",
+#                           hostname)
+#             return
+# 
+#         self.zeroconf_info = ServiceInfo(ZEROCONF_TYPE,
+#                                          "{}.{}".format(
+#                                              hostname, ZEROCONF_TYPE),
+#                                          socket.inet_aton(ip),
+#                                          DEFAULT_PORT, 0, 0, desc)
+#         self.zeroconf = Zeroconf()
+#         self.zeroconf.register_service(self.zeroconf_info)
+# 
+#     def shutdown_zeroconf(self):
+#         if self.zeroconf is not None and self.zeroconf_info is not None:
+#             self.zeroconf.unregister_service(self.zeroconf_info)
+# 
+#             self.zeroconf_info = None
+#             self.zeroconf.close()
+#             self.zeroconf = None
 
     def run(self):
         
@@ -928,12 +928,12 @@ class SigmaTCPServerMain():
             except IOError:
                 logging.info("no saved data found")
 
-        logging.info("announcing via zeroconf")
-        try:
-            self.announce_zeroconf()
-        except Exception as e:
-            logging.debug("exception while initialising Zeroconf")
-            logging.exception(e)
+#         logging.info("announcing via zeroconf")
+#         try:
+#             self.announce_zeroconf()
+#         except Exception as e:
+#             logging.debug("exception while initialising Zeroconf")
+#             logging.exception(e)
 
         logging.debug("done")
         
