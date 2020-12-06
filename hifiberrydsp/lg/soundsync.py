@@ -61,10 +61,10 @@ class SoundSync(Thread):
         self.spdif_active_register = spdif_active_register
 
     def update_volume(self):
-        if self.volume_register is None or self.spdif_active_register is None:
+        if self.volume_register is None:
             return False
 
-        if not self.is_spdif_active():
+        if (self.spdif_active_register is not None) and (not self.is_spdif_active()):
             return False
 
         volume = self.try_read_volume()
@@ -77,6 +77,9 @@ class SoundSync(Thread):
         return True
 
     def is_spdif_active(self):
+        if self.spdif_active_register is None:
+            return True
+        
         data = self.spi.read(self.spdif_active_register, 4)
         [spdif_active] = struct.unpack(">l", data)
         return spdif_active != 0
