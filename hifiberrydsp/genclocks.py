@@ -27,7 +27,7 @@ import logging
 import signal
 import time
 import sys
-from threading import Thread
+from threading import Thread, Condition
 
 import alsaaudio
 
@@ -44,8 +44,10 @@ BYTESPERSAMPLE=8
 pcm=None
 sigmatcp=None
 
+stopit = Condition()
+stopped = False
+
 def silenceloop():
-    global stopped
     global pcm
     
     try:
@@ -56,9 +58,10 @@ def silenceloop():
     
     logging.debug("SPDIF lock, playing silence")
     
-    while spdifactive() and not(stopped):
-        time.sleep(1)
-        logging.debug("not stopped")
+    stopit.acquire()
+    stopit.wait()
+    stopit.release()
+    logging.debug("received stop signal, stopping clock gen")
         
     pcm=None
     
@@ -71,8 +74,11 @@ def stop_playback(_signalNumber, _frame):
     global stopped
     
     logging.info("received USR1, stopping music playback")
-    stopped = True
+    stopit.acquire()
+    stopit.notify()
+    stopit.release()
     # Re-activate in 15 seconds
+    stopped=True
     t = Thread(target=activate_again, args=(15,))
     t.start()
     
@@ -81,7 +87,6 @@ def activate_again(seconds):
     time.sleep(seconds)
     global stopped
     stopped=False
-
 
 
 def main():
