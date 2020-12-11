@@ -52,12 +52,10 @@ from hifiberrydsp.server.constants import \
     COMMAND_STORE_DATA, COMMAND_RESTORE_DATA, COMMAND_GET_META, \
     COMMAND_META_RESPONSE, COMMAND_PROGMEM, COMMAND_PROGMEM_RESPONSE, \
     COMMAND_DATAMEM, COMMAND_DATAMEM_RESPONSE, \
-    COMMAND_GPIO, COMMAND_GPIO_RESPONSE, \
-    GPIO_READ, GPIO_WRITE, GPIO_SELFBOOT, \
+    COMMAND_GPIO, \
     HEADER_SIZE, \
-    DEFAULT_PORT, \
-    ZEROCONF_TYPE
-import hifiberrydsp
+    DEFAULT_PORT
+# import hifiberrydsp
 
 # URL to notify on DSP program updates
 this = sys.modules[__name__]
