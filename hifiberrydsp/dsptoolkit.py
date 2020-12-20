@@ -482,7 +482,7 @@ class CommandLine():
 
         if vol is not None:
             if self.dsptk.set_loudness(vol):
-                print("Limit set to {}dB".format(
+                print("Loudness set to {}dB".format(
                     amplification2decibel(vol)))
             else:
                 print("Profile doesn't support loudness")
@@ -513,7 +513,7 @@ class CommandLine():
     def cmd_get_loudness(self):
         vol = self.dsptk.get_loudness()
         if vol is not None:
-            print("Limit: {:.4f} / {:.0f}% / {:.0f}db".format(
+            print("Loudness: {:.4f} / {:.0f}% / {:.0f}db".format(
                 vol,
                 amplification2percent(vol),
                 amplification2decibel(vol)))
