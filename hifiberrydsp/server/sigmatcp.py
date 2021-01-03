@@ -168,6 +168,10 @@ class SigmaTCPHandler(BaseRequestHandler):
                             "Expect %s bytes from header information (read), but have only %s",
                             command_length, len(data))
                         continue
+                    
+                    if command_length < len(data):
+                        buffer = data[command_length:]
+                        data = data[0:command_length]
 
                     result = self.handle_read(data)
 
@@ -385,7 +389,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     @staticmethod
     def handle_read(data):
         logging.debug(f"read_req: {data.hex()}")
-        
+
         addr = int.from_bytes(data[10:12], byteorder='big')
         length = int.from_bytes(data[6:10], byteorder='big')
 
