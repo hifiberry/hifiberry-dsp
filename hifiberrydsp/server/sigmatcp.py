@@ -384,17 +384,17 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def handle_read(data):
+        logging.debug(f"read_req: {data.hex()}")
+        
         addr = int.from_bytes(data[10:12], byteorder='big')
         length = int.from_bytes(data[6:10], byteorder='big')
-        
-        logging.debug("Handle read %s/%s",addr,length)
 
         spi_response = SigmaTCPHandler.spi.read(addr, length)
-        logging.debug("read {} bytes from {}".format(length, addr))
 
         res = SigmaTCPHandler._response_packet(COMMAND_READRESPONSE,
                                                addr,
                                                len(spi_response)) + spi_response
+        logging.debug(f"read_rsp: {res.hex()}")    
         return res
 
     @staticmethod
