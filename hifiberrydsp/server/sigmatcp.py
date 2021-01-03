@@ -634,9 +634,17 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def _response_packet(command, addr, data_length):
+        
         packet = bytearray(HEADER_SIZE)
         packet[0] = command
-        packet[4] = 14  # header length
+        
+        total_len = HEADER_SIZE + data_length
+        packet[1] = total_len & 0xff
+        packet[2] = (total_len >> 8) & 0xff
+        packet[3] = (total_len >> 16) & 0xff
+        packet[4] = (total_len >> 24) & 0xff
+        #packet[4] = 14  # header length
+
         packet[5] = 1  # chip address
 
         packet[9] = data_length & 0xff
