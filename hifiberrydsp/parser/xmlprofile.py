@@ -108,6 +108,11 @@ def replace_in_memory_block(data, startaddr, replace_dict):
         if repl_addr >= startaddr and repl_addr <= endaddr:
             content = replace_dict[repl_addr]
 
+            if len(content) != cell_len:
+                logging.error("Cell %s: content len is %s but cell len is %s, ignoring",
+                              repl_addr, len(content), cell_len)
+                continue
+
             assert len(content) == cell_len
 
             address_offset = (repl_addr - startaddr) * cell_len
@@ -450,7 +455,6 @@ class DummyEepromWriter():
             if (header[0] & 0x80) != 0:
                 finished = True
 
-            logging.error(header[1])
             mem_type = MEMTYPE[header[1] & 0x03]
 
             base_address = int.from_bytes(
