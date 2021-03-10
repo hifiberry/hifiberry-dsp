@@ -953,8 +953,8 @@ class SigmaTCPServerMain():
         if SigmaTCPHandler.lgsoundsync is not None:
             SigmaTCPHandler.lgsoundsync.finish()
 
-        logging.info("removing from zeroconf")
-        self.shutdown_zeroconf()
+#        logging.info("removing from zeroconf")
+#        self.shutdown_zeroconf()
 
         logging.info("saving DSP data memory")
         SigmaTCPHandler.save_data_memory()
