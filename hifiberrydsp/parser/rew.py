@@ -114,7 +114,7 @@ class REWParser():
                             Biquad.notch(fc, q, fs))
 
                     else:
-                        if len(parts) >= 4 and parts[3] != "None":
+                        if len(parts) >= 4 and parts[2] != "OFF" and parts[3] != "None":
                             print("Filter type " + parts[3] +
                                   " not yet supported")
 
