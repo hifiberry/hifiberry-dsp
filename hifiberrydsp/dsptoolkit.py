@@ -1046,23 +1046,23 @@ if __name__ == "__main__":
     cmdline.main()
 
 
-class ZeroConfListener:
-
-    def __init__(self):
-        self.devices = {}
-
-    def remove_service(self, _zeroconf, _type, _name):
-        pass
-
-    def add_service(self, zeroconf, service_type, name):
-        if service_type == ZEROCONF_TYPE:
-            info = zeroconf.get_service_info(service_type, name)
-            ip = socket.inet_ntoa(info.address)
-            try:
-                version = info.properties[b'version'].decode()
-            except:
-                version = "unknown"
-            hostinfo = "{}:{} (version {})".format(ip,
-                                                   info.port,
-                                                   version)
-            self.devices[name] = hostinfo
+# class ZeroConfListener:
+# 
+#     def __init__(self):
+#         self.devices = {}
+# 
+#     def remove_service(self, _zeroconf, _type, _name):
+#         pass
+# 
+#     def add_service(self, zeroconf, service_type, name):
+#         if service_type == ZEROCONF_TYPE:
+#             info = zeroconf.get_service_info(service_type, name)
+#             ip = socket.inet_ntoa(info.address)
+#             try:
+#                 version = info.properties[b'version'].decode()
+#             except:
+#                 version = "unknown"
+#             hostinfo = "{}:{} (version {})".format(ip,
+#                                                    info.port,
+#                                                    version)
+#             self.devices[name] = hostinfo
