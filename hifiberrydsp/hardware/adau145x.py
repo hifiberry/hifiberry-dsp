@@ -114,7 +114,7 @@ class Adau145x():
         SpiHandler.write(0xf890, [1], debug)
         time.sleep(1)
         reg1 = int.from_bytes(SpiHandler.read(0xf000, 2), byteorder='big') # PLL feedback divider must be != 0
-        reg2 = int.from_bytes(SpiHandler.read(0xc000, 2), byteorder='big') # Soft reset is expected to be 1 
+        reg2 = int.from_bytes(SpiHandler.read(0xf890, 2), byteorder='big') # Soft reset is expected to be 1 
         logging.debug("register read returned %s %s", reg1, reg2)
         if (reg1!=0) and (reg2==1):
             return True
