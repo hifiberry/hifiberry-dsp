@@ -94,20 +94,24 @@ class SoundSync(Thread):
     #      2: 02f048a$  We check for f048a (SIGNATURE_VALUE) to see if LG Sound Sync is enabled.
     #      3: 03f048a$
     #    100: 64f048a$  The byte to the left is the volume we want to extract.
-    #         ~~
+    #         ~~        The first bit is set to 1 when muted.
     SIGNATURE_MASK = 0xfffff
     SIGNATURE_VALUE = 0xf048a
-    VOLUME_SHIFT = 5 * 4
-    VOLUME_MASK = 0xff
+    SHIFT = 5 * 4
+    MUTE_MASK = 0b10000000
+    VOLUME_MASK = 0b01111111
 
     @staticmethod
     def parse_volume_from_status(data):
         bits = int.from_bytes(data, byteorder="big")
 
-        if bits & SoundSync.SIGNATURE_MASK == SoundSync.SIGNATURE_VALUE:
-            return bits >> SoundSync.VOLUME_SHIFT & SoundSync.VOLUME_MASK
+        if bits & SoundSync.SIGNATURE_MASK != SoundSync.SIGNATURE_VALUE:
+            return None
 
-        return None
+        if bits >> SoundSync.SHIFT & SoundSync.MUTE_MASK:
+            return 0
+
+        return bits >> SoundSync.SHIFT & SoundSync.VOLUME_MASK
 
     def write_volume(self, volume):
         assert 0 <= volume <= 100
