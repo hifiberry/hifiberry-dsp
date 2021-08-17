@@ -27,11 +27,11 @@ import struct
 
 from threading import Thread
 
-from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.filtering.volume import percent2amplification
 from hifiberrydsp import datatools
 
 try:
+    from hifiberrydsp.hardware.adau145x import Adau145x
     from hifiberrydsp.hardware.spi import SpiHandler
     # depends on spidev and is not required to run tests
 except:
