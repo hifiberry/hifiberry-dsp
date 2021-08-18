@@ -27,11 +27,11 @@ import struct
 
 from threading import Thread
 
-from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.filtering.volume import percent2amplification
 from hifiberrydsp import datatools
 
 try:
+    from hifiberrydsp.hardware.adau145x import Adau145x
     from hifiberrydsp.hardware.spi import SpiHandler
     # depends on spidev and is not required to run tests
 except:
@@ -86,29 +86,32 @@ class SoundSync(Thread):
 
     def try_read_volume(self):
         spdif_status_register = 0xf617
-        return self.parse_volume_from_status(self.spi.read(spdif_status_register, 6))
+        return self.parse_volume_from_status(self.spi.read(spdif_status_register, 5))
 
     # Volume    ~~~~~
-    #      0: 00f048a..$  This is what the SPDIF status registers look like with different volume levels set.
-    #      1: 01f048a..$
-    #      2: 02f048a..$  We check for f048a (SIGNATURE_VALUE) to see if LG Sound Sync is enabled.
-    #      3: 03f048a..$
-    #    100: 64f048a..$  The byte to the left is the volume we want to extract.
-    #         ~~
-    SIGNATURE_SHIFT = 2 * 4
+    #      0: 00f048a$  This is what the SPDIF status registers look like with different volume levels set.
+    #      1: 01f048a$
+    #      2: 02f048a$  We check for f048a (SIGNATURE_VALUE) to see if LG Sound Sync is enabled.
+    #      3: 03f048a$
+    #    100: 64f048a$  The byte to the left is the volume we want to extract.
+    #         ~~        The first bit is set to 1 when muted.
     SIGNATURE_MASK = 0xfffff
     SIGNATURE_VALUE = 0xf048a
-    VOLUME_SHIFT = 7 * 4
-    VOLUME_MASK = 0xff
+    SHIFT = 5 * 4
+    MUTE_MASK = 0b10000000
+    VOLUME_MASK = 0b01111111
 
     @staticmethod
     def parse_volume_from_status(data):
         bits = int.from_bytes(data, byteorder="big")
 
-        if bits >> SoundSync.SIGNATURE_SHIFT & SoundSync.SIGNATURE_MASK == SoundSync.SIGNATURE_VALUE:
-            return bits >> SoundSync.VOLUME_SHIFT & SoundSync.VOLUME_MASK
+        if bits & SoundSync.SIGNATURE_MASK != SoundSync.SIGNATURE_VALUE:
+            return None
 
-        return None
+        if bits >> SoundSync.SHIFT & SoundSync.MUTE_MASK:
+            return 0
+
+        return bits >> SoundSync.SHIFT & SoundSync.VOLUME_MASK
 
     def write_volume(self, volume):
         assert 0 <= volume <= 100
