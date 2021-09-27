@@ -153,6 +153,22 @@ class DSPToolkit():
         else:
             logging.info("%s is undefined", ATTRIBUTE_VOL_CTL)
 
+    def adjust_volume(self, adjustment):
+        current_volume = self.get_volume()
+        # Linear scaling factor
+        new_volume = current_volume * adjustment
+
+        if new_volume >= 1:
+            # Prevent excess volume
+            return self.set_volume(1)
+
+        elif new_volume <= 0:
+            # Prevent negative volume
+            return self.set_volume(0)
+        
+        else:
+            return self.set_volume(new_volume)
+
     def get_limit(self):
         volctl = datatools.parse_int(
             self.sigmatcp.request_metadata(ATTRIBUTE_VOL_LIMIT))
@@ -367,6 +383,7 @@ class CommandLine():
             "save":  self.cmd_save,
             "load": self.cmd_load,
             "install-profile": self.cmd_install_profile,
+            "adjust-volume": self.cmd_adjust_volume,
             "set-volume": self.cmd_set_volume,
             "get-volume": self.cmd_get_volume,
             "set-limit": self.cmd_set_limit,
@@ -442,6 +459,21 @@ class CommandLine():
 
     def cmd_version(self):
         print(hifiberrydsp.__version__)
+
+    def cmd_adjust_volume(self):
+        if len(self.args.parameters) > 0:
+            adjustment = self.string_to_volume(self.args.parameters[0])
+        else:
+            print("Volume adjustment parameter missing")
+            sys.exit(1)
+
+        if adjustment is not None:
+            if self.dsptk.adjust_volume(adjustment):
+                print("Volume changed by {}dB".format(
+                    amplification2decibel(adjustment)))
+            else:
+                print("Profile doesn't support volume control")
+                sys.exit(1)
 
     def cmd_set_volume(self):
         if len(self.args.parameters) > 0:

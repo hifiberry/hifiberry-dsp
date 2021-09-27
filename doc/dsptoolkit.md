@@ -21,6 +21,12 @@ The following commands are supported. Note that some command need specific param
   For negative db values, you need to prefix these with `--`, e.g.  
     `dsptoolkit set-volume -- -3db`
 
+* `adjust-volume volume`
+
+  adjust the volume. Volume adjustment values can be defined just as for `set-volume`. With `adjust-volume`, the current volume is adjusted by the chosen amount, instead of setting it to a fixed level.
+  For negative db values, you need to prefix these with `--`, e.g.  
+    `dsptoolkit adjust-volume -- -3db`
+
 * `get-volume`
 
   gets the current setting of the volume control register.
