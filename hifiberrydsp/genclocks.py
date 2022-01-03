@@ -61,7 +61,8 @@ class LoopStateMachine:
     def __init__(self, sigma_tcp_client, playback_pcm='default'):
         self.client = sigma_tcp_client
         self.task_queue = asyncio.Queue()
-        self.playback = playback_pcm
+        self.playback_pcm = playback_pcm
+        self.playback = None
         self.loop = None
 
     @property
@@ -69,7 +70,15 @@ class LoopStateMachine:
         inputlock = int.from_bytes(
             self.client.read_memory(0xf600, 2),
             byteorder='big') & 0x0001
+        logger.debug('inputlock value: %d', inputlock)
         return inputlock > 0
+
+    def safe_alsaopen(self):
+        try:
+            ret = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.playback)
+        except alsaaudio.ALSAAudioError:
+            ret = None
+        return ret
 
     async def run(self):
         self.loop = asyncio.get_running_loop()
@@ -80,22 +89,28 @@ class LoopStateMachine:
             todo = await self.task_queue.get()
             logger.info('Dispatching task \'%s\' from queue in %.2f seconds',
                          todo.coro.__name__, todo.delay)
+            await self._gather()
             self.loop.call_later(todo.delay, asyncio.create_task, todo.coro())
 
     async def idle(self):
         while not self.active:
             await asyncio.sleep(1)
-        await self.task_queue.put(self.FutureTask(0, self.play))
+        
+        try:
+            self.playback = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.playback_pcm)
+            await self.task_queue.put(self.FutureTask(0, self.play))
+        except alsaaudio.ALSAAudioError as e:
+            logger.warning('Error opening playback device: %s', e)
+            await self.task_queue.put(self.FutureTask(5, self.idle))
 
     async def play(self):
-        with AlsaPlaybackDevice(device=self.playback) as _:
-            while self.active:
-                asyncio.sleep(1)
+        while self.active:
+            await asyncio.sleep(1)
+        self.playback.close()
         await self.task_queue.put(self.FutureTask(0, self.idle))
 
     async def hybernate(self, sig):
         logger.info('Received pause signal %s', sig.name)
-        await self._gather()
         self.loop.call_later(15, asyncio.create_task, self.run())
 
     async def _gather(self):
