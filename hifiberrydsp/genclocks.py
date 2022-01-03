@@ -22,101 +22,128 @@ SOFTWARE.
 '''
 
 #!/usr/bin/env python
-
+import asyncio
+import argparse
 import logging
 import signal
-import time
-import sys
-from threading import Thread, Condition
+import os
+from collections import namedtuple
 
 import alsaaudio
 
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.client.sigmatcp import SigmaTCPClient
 
-stopped = False
-device="default"
-waitseconds=0
+SERVICE_NAME = 'spdifclockgen'
+logger = logging.getLogger(SERVICE_NAME)
 
-PERIODSIZE=1024
-BYTESPERSAMPLE=8
+class LoopStateMachine:
+    FutureTask = namedtuple('FutureTask', ['delay', 'coro'])
+    def __init__(self, sigma_tcp_client):
+        self.client = sigma_tcp_client
+        self.task_queue = asyncio.Queue()
+        self.playback = None
+        self.loop = None
 
-pcm=None
-sigmatcp=None
+    @property
+    def active(self):
+        inputlock = int.from_bytes(
+            self.client.read_memory(0xf600, 2),
+            byteorder='big') & 0x0001
+        return inputlock > 0
 
-stopit = Condition()
-stopped = False
-
-def silenceloop():
-    global pcm
-    
-    try:
-        pcm=alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=device)
-    except:
-        logging.debug("sound card probably in use, doing nothing")
-        return
-    
-    logging.debug("SPDIF lock, playing silence")
-    
-    stopit.acquire()
-    stopit.wait()
-    stopit.release()
-    logging.debug("received stop signal, stopping clock gen")
+    async def run(self):
+        self.loop = asyncio.get_running_loop()
+        await self.task_queue.put(
+            self.FutureTask(0, self.idle))
         
-    pcm=None
-    
+        while True:
+            todo = await self.task_queue.get()
+            logger.debug('Dispatching task %s from queue in %.2f seconds',
+                         todo.coro.__name__, todo.delay)
+            self.loop.call_later(todo.delay, asyncio.create_task, todo.coro())
+            await asyncio.sleep(1)
 
-def spdifactive():
-    inputlock = int.from_bytes(sigmatcp.read_memory(0xf600, 2),byteorder='big') & 0x0001
-    return inputlock > 0 
-    
-def stop_playback(_signalNumber, _frame):
-    global stopped
-    
-    logging.info("received USR1, stopping music playback")
-    stopit.acquire()
-    stopit.notify()
-    stopit.release()
-    # Re-activate in 15 seconds
-    stopped=True
-    t = Thread(target=activate_again, args=(15,))
-    t.start()
-    
-    
-def activate_again(seconds):
-    time.sleep(seconds)
-    global stopped
-    stopped=False
+    async def idle(self):
+        while True:
+            if self.active:
+                await self.task_queue.put(self.FutureTask(0, self.play))
+                return
+            await asyncio.sleep(1)
+
+    async def play(self):
+        self.playback = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device='default')
+        while self.active:
+            asyncio.sleep(1)
+        self.playback.close()
+        await self.task_queue.put(self.FutureTask(0, self.idle))
+
+    async def hybernate(self):
+        await self._gather()
+        await self.task_queue.put(self.FutureTask(15, self.idle))
+
+    async def _gather(self):
+        tasks = [t for t in asyncio.all_tasks() if t is not
+                 asyncio.current_task()]
+
+        [task.cancel() for task in tasks]
+
+        logger.info('Cancelling %d outstanding tasks', len(tasks))
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def shutdown(self, sig):
+        logger.info('Received exit signal %s.', sig.name)
+        await self._gather()
+        self.loop.stop()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+            '-p', '--playback', default='default',
+            help=argparse.SUPPRESS) # Hide this option from normal users
+    parser.add_argument(
+            '-v', '--verbose', action='store_true',
+            help='''Increase logging verbosity to DEBUG''')
+
+    return parser.parse_args()
+
+
+def logger_config(verbose):
+    logging.basicConfig()
+    logging.captureWarnings(True)
+    logging_level = logging.DEBUG if verbose else logging.INFO
+    logger.setLevel(logging_level)
 
 
 def main():
-    global sigmatcp
-    
-    if len(sys.argv) > 1:
-        if "-v" in sys.argv:
-            logging.basicConfig(format='%(levelname)s: %(name)s - %(message)s',
-                                level=logging.DEBUG,
-                                force=True)
-    else:
-        logging.basicConfig(format='%(levelname)s: %(name)s - %(message)s',
-                            level=logging.INFO,
-                            force=True)
-    
-    signal.signal(signal.SIGUSR1, stop_playback)
-    
-    sigmatcp = SigmaTCPClient(Adau145x(),"127.0.0.1")
+    args = parse_args()
+    logger_config(args.verbose)
+    logger.info('%s started with PID %d', SERVICE_NAME, os.getpid())
+    loop = asyncio.get_event_loop()
 
-    while True:
-        time.sleep(1)
-        
-        if stopped:
-            logging.debug("stopped")
-            continue
-        
-        if (spdifactive()):
-            silenceloop()
-        else:
-            logging.debug("no SPDIF lock, sleeping")
-        
+    shutdown_signals = (signal.SIGTERM, signal.SIGINT)
+    pause_signals = (signal.SIGHUP, signal.SIGUSR1)
+
+    loopsm = LoopStateMachine(SigmaTCPClient(Adau145x(),"127.0.0.1"))
+    try:
+        for s in shutdown_signals:
+            loop.add_signal_handler(
+                s, lambda s=s: 
+                    asyncio.create_task(loopsm.shutdown(s)))
+
+        for s in pause_signals:
+            loop.add_signal_handler(
+                s, lambda s=s:
+                    asyncio.create_task(loopsm.hybernate(s)))
+
+        loop.create_task(loopsm.run())
+        loop.run_forever()
+
+    finally:
+        loop.close()
+        logger.info('Sucessfully shutdown %s', SERVICE_NAME)
+
+
 if __name__ == '__main__':
     main()
