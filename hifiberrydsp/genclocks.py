@@ -37,12 +37,31 @@ from hifiberrydsp.client.sigmatcp import SigmaTCPClient
 SERVICE_NAME = 'spdifclockgen'
 logger = logging.getLogger(SERVICE_NAME)
 
+
+class AlsaPlaybackDevice:
+    def __init__(self, device='default'):
+        self.device = None
+        self.pcm_name = device
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def open(self):
+        self.device = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.pcm_name)
+
+    def close(self):
+        self.device.close()
+
 class LoopStateMachine:
     FutureTask = namedtuple('FutureTask', ['delay', 'coro'])
-    def __init__(self, sigma_tcp_client):
+    def __init__(self, sigma_tcp_client, playback_pcm='default'):
         self.client = sigma_tcp_client
         self.task_queue = asyncio.Queue()
-        self.playback = None
+        self.playback = playback_pcm
         self.loop = None
 
     @property
@@ -59,33 +78,29 @@ class LoopStateMachine:
         
         while True:
             todo = await self.task_queue.get()
-            logger.debug('Dispatching task %s from queue in %.2f seconds',
+            logger.info('Dispatching task \'%s\' from queue in %.2f seconds',
                          todo.coro.__name__, todo.delay)
             self.loop.call_later(todo.delay, asyncio.create_task, todo.coro())
-            await asyncio.sleep(1)
 
     async def idle(self):
-        while True:
-            if self.active:
-                await self.task_queue.put(self.FutureTask(0, self.play))
-                return
+        while not self.active:
             await asyncio.sleep(1)
+        await self.task_queue.put(self.FutureTask(0, self.play))
 
     async def play(self):
-        self.playback = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device='default')
-        while self.active:
-            asyncio.sleep(1)
-        self.playback.close()
+        with AlsaPlaybackDevice(device=self.playback) as _:
+            while self.active:
+                asyncio.sleep(1)
         await self.task_queue.put(self.FutureTask(0, self.idle))
 
-    async def hybernate(self):
+    async def hybernate(self, sig):
+        logger.info('Received pause signal %s', sig.name)
         await self._gather()
-        await self.task_queue.put(self.FutureTask(15, self.idle))
+        self.loop.call_later(15, asyncio.create_task, self.run())
 
     async def _gather(self):
         tasks = [t for t in asyncio.all_tasks() if t is not
                  asyncio.current_task()]
-
         [task.cancel() for task in tasks]
 
         logger.info('Cancelling %d outstanding tasks', len(tasks))
@@ -125,7 +140,7 @@ def main():
     shutdown_signals = (signal.SIGTERM, signal.SIGINT)
     pause_signals = (signal.SIGHUP, signal.SIGUSR1)
 
-    loopsm = LoopStateMachine(SigmaTCPClient(Adau145x(),"127.0.0.1"))
+    loopsm = LoopStateMachine(SigmaTCPClient(Adau145x(),"127.0.0.1"), args.playback)
     try:
         for s in shutdown_signals:
             loop.add_signal_handler(
