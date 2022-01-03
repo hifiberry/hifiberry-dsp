@@ -55,13 +55,6 @@ class LoopStateMachine:
         logger.debug('inputlock value: %d', inputlock)
         return inputlock > 0
 
-    def safe_alsaopen(self):
-        try:
-            ret = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.playback)
-        except alsaaudio.ALSAAudioError:
-            ret = None
-        return ret
-
     async def run(self):
         self.loop = asyncio.get_running_loop()
         await self.task_queue.put(
@@ -93,7 +86,7 @@ class LoopStateMachine:
 
     async def hybernate(self, sig):
         logger.info('Received pause signal %s', sig.name)
-        self.loop.call_later(15, asyncio.create_task, self.run())
+        await self.task_queue.put(self.FutureTask(15, self.idle))
 
     async def _gather(self):
         tasks = [t for t in asyncio.all_tasks() if t is not
