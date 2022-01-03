@@ -38,24 +38,6 @@ SERVICE_NAME = 'spdifclockgen'
 logger = logging.getLogger(SERVICE_NAME)
 
 
-class AlsaPlaybackDevice:
-    def __init__(self, device='default'):
-        self.device = None
-        self.pcm_name = device
-
-    def __enter__(self):
-        self.open()
-        return self
-
-    def __exit__(self, *_):
-        self.close()
-
-    def open(self):
-        self.device = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.pcm_name)
-
-    def close(self):
-        self.device.close()
-
 class LoopStateMachine:
     FutureTask = namedtuple('FutureTask', ['delay', 'coro'])
     def __init__(self, sigma_tcp_client, playback_pcm='default'):
