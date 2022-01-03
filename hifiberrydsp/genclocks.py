@@ -62,7 +62,7 @@ class LoopStateMachine:
         
         while True:
             todo = await self.task_queue.get()
-            logger.info('Dispatching task \'%s\' from queue in %.2f seconds',
+            logger.info('Dispatching task \'%s\' from queue in %.0f seconds',
                          todo.coro.__name__, todo.delay)
             await self._gather()
             self.loop.call_later(todo.delay, asyncio.create_task, todo.coro())
@@ -70,18 +70,20 @@ class LoopStateMachine:
     async def idle(self):
         while not self.active:
             await asyncio.sleep(1)
-        
+        await self.task_queue.put(self.FutureTask(0, self.play))
+
+    async def play(self):
         try:
-            self.playback = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.playback_pcm)
-            await self.task_queue.put(self.FutureTask(0, self.play))
+            # Resource will be collected implicitly when exiting this method
+            _ = alsaaudio.PCM(alsaaudio.PCM_PLAYBACK, device=self.playback_pcm)
         except alsaaudio.ALSAAudioError as e:
             logger.warning('Error opening playback device: %s', e)
             await self.task_queue.put(self.FutureTask(5, self.idle))
+            return
 
-    async def play(self):
         while self.active:
             await asyncio.sleep(1)
-        self.playback.close()
+
         await self.task_queue.put(self.FutureTask(0, self.idle))
 
     async def hybernate(self, sig):
@@ -130,7 +132,7 @@ def main():
     shutdown_signals = (signal.SIGTERM, signal.SIGINT)
     pause_signals = (signal.SIGHUP, signal.SIGUSR1)
 
-    loopsm = LoopStateMachine(SigmaTCPClient(Adau145x(),"127.0.0.1"), args.playback)
+    loopsm = LoopStateMachine(SigmaTCPClient(Adau145x(), '127.0.0.1'), args.playback)
     try:
         for s in shutdown_signals:
             loop.add_signal_handler(
