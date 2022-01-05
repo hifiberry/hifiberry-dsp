@@ -44,7 +44,6 @@ class LoopStateMachine:
         self.client = sigma_tcp_client
         self.task_queue = asyncio.Queue()
         self.playback_pcm = playback_pcm
-        self.playback = None
         self.loop = None
 
     @property
@@ -124,6 +123,7 @@ def logger_config(verbose):
 
 
 def main():
+    os.nice(19)
     args = parse_args()
     logger_config(args.verbose)
     logger.info('%s started with PID %d', SERVICE_NAME, os.getpid())
