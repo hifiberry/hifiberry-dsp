@@ -46,7 +46,7 @@ from hifiberrydsp.filtering.volume import decibel2amplification, \
 from hifiberrydsp.datatools import parse_int, parse_frequency, parse_decibel
 from hifiberrydsp.parser.xmlprofile import  \
     ATTRIBUTE_VOL_CTL, ATTRIBUTE_VOL_LIMIT, ATTRIBUTE_LOUDNESS, \
-    ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, \
+    ATTRIBUTE_BALANCE, ATTRIBUTE_SAMPLERATE, ATTRIBUTE_SAMPLERATE_CAP, \
     ATTRIBUTE_IIR_FILTER_LEFT, ATTRIBUTE_IIR_FILTER_RIGHT, \
     ATTRIBUTE_CUSTOM_FILTER_LEFT, ATTRIBUTE_CUSTOM_FILTER_RIGHT, \
     ATTRIBUTE_FIR_FILTER_LEFT, ATTRIBUTE_FIR_FILTER_RIGHT, \
@@ -370,6 +370,12 @@ class DSPToolkit():
         sr = datatools.parse_int(
             self.sigmatcp.request_metadata(ATTRIBUTE_SAMPLERATE))
 
+	# There are 2 version of the sample rate parameter:
+        # samplerate and sampleRate
+        if sr is None:
+            sr = datatools.parse_int(
+                self.sigmatcp.request_metadata(ATTRIBUTE_SAMPLERATE_CAP))
+	
         if sr is None or sr == 0:
             return 48000
         else:
