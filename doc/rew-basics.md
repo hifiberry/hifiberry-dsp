@@ -194,7 +194,7 @@ dsptoolkit store-filters
 Not happy with the results and you want to start with a new measurement and another optimisation? You can remove all filter settings using the DSP toolkit
 
 ```bash
-dsptoolkit remove-iir-filters
+dsptoolkit clear-iir-filters
 ```
 
 ## Tips & tricks
