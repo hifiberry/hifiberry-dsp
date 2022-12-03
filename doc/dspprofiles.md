@@ -46,8 +46,15 @@ First open a capture window using the "View/Capture window menu".
 You should now see an additional "Capture window". This will record all transactions send to the DSP.
 
 ![SigmaStudio Capture window](img/ss-capture.png)
-  
-The capture window should be empty. If it isn't click on the "Clear all output data" button in the top-left of this window.
+
+Also make sure that the sequence window is unhidden. This is the window that will ultimately contain the sequences to be written to the xml profile.
+
+![UnhideSequenceWindow](https://user-images.githubusercontent.com/4656964/205437033-703254fb-9356-4d19-ba86-7a31ec4fc290.png)
+
+The "Capture Window" should be empty. If it isn't click on the "Clear all output data" button in the top-left of this window.
+The "Sequence Window" should also be empty. If it isn't click on the "New Sequence" button in the top-left of this window.
+
+![HowToClear](https://user-images.githubusercontent.com/4656964/205437049-9bd8835c-ec91-4099-aa8c-3e34e8f21534.png)
 
 Right-click onto the ADAU1451 and select "Write latest compilation through DSP".
 
