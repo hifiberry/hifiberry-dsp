@@ -22,10 +22,10 @@ SOFTWARE.
 import logging
 import hifiberrydsp
 
-def init_spi():    
-    import spidev
+def init_spi():        
     if not hifiberrydsp._called_from_test:
         # only open the device when not running tests
+        import spidev        
         spi = spidev.SpiDev()        
         spi.open(0, 0)
         spi.bits_per_word = 8
