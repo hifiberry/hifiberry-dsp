@@ -142,7 +142,7 @@ class XmlProfile():
         logging.info("reading profile %s", filename)
         try:
             with open(filename) as fd:
-                self.doc = xmltodict.parse(fd.read())
+                self.doc = xmltodict.parse(fd.read(), dict_constructor=OrderedDict)
         except IOError:
             logging.error("can't read file %s", filename)
             return
