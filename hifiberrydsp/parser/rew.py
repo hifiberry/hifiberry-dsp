@@ -46,7 +46,7 @@ class REWParser():
                         fc = float(parts[5])
                         gain = float(parts[8])
                         q = float(parts[11])
-                        logging.info("Filter EQ fc=%s, q=%s, gaion=%s, fs=%s",
+                        logging.info("Filter EQ fc=%s, q=%s, gain=%s, fs=%s",
                                      fc, q, gain, fs)
                         filters.append(
                             Biquad.peaking_eq(fc, q, gain, fs))
@@ -109,7 +109,7 @@ class REWParser():
                             parts[4] == "Fc" and parts[6] == "Hz":
                         fc = float(parts[5])
                         q = 0.707
-                        logging.info("Filter NO fc=%s", fc, db)
+                        logging.info("Filter NO fc=%s q=%s", fc, q)
                         filters.append(
                             Biquad.notch(fc, q, fs))
 
