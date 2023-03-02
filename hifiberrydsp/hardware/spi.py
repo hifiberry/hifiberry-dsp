@@ -20,16 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 import logging
+import hifiberrydsp
 
-
-def init_spi():
+def init_spi():    
     import spidev
-    spi = spidev.SpiDev()
-    spi.open(0, 0)
-    spi.bits_per_word = 8
-    spi.max_speed_hz = 1000000
-    spi.mode = 0
-    logging.debug("spi initialized %s", spi)
+    if not hifiberrydsp._called_from_test:
+        # only open the device when not running tests
+        spi = spidev.SpiDev()        
+        spi.open(0, 0)
+        spi.bits_per_word = 8
+        spi.max_speed_hz = 1000000
+        spi.mode = 0
+        logging.debug("spi initialized %s", spi)
+    else:
+        spi = None
+        logging.debug("spi not initialized since running tests")
     return spi
 
 
