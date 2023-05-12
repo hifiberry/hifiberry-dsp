@@ -91,10 +91,10 @@ class AlsaSync(Thread):
 
     def set_alsa_control(self, alsa_control):
         from alsaaudio import Mixer
-        try:
-            self.mixer = self.get_dsp_mixer(alsa_control)
+        self.mixer = self.get_dsp_mixer(alsa_control)
+        if self.mixer != None:
             logging.debug("using existing ALSA control %s", alsa_control)
-        except:
+        else:
             try:
                 logging.debug(
                     "ALSA control %s does not exist, creating it", alsa_control)
