@@ -10,6 +10,8 @@ Software for HiFiBerry boards equipped with DSP. This package can be
 used to read/write data to HiFiBerry DSP boards using the Beocreate TCP 
 server.
 
+The software comes "as-is". There is no individual support for this software. Feel free to post in the [HiFiBerry forum](https://support.hifiberry.com/hc/en-us/community/topics/115000377385-DSP-boards-and-Beocreate) for questions. 
+
 ## Installation
 
 Before installing the dsptoolkit, you need to have a working Python 3
