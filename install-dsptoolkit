@@ -1,9 +1,13 @@
 #!/bin/sh
 sudo apt update
-for p in python3-pip libasound2-dev libxslt1-dev libxml2-dev zlib1g-dev python3-lxml libxml2-dev libxslt-dev python3-dev; do
+for p in python3-pip libasound2-dev libxslt1-dev libxml2-dev zlib1g-dev python3-lxml libxml2-dev libxslt-dev python3-dev git; do
  sudo apt install -y $p
 done
-sudo pip3 install --upgrade hifiberrydsp
+
+cd
+git clone https://github.com/hifiberry/hifiberry-dsp
+cd hifiberry-dsp
+sudo python3 ./setup.py install 
 
 for i in sigmatcp; do
  sudo systemctl stop $i
