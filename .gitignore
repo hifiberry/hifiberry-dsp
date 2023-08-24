@@ -9,3 +9,5 @@ hifiberrydsp.egg-info
 tmp
 /devenv.sh
 /update
+build
+dist
