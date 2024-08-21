@@ -21,6 +21,7 @@ SOFTWARE.
 '''
 import time
 import logging
+import select
 import tempfile
 import os
 
@@ -71,7 +72,7 @@ class AlsaSync(Thread):
         self.dsp = Adau145x
         self.volume_register_length = self.dsp.WORD_LENGTH
         self.finished = False
-        self.pollinterval = 0.1
+        self.pollinterval = 1000  # milliseconds
         self.spi = SpiHandler
         self.dspdata = None
         self.dspvol = None
@@ -242,8 +243,12 @@ class AlsaSync(Thread):
                 else:
                     reg_set = True
 
+                poller = select.poll()
+                poller.register(*(self.mixer.polldescriptors()[0]))
+                poller.poll(self.pollinterval)
+                self.mixer.handleevents()
+
                 self.check_sync()
-                time.sleep(self.pollinterval)
         except Exception as e:
             logging.error("ALSA sync crashed: %s", e)
 
