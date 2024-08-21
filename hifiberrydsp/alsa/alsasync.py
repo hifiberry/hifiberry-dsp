@@ -21,6 +21,7 @@ SOFTWARE.
 '''
 import time
 import logging
+import select
 import tempfile
 import os
 
@@ -242,8 +243,12 @@ class AlsaSync(Thread):
                 else:
                     reg_set = True
 
+                poller = select.poll()
+                poller.register(*(self.mixer.polldescriptors()[0]))
+                poller.poll(self.pollinterval)
+                self.mixer.handleevents()
+
                 self.check_sync()
-                time.sleep(self.pollinterval)
         except Exception as e:
             logging.error("ALSA sync crashed: %s", e)
 
