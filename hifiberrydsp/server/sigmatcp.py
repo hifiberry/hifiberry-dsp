@@ -794,9 +794,13 @@ class SigmaTCPServerMain():
         self.abort = False
         self.zeroconf = None
 
-        self.server = SigmaTCPServer()
-        
         params = self.parse_config()
+
+        if params["localhost"]:
+            self.server = SigmaTCPServer(server_address=("localhost", DEFAULT_PORT))
+        else:
+            self.server = SigmaTCPServer()
+
         if params["alsa"]:
             logging.info("initializing ALSA mixer control %s", alsa_mixer_name)
             alsasync = AlsaSync()
@@ -857,6 +861,11 @@ class SigmaTCPServerMain():
         if "--lgsoundsync" in sys.argv:
             params["lgsoundsync"] = True
             
+        if "--localhost" in sys.argv:
+            params["localhost"] = True
+        else:
+            params["localhost"] = False
+
         try:
             this.command_after_startup = config.get("server","command_after_startup")
         except:
