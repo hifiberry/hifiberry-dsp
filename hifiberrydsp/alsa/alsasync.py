@@ -72,7 +72,7 @@ class AlsaSync(Thread):
         self.dsp = Adau145x
         self.volume_register_length = self.dsp.WORD_LENGTH
         self.finished = False
-        self.pollinterval = 0.1
+        self.pollinterval = 1000  # milliseconds
         self.spi = SpiHandler
         self.dspdata = None
         self.dspvol = None
