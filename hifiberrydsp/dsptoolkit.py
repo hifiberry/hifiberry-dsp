@@ -435,6 +435,18 @@ class CommandLine():
             "get-memory": self.cmd_get_memory,
             #            "selfboot": self.cmd_selfboot,
         }
+
+        self.command_description = """
+supported commands and parameters are:
+        adjust-volume
+        save            saves to file
+        set-volume      <vol> sets volume to an absolute value
+        store           stores to eeprom
+        tone-control    <shelf> <freq> <vol>
+                        shelf filter can be 'hs' for highshelf
+                        or 'ls' for lowshelf
+            ..... to be completed
+        """
         self.dsptk = DSPToolkit()
 
     def register_file(self):
@@ -1022,7 +1034,9 @@ class CommandLine():
 
     def main(self):
 
-        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
+        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit',
+                                         formatter_class = argparse.RawTextHelpFormatter,
+                                         epilog = self.command_description)
         parser.add_argument('--delay',
                             help='delay for loop operations in ms',
                             type=int,
@@ -1038,7 +1052,8 @@ class CommandLine():
                             required=False,
                             default=TIMEOUT)
         parser.add_argument('command',
-                            choices=sorted(self.command_map.keys()))
+                            choices=sorted(self.command_map.keys()),
+                            help="see command description below")
         parser.add_argument('parameters', nargs='*')
 
         self.args = parser.parse_args()
