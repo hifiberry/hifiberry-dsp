@@ -15,24 +15,12 @@ The software comes "as-is". There is no individual support for this software. Fe
 ## Installation
 
 Before installing the dsptoolkit, you need to have a working Python 3
-installation (>=3.5) and a working pip. You also need to enable SPI as
+installation (>=3.10) and a working pip. You also need to enable SPI as
 dsptoolkit needs SPI to communicate with the DSP.
 Check out 
 https://www.raspberrypi-spy.co.uk/2014/08/enabling-the-spi-interface-on-the-raspberry-pi/
 
 You can then install the toolkit by just running
-```bash
-sudo pip3 install --upgrade hifiberrydsp
-```
-
-This will only install the software, but not activate the server.
-Depending on your system, you might need to create a startup script 
-or a systemd unit file for this.
-
-If you're using a Debian based system (e.g. Debian, Raspbian), there
-is a script that does all the work for you. Just run the following 
-command:
-
 ```bash
 bash <(curl https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/install-dsptoolkit)
 ```
