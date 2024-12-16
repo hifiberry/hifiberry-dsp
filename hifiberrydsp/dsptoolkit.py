@@ -435,6 +435,47 @@ class CommandLine():
             "get-memory": self.cmd_get_memory,
             #            "selfboot": self.cmd_selfboot,
         }
+
+        self.command_description = """
+commands and parameters to get you started:
+
+    get-meta dsp_detected           report the dsp chip identified by sigmatcpserver
+
+    install-profile <profile.xml>   writes a DSP profile to the DSP EEPROM and activates it
+                                    the file should not be deleted after installing as this programm relies
+                                    on the metadata.
+
+    get-volume                      gets the current setting of the volume control register
+
+    set-volume  <vol>               sets volume to an absolute value
+
+    adjust-volume   <vol>           the current volume is adjusted by the chosen amount, instead of 
+                                    setting it to a fixed level. For negative db values, you need to 
+                                    prefix these with --, e.g.
+                                       dsptoolkit adjust-volume -- -3db
+
+    store                           Store all currently active parameter settings that are defined as 
+                                    storable to the DSP's EEPROM.
+
+    save                            saves the current parameter from RAM to the file system
+
+    load                            restores the parameter from the filesystem to RAM
+
+    tone-control <shelf> <freq> <vol>
+                                   shelf filter can be 'hs' for highshelf
+                                   or 'ls' for lowshelf
+                                   freq is a number string that may be appended by Hz
+                                   vol  is a number string that may be appended by db
+
+    set-rew-filters|set-rew-filters-left|set-rew-filters-right <filename>
+                                   Deploys parametric equaliser settings calculated by REW to the 
+                                   equaliser filter banks (left, right or both)
+
+    reset                          Resets the DSP. The program will be loaded from the EEPROM.
+                                   The parameter RAM won't be stored and/or recovered from the file system.
+
+for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/master/doc/dsptoolkit.md
+        """
         self.dsptk = DSPToolkit()
 
     def register_file(self):
@@ -1022,7 +1063,9 @@ class CommandLine():
 
     def main(self):
 
-        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
+        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit',
+                                         formatter_class = argparse.RawTextHelpFormatter,
+                                         epilog = self.command_description)
         parser.add_argument('--delay',
                             help='delay for loop operations in ms',
                             type=int,
@@ -1039,7 +1082,8 @@ class CommandLine():
                             default=TIMEOUT)
         parser.add_argument('command',
                             choices=sorted(self.command_map.keys()))
-        parser.add_argument('parameters', nargs='*')
+        parser.add_argument('parameters', nargs='*',
+                            help="see command description below")
 
         self.args = parser.parse_args()
 
