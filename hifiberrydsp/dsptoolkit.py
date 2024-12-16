@@ -70,6 +70,11 @@ import hifiberrydsp
 MODE_BOTH = 0
 MODE_LEFT = 1
 MODE_RIGHT = 2
+MODE_DESCRIPTION = {
+        0: 'both channels',
+        1: 'left channel',
+        2: 'right channel'
+        }
 
 DISPLAY_FLOAT = 0
 DISPLAY_INT = 1
@@ -473,7 +478,7 @@ commands and parameters to get you started:
                                    to 2 (only right channel)
                                    at balance=1 the volume setting on both channels is equal
 
-    set-rew-filters|set-rew-filters-left|set-rew-filters-right <filename>
+    apply-rew-filters|apply-rew-filters-left|apply-rew-filters-right <filename>
                                    Deploys parametric equaliser settings calculated by REW to the 
                                    equaliser filter banks (left, right or both)
 
@@ -683,7 +688,7 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
         self.dsptk.clear_iir_filters(mode)
         try:
             self.dsptk.set_filters(filters, mode)
-            print("Filters configured on both channels:")
+            print(f"Filters configured on {MODE_DESCRIPTION[mode]}:")
             for f in filters:
                 print(f.description)
         except DSPError as e:
