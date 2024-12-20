@@ -70,6 +70,11 @@ import hifiberrydsp
 MODE_BOTH = 0
 MODE_LEFT = 1
 MODE_RIGHT = 2
+MODE_DESCRIPTION = {
+        0: 'both channels',
+        1: 'left channel',
+        2: 'right channel'
+        }
 
 DISPLAY_FLOAT = 0
 DISPLAY_INT = 1
@@ -407,6 +412,7 @@ class CommandLine():
             "apply-fir-filter-left": self.cmd_set_fir_filter_left,
             "clear-iir-filters": self.cmd_clear_iir_filters,
             "tone-control": self.cmd_tonecontrol,
+            "set-balance": self.cmd_set_balance,
             "reset": self.cmd_reset,
             "read-dec": self.cmd_read,
             "loop-read-dec": self.cmd_loop_read_dec,
@@ -467,7 +473,12 @@ commands and parameters to get you started:
                                    freq is a number string that may be appended by Hz
                                    vol  is a number string that may be appended by db
 
-    set-rew-filters|set-rew-filters-left|set-rew-filters-right <filename>
+    set-balance <balance>          Sets the balance of left/right channels.
+                                   Value ranges from 0 (only left channel) 
+                                   to 2 (only right channel)
+                                   at balance=1 the volume setting on both channels is equal
+
+    apply-rew-filters|apply-rew-filters-left|apply-rew-filters-right <filename>
                                    Deploys parametric equaliser settings calculated by REW to the 
                                    equaliser filter banks (left, right or both)
 
@@ -677,11 +688,23 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
         self.dsptk.clear_iir_filters(mode)
         try:
             self.dsptk.set_filters(filters, mode)
-            print("Filters configured on both channels:")
+            print(f"Filters configured on {MODE_DESCRIPTION[mode]}:")
             for f in filters:
                 print(f.description)
         except DSPError as e:
             print(e)
+
+    def cmd_set_balance(self):
+        if len(self.args.parameters) == 1:
+            balance = float(self.args.parameters[0])
+        else:
+            print("parameter missing, need number between 0 and 2")
+            sys.exit(1)
+        try:
+            self.dsptk.set_balance(balance)
+        except DSPError as e:
+            print(e)
+
 
     def cmd_tonecontrol(self):
         if len(self.args.parameters) > 2:

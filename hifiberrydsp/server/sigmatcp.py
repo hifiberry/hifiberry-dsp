@@ -921,7 +921,7 @@ class SigmaTCPServerMain():
         dsp_detected = adau145x.Adau145x.detect_dsp()
         if dsp_detected:
             logging.info("detected ADAU14xx DSP")
-            this.dsp="ADAU15xx"
+            this.dsp="ADAU14xx"
         else:
             logging.info("did not detect ADAU14xx DSP")
             this.dsp=""
