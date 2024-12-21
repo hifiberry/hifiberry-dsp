@@ -37,13 +37,13 @@ The following commands are supported. Note that some command need specific param
   For negative db values, you need to prefix these with `--`, e.g.  
     `dsptoolkit set-limit -- -3db`
 
-* `set-rew-filters|set-rew-filters-left|set-rew-filters-right filename`
+* `apply-rew-filters|apply-rew-filters-left|apply-rew-filters-right filename`
 
   Deploys parametric equaliser settings calculated by REW to the equaliser filter banks (left, right or both).
   Not all DSP profiles will support this setting.
   To make sure the filters are still active after a system reboot, make sure you use the store command.
 
-* `set-fir-filters|set-fir-filters-left|set-fir-filters-right`
+* `apply-fir-filters|apply-fir-filters-left|apply-fir-filters-right`
 
   Deploys a FIR (finite impulse response) filter to the left, right or both FIR filter banks.
   A FIR filter file is a simple text file with one real number per line.
