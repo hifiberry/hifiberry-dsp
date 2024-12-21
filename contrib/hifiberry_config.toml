@@ -1,0 +1,2 @@
+[contrib]
+loudness="{'1': {'hs': {'freq': '7000Hz', 'vol': '3dB'},'ls': {'freq': '100Hz', 'vol': '3dB'}},'2': {'hs': {'freq': '7000Hz', 'vol': '4dB'},'ls': {'freq': '150Hz', 'vol': '6dB'}},'3': {'hs': {'freq': '7000Hz', 'vol': '6dB'},'ls': {'freq': '200Hz', 'vol': '9dB'}}}"
