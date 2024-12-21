@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Author: rawdlite@gmail.com
+# Created: 2024-12-21
+# License: MIT License
+from hifiberrydsp.dsptoolkit import DSPToolkit,CommandLine
+from hifiberrydsp.filtering.biquad import Biquad
+from hifiberrydsp.datatools import parse_int, parse_frequency, parse_decibel
+import tomllib
+from pathlib import Path
+import argparse
+
+
+try:
+    with open(Path.home() / ".config" / "hifiberry_config.toml", mode="rb") as fp:
+        settings = tomllib.load(fp)
+    print(settings)
+    LOUDNESS = eval(settings['contrib']['loudness'])
+except:
+    LOUDNESS = {
+            '1': {'hs': {'freq': '7000Hz', 'vol': '3dB'},
+                'ls': {'freq': '100Hz', 'vol': '3dB'}},
+            '2': {'hs': {'freq': '7000Hz', 'vol': '4dB'},
+                'ls': {'freq': '150Hz', 'vol': '6dB'}},
+            '3': {'hs': {'freq': '7000Hz', 'vol': '6dB'},
+                'ls': {'freq': '200Hz', 'vol': '9dB'}}}
+
+parser = argparse.ArgumentParser(description='set loudness via tonecontrol')
+parser.add_argument("-v", "--verbose", action="store_true",
+                    help="be verbose about  whats going on")
+parser.add_argument('loudness_value', choices=LOUDNESS.keys(),help="loudness intensity value")
+args = parser.parse_args()
+loudness = LOUDNESS[args.loudness_value]
+hs_cmd = f"dsptoolkit tone-control hs {loudness['hs']['freq']} {loudness['hs']['vol']}"
+ls_cmd = f"dsptoolkit tone-control hs {loudness['ls']['freq']} {loudness['ls']['vol']}"
+
+
+if args.verbose:
+    print(f"got loudness defined as {loudness}")
+    print(f"hs-cmd: {hs_cmd}")
+    print(f"ls-cmd: {ls_cmd}")
+
+dsptoolkit = DSPToolkit()
+cmd = CommandLine()
+
+hs_frequency = parse_frequency(loudness['hs']['freq'])
+hs_dbgain    = parse_decibel(loudness['hs']['vol'])
+ls_frequency = parse_frequency(loudness['ls']['freq'])
+ls_dbgain    = parse_decibel(loudness['ls']['vol'])
+hs_filterdef = f"hs:{hs_frequency}:{hs_dbgain}"
+ls_filterdef = f"ls:{ls_frequency}:{ls_dbgain}"
+lowshelffilter = Biquad.create_filter(ls_filterdef,dsptoolkit.get_samplerate())
+highshelffilter = Biquad.create_filter(hs_filterdef,dsptoolkit.get_samplerate())
+dsptoolkit.hibernate()
+try:
+    dsptoolkit.set_tonecontrol_filters(lowshelf=lowshelffilter, highshelf=highshelffilter)
+except Exception:
+    print("check filerdefinition")
+    exit
+finally:
+    dsptoolkit.hibernate(False)
+
