@@ -18,8 +18,9 @@ fi
 
 
 if [ -d "/tmp/hbdsp" ]; then
-    >&2 echo "Reboot before running the script again."
-    exit 1
+    #>&2 echo "Reboot before running the script again."
+    #exit 1
+    rm -rf /tmp/hbdsp
 fi
 mkdir -p /tmp/hbdsp
 
@@ -44,7 +45,7 @@ set -v
 ### Create hifiberry data folder
 
 cd /mnt/mmcblk0p2/tce
-[[ -d hifiberry ]] || mkdir hifiberry
+[ -d hifiberry ] || mkdir hifiberry
 mkdir -p /tmp/hbdsp/var/lib
 ln -s /mnt/mmcblk0p2/tce/hifiberry /tmp/hbdsp/var/lib/hifiberry
 
@@ -52,7 +53,9 @@ install_if_missing python3.11
 install_if_missing libxslt-dev
 install_if_missing libxml2-dev
 install_temporarily_if_missing python3.11-pip
-#install_temporarily_if_missing binutils
+install_temporarily_if_missing python3.11-wheel
+install_temporarily_if_missing python3.11-dev
+install_temporarily_if_missing binutils
 install_temporarily_if_missing git
 install_temporarily_if_missing compiletc
 install_temporarily_if_missing libasound-dev
@@ -60,28 +63,23 @@ install_temporarily_if_missing libasound-dev
 cd /tmp
 
 ### Install HifiBerryDSP
-mkdir -p /tmp/hbdsp/usr/local/hifiberry
-python3 -m venv /tmp/hbdsp/usr/local/hifiberry/environment
-cd /tmp/hbdsp/usr/local/hifiberry/
+mkdir -p /usr/local/hifiberry
+python3.11 -m venv /usr/local/hifiberry/environment
+cd /usr/local/hifiberry/
 (tr -d '\r' < environment/bin/activate) > environment/bin/activate_new # Create fixed version of the activate script. See https://stackoverflow.com/a/44446239
 mv -f environment/bin/activate_new environment/bin/activate
 source environment/bin/activate # activate custom python environment
 python3 -m pip install --upgrade pip
-python3 -m pip install --upgrade "hifiberrydsp==0.21"
-#cd /tmp
-#git clone https://github.com/hifiberry/hifiberry-dsp
-#cd hifiberry-dsp
-#python3 ./setup.py install
+# pypi versions are yanked, installing from git repository
+git clone https://github.com/hifiberry/hifiberry-dsp.git /tmp/hifiberry-dsp
+cd /tmp/hifiberry-dsp
+python3.11 -m pip install .
 deactivate # deactivate custom python environment
-
-
+mkdir -p /tmp/hbdsp/usr/local/bin
+cp -Rv /usr/local/hifiberry /tmp/hbdsp/usr/local
 #create executables
-mkdir /tmp/hbdsp/usr/local/bin
-echo "/usr/local/hifiberry/environment/bin/python3.11 /usr/local/hifiberry/environment/bin/dsptoolkit" > /tmp/hbdsp/usr/local/bin/dsptoolkit
-chmod 755 /tmp/hbdsp/usr/local/bin/dsptoolkit
-
-echo "/usr/local/hifiberry/environment/bin/python3.11 /usr/local/hifiberry/environment/bin/sigmatcpserver" > /tmp/hbdsp/usr/local/bin/sigmatcpserver
-chmod 755 /tmp/hbdsp/usr/local/bin/sigmatcpserver
+ln -s /usr/local/hifiberry/environment/bin/dsptoolkit /tmp/hbdsp/usr/local/bin
+ln -s /usr/local/hifiberry/environment/bin/sigmatcpserver /tmp/hbdsp/usr/local/bin
 
 mkdir -p /tmp/hbdsp/usr/local/etc/init.d
 echo "#!/bin/sh
@@ -92,7 +90,7 @@ DESC='SigmaTCP Server for HiFiBerry DSP'
 PIDFILE=/var/run/sigmatcpserver/sigmatcpserver.pid
 
 # Set DAEMON to the actual binary
-DAEMON=\"/usr/local/bin/sigmatcpserver\"
+DAEMON=\"/usr/local/hifiberry/environment/bin/sigmatcpserver\"
 
 case \"\$1\" in
         start)
@@ -117,7 +115,7 @@ case \"\$1\" in
         ;;
         status)
                 # Check if sigmatcpserver daemon is running
-                PID=\$(pgrep -f \$DAEMON)
+                PID=\$(pgrep \$DAEMON)
                 if [ 0\$PID -gt 0 ]; then
                         echo \"\$PNAME is running.\"
                         exit 0
@@ -140,7 +138,7 @@ chmod 755 /tmp/hbdsp/usr/local/etc/init.d/sigmatcpserver
 mkdir -p /tmp/hbdsp/usr/local/tce.installed
 echo "#!/bin/sh
 
-/usr/local/etc/init.d/sigmatcpserver start
+/usr/local/etc.init.d/sigmatcpserver start
 " >> /tmp/hbdsp/usr/local/tce.installed/HifiBerryDSP
 ### Create and install HifiBerryDSP.tcz
 
