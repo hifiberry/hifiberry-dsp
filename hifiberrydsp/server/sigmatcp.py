@@ -26,6 +26,7 @@ import os
 import sys
 import logging
 import hashlib
+import argparse
 
 from threading import Thread
 
@@ -55,6 +56,7 @@ from hifiberrydsp.server.constants import \
     COMMAND_GPIO, \
     HEADER_SIZE, \
     DEFAULT_PORT
+from hifiberrydsp.api.restapi import run_api  # Import the REST API server
 # import hifiberrydsp
 
 # URL to notify on DSP program updates
@@ -832,80 +834,46 @@ class SigmaTCPServerMain():
         if params["restore"]:
             self.restore = True
 
+        self.params = params
         
     def parse_config(self):
         config = configparser.ConfigParser()
         config.optionxform = lambda option: option
-    
+
         config.read("/etc/sigmatcp.conf")
 
         params = {}
-    
-        try:
-            params["alsa"] = config.getboolean("server","alsa")
-        except:
-            params["alsa"] = False
-            
-        if  "--alsa" in sys.argv:
-            params["alsa"] = True
 
-        try:            
-            params["lgsoundsync"] = config.getboolean("server","lgsoundsync") 
-        except:
-            params["lgsoundsync"] = False
-            
-        if "--lgsoundsync" in sys.argv:
-            params["lgsoundsync"] = True
-            
+        # Parse command-line arguments
+        parser = argparse.ArgumentParser(description="SigmaTCP Server")
+        parser.add_argument("--alsa", action="store_true", help="Enable ALSA volume control")
+        parser.add_argument("--lgsoundsync", action="store_true", help="Enable LG Sound Sync")
+        parser.add_argument("--enable-rest", action="store_true", help="Enable REST API server")
+        parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
+        parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+        args = parser.parse_args()
+
+        params["alsa"] = args.alsa
+        params["lgsoundsync"] = args.lgsoundsync
+        params["enable_rest"] = args.enable_rest
+        params["restore"] = args.restore
+        params["verbose"] = args.verbose
+
         try:
-            this.command_after_startup = config.get("server","command_after_startup")
+            this.command_after_startup = config.get("server", "command_after_startup")
         except:
             this.command_after_startup = None
 
-        try:            
-            this.notify_on_updates = config.get("server","notify_on_updates") 
+        try:
+            this.notify_on_updates = config.get("server", "notify_on_updates")
         except:
             this.notify_on_updates = None
-            
 
+        # Override any previous logging configuration
+        logging.basicConfig(level=logging.DEBUG if params["verbose"] else logging.INFO, force=True)
 
-        if "--restore" in sys.argv:
-            params["restore"] = True
-        else:
-            params["restore"] = False
-            
         return params
             
-
-#     def announce_zeroconf(self):
-#         desc = {'name': 'SigmaTCP',
-#                 'vendor': 'HiFiBerry',
-#                 'version': hifiberrydsp.__version__}
-#         hostname = socket.gethostname()
-#         try:
-#             ip = socket.gethostbyname(hostname)
-#         except Exception:
-#             logging.error("can't get IP for hostname %s, "
-#                           "not initialising Zeroconf",
-#                           hostname)
-#             return
-# 
-#         self.zeroconf_info = ServiceInfo(ZEROCONF_TYPE,
-#                                          "{}.{}".format(
-#                                              hostname, ZEROCONF_TYPE),
-#                                          socket.inet_aton(ip),
-#                                          DEFAULT_PORT, 0, 0, desc)
-#         self.zeroconf = Zeroconf()
-#         self.zeroconf.register_service(self.zeroconf_info)
-# 
-#     def shutdown_zeroconf(self):
-#         if self.zeroconf is not None and self.zeroconf_info is not None:
-#             self.zeroconf.unregister_service(self.zeroconf_info)
-# 
-#             self.zeroconf_info = None
-#             self.zeroconf.close()
-#             self.zeroconf = None
-
     def run(self):
         
         # Check if a DSP is detected
@@ -926,19 +894,18 @@ class SigmaTCPServerMain():
             except IOError:
                 logging.info("no saved data found")
 
-#         logging.info("announcing via zeroconf")
-#         try:
-#             self.announce_zeroconf()
-#         except Exception as e:
-#             logging.debug("exception while initialising Zeroconf")
-#             logging.exception(e)
-
         logging.debug("done")
         
         logging.info(this.command_after_startup)
         notifier_thread = Thread(target = startup_notify)
         notifier_thread.start()
         
+        if self.params.get("enable_rest"):
+            logging.info("Starting REST API server on port 13141")
+            rest_thread = Thread(target=run_api, kwargs={"host": "0.0.0.0", "port": 13141})
+            rest_thread.daemon = True
+            rest_thread.start()
+
         try:
             if not(self.abort):
                 logging.info("starting TCP server")
@@ -952,9 +919,6 @@ class SigmaTCPServerMain():
 
         if SigmaTCPHandler.lgsoundsync is not None:
             SigmaTCPHandler.lgsoundsync.finish()
-
-#        logging.info("removing from zeroconf")
-#        self.shutdown_zeroconf()
 
         logging.info("saving DSP data memory")
         SigmaTCPHandler.save_data_memory()
