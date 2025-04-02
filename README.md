@@ -42,6 +42,12 @@ to access DSP functions. It is compatible with SigmaStudio. That means
 you can directly deploy DSP programs from SigmaStudio and change 
 parameters online.
 
+You can also enable the REST API with this server:
+
+```bash
+sigmatcpserver --enable-rest
+```
+
 ## Command line utility
 
 The dsptoolkit command is the main command line tool to communicate 
@@ -54,6 +60,29 @@ in [doc/dsptoolkit.md](doc/dsptoolkit.md)
 The software can be used to push filters created by Room Equalisation 
 Wizard (REW) to the DSP.
 Have a look at the guide in[doc/rew-basic.md](doc/rew-basics.md)
+
+## REST API
+
+The DSP REST API provides a REST interface to access metadata from the currently loaded DSP profile. It runs by default on localhost port 31415.
+
+Start the API server either as a standalone:
+
+```bash
+dsp-metadata-server
+```
+
+Or integrated with the sigmatcpserver:
+
+```bash
+sigmatcpserver --enable-rest
+```
+
+Access the metadata:
+```bash
+curl http://localhost:31415/metadata
+```
+
+Read more about it in [doc/metadata-api.md](/doc/metadata-api.md).
 
 ## DSP profile format
 
