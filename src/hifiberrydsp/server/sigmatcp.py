@@ -854,6 +854,7 @@ class SigmaTCPServerMain():
         parser.add_argument("--lgsoundsync", action="store_true", help="Enable LG Sound Sync")
         parser.add_argument("--enable-rest", action="store_true", help="Enable REST API server")
         parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
+        parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
         args = parser.parse_args()
 
@@ -862,6 +863,7 @@ class SigmaTCPServerMain():
         params["enable_rest"] = args.enable_rest
         params["restore"] = args.restore
         params["verbose"] = args.verbose
+        params["localhost"] = args.localhost
 
         try:
             this.command_after_startup = config.get("server", "command_after_startup")
