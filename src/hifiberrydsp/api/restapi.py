@@ -121,6 +121,142 @@ def get_metadata():
     """API endpoint to retrieve metadata from the current DSP profile"""
     return jsonify(get_profile_metadata())
 
+def split_to_bytes(value, byte_count):
+    """Splits an integer value into a list of bytes.
+
+    Args:
+        value (int): The integer value to split.
+        byte_count (int): The number of bytes to split into.
+
+    Returns:
+        list: A list of bytes representing the integer value.
+    """
+    return [(value >> (8 * i)) & 0xFF for i in reversed(range(byte_count))]
+
+@app.route('/memory', methods=['POST'])
+def memory_access():
+    """API endpoint to write 32-bit memory cells in hex notation"""
+    try:
+        client = SigmaTCPClient(None, "localhost", autoconnect=True)
+
+        if request.method == 'POST':
+            # Write memory cells
+            data = request.json
+            if not data or 'address' not in data or 'value' not in data:
+                return jsonify({"error": "Address and value are required in the request body"}), 400
+
+            try:
+                address = int(data['address'], 16)
+                values = data['value']
+
+                if not isinstance(values, list):
+                    values = [values]  # Convert single value to list
+
+                for i, value in enumerate(values):
+                    value = int(value, 16)
+
+                    # Use split_to_bytes to split 32-bit value into 4 bytes
+                    byte_data = split_to_bytes(value, 4)
+                    client.write_memory(address + i, byte_data)
+
+                return jsonify({"address": hex(address), "values": [hex(int(v, 16)) for v in values], "status": "success"})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+    except Exception as e:
+        logging.error(f"Error in memory_access: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/memory/<address>', defaults={'length': 1}, methods=['GET'])
+@app.route('/memory/<address>/<int:length>', methods=['GET'])
+def memory_read(address, length):
+    """API endpoint to read memory cells in hex notation (32-bit)"""
+    try:
+        client = SigmaTCPClient(None, "localhost", autoconnect=True)
+
+        if length < 1:
+            return jsonify({"error": "Length must be at least 1"}), 400
+
+        try:
+            # Support hex or decimal address
+            address = int(address, 0)  # Automatically handles 0x... or decimal
+
+            # Read bytes from memory
+            byte_count = length * 4  # 4 bytes per 32-bit memory cell
+            bytes_data = client.read_memory(address, byte_count)  # address is absolute independent of mememory cell length
+
+            # Concatenate 4 bytes to form 32-bit values
+            values_32bit = []
+            for i in range(0, len(bytes_data), 4):
+                value = (bytes_data[i] << 24) | (bytes_data[i + 1] << 16) | (bytes_data[i + 2] << 8) | bytes_data[i + 3]
+                values_32bit.append(value & 0xFFFFFFFF)
+
+            return jsonify({"address": hex(address), "values": [hex(value) for value in values_32bit]})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    except Exception as e:
+        logging.error(f"Error in memory_read: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/register/<address>', defaults={'length': 1}, methods=['GET'])
+@app.route('/register/<address>/<int:length>', methods=['GET'])
+def register_read(address, length):
+    """API endpoint to read registers in hex notation (16-bit)"""
+    try:
+        client = SigmaTCPClient(None, "localhost", autoconnect=True)
+
+        if length < 1:
+            return jsonify({"error": "Length must be at least 1"}), 400
+
+        try:
+            # Support hex or decimal address
+            address = int(address, 0)  # Automatically handles 0x... or decimal
+
+            # Read bytes from registers
+            byte_count = length * 2  # 2 bytes per 16-bit register
+            bytes_data = client.read_memory(address, byte_count)  # address is absolute independent of mememory cell length
+
+            # Concatenate 2 bytes to form 16-bit values
+            values_16bit = []
+            for i in range(0, len(bytes_data), 2):
+                value = (bytes_data[i] << 8) | bytes_data[i + 1]
+                values_16bit.append(value & 0xFFFF)
+
+            return jsonify({"address": hex(address), "values": [hex(value) for value in values_16bit]})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    except Exception as e:
+        logging.error(f"Error in register_read: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/register', methods=['POST'])
+def register_write():
+    """API endpoint to write a 16-bit register in hex notation"""
+    try:
+        client = SigmaTCPClient(None, "localhost", autoconnect=True)
+
+        data = request.json
+        if not data or 'address' not in data or 'value' not in data:
+            return jsonify({"error": "Address and value are required in the request body"}), 400
+
+        try:
+            address = int(data['address'], 16)
+            value = int(data['value'], 16)
+
+            # Use split_to_bytes to split 16-bit value into 2 bytes
+            byte_data = split_to_bytes(value, 2)
+            client.write_memory(address * 2, byte_data)
+
+            return jsonify({"address": hex(address), "value": hex(value), "status": "success"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    except Exception as e:
+        logging.error(f"Error in register_write: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     """
     Run the metadata API server
