@@ -70,6 +70,11 @@ import hifiberrydsp
 MODE_BOTH = 0
 MODE_LEFT = 1
 MODE_RIGHT = 2
+MODE_DESCRIPTION = {
+        0: 'both channels',
+        1: 'left channel',
+        2: 'right channel'
+        }
 
 DISPLAY_FLOAT = 0
 DISPLAY_INT = 1
@@ -407,6 +412,7 @@ class CommandLine():
             "apply-fir-filter-left": self.cmd_set_fir_filter_left,
             "clear-iir-filters": self.cmd_clear_iir_filters,
             "tone-control": self.cmd_tonecontrol,
+            "set-balance": self.cmd_set_balance,
             "reset": self.cmd_reset,
             "read-dec": self.cmd_read,
             "loop-read-dec": self.cmd_loop_read_dec,
@@ -435,6 +441,52 @@ class CommandLine():
             "get-memory": self.cmd_get_memory,
             #            "selfboot": self.cmd_selfboot,
         }
+
+        self.command_description = """
+commands and parameters to get you started:
+
+    get-meta dsp_detected           report the dsp chip identified by sigmatcpserver
+
+    install-profile <profile.xml>   writes a DSP profile to the DSP EEPROM and activates it
+                                    the file should not be deleted after installing as this programm relies
+                                    on the metadata.
+
+    get-volume                      gets the current setting of the volume control register
+
+    set-volume  <vol>               sets volume to an absolute value
+
+    adjust-volume   <vol>           the current volume is adjusted by the chosen amount, instead of 
+                                    setting it to a fixed level. For negative db values, you need to 
+                                    prefix these with --, e.g.
+                                       dsptoolkit adjust-volume -- -3db
+
+    store                           Store all currently active parameter settings that are defined as 
+                                    storable to the DSP's EEPROM.
+
+    save                            saves the current parameter from RAM to the file system
+
+    load                            restores the parameter from the filesystem to RAM
+
+    tone-control <shelf> <freq> <vol>
+                                   shelf filter can be 'hs' for highshelf
+                                   or 'ls' for lowshelf
+                                   freq is a number string that may be appended by Hz
+                                   vol  is a number string that may be appended by db
+
+    set-balance <balance>          Sets the balance of left/right channels.
+                                   Value ranges from 0 (only left channel) 
+                                   to 2 (only right channel)
+                                   at balance=1 the volume setting on both channels is equal
+
+    apply-rew-filters|apply-rew-filters-left|apply-rew-filters-right <filename>
+                                   Deploys parametric equaliser settings calculated by REW to the 
+                                   equaliser filter banks (left, right or both)
+
+    reset                          Resets the DSP. The program will be loaded from the EEPROM.
+                                   The parameter RAM won't be stored and/or recovered from the file system.
+
+for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/master/doc/dsptoolkit.md
+        """
         self.dsptk = DSPToolkit()
 
     def register_file(self):
@@ -636,11 +688,23 @@ class CommandLine():
         self.dsptk.clear_iir_filters(mode)
         try:
             self.dsptk.set_filters(filters, mode)
-            print("Filters configured on both channels:")
+            print(f"Filters configured on {MODE_DESCRIPTION[mode]}:")
             for f in filters:
                 print(f.description)
         except DSPError as e:
             print(e)
+
+    def cmd_set_balance(self):
+        if len(self.args.parameters) == 1:
+            balance = float(self.args.parameters[0])
+        else:
+            print("parameter missing, need number between 0 and 2")
+            sys.exit(1)
+        try:
+            self.dsptk.set_balance(balance)
+        except DSPError as e:
+            print(e)
+
 
     def cmd_tonecontrol(self):
         if len(self.args.parameters) > 2:
@@ -1022,7 +1086,9 @@ class CommandLine():
 
     def main(self):
 
-        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit')
+        parser = argparse.ArgumentParser(description='HiFiBerry DSP toolkit',
+                                         formatter_class = argparse.RawTextHelpFormatter,
+                                         epilog = self.command_description)
         parser.add_argument('--delay',
                             help='delay for loop operations in ms',
                             type=int,
@@ -1039,7 +1105,8 @@ class CommandLine():
                             default=TIMEOUT)
         parser.add_argument('command',
                             choices=sorted(self.command_map.keys()))
-        parser.add_argument('parameters', nargs='*')
+        parser.add_argument('parameters', nargs='*',
+                            help="see command description below")
 
         self.args = parser.parse_args()
 
