@@ -796,9 +796,13 @@ class SigmaTCPServerMain():
         self.abort = False
         self.zeroconf = None
 
-        self.server = SigmaTCPServer()
-        
         params = self.parse_config()
+
+        if params["localhost"]:
+            self.server = SigmaTCPServer(server_address=("localhost", DEFAULT_PORT))
+        else:
+            self.server = SigmaTCPServer()
+
         if params["alsa"]:
             logging.info("initializing ALSA mixer control %s", alsa_mixer_name)
             alsasync = AlsaSync()
@@ -880,7 +884,7 @@ class SigmaTCPServerMain():
         dsp_detected = adau145x.Adau145x.detect_dsp()
         if dsp_detected:
             logging.info("detected ADAU14xx DSP")
-            this.dsp="ADAU15xx"
+            this.dsp="ADAU14xx"
         else:
             logging.info("did not detect ADAU14xx DSP")
             this.dsp=""

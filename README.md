@@ -10,27 +10,17 @@ Software for HiFiBerry boards equipped with DSP. This package can be
 used to read/write data to HiFiBerry DSP boards using the Beocreate TCP 
 server.
 
+The software comes "as-is". There is no individual support for this software. Feel free to post in the [HiFiBerry forum](https://support.hifiberry.com/hc/en-us/community/topics/115000377385-DSP-boards-and-Beocreate) for questions. 
+
 ## Installation
 
 Before installing the dsptoolkit, you need to have a working Python 3
-installation (>=3.5) and a working pip. You also need to enable SPI as
+installation (>=3.10) and a working pip. You also need to enable SPI as
 dsptoolkit needs SPI to communicate with the DSP.
 Check out 
 https://www.raspberrypi-spy.co.uk/2014/08/enabling-the-spi-interface-on-the-raspberry-pi/
 
 You can then install the toolkit by just running
-```bash
-sudo pip3 install --upgrade hifiberrydsp
-```
-
-This will only install the software, but not activate the server.
-Depending on your system, you might need to create a startup script 
-or a systemd unit file for this.
-
-If you're using a Debian based system (e.g. Debian, Raspbian), there
-is a script that does all the work for you. Just run the following 
-command:
-
 ```bash
 bash <(curl https://raw.githubusercontent.com/hifiberry/hifiberry-dsp/master/install-dsptoolkit)
 ```
