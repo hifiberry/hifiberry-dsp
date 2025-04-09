@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+'''
+REST API server providing DSP metadata
+'''
+
+import argparse
+import logging
+import sys
+
+from hifiberrydsp.api.restapi import run_api, DEFAULT_HOST, DEFAULT_PORT
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='HiFiBerry DSP REST API Server')
+    parser.add_argument('--host', 
+                      help='Host to bind to (default: localhost)',
+                      default=DEFAULT_HOST)
+    parser.add_argument('--port', 
+                      help='Port to bind to (default: 31415)',
+                      type=int,
+                      default=DEFAULT_PORT)
+    parser.add_argument('--debug', 
+                      help='Enable debug logging',
+                      action='store_true')
+    
+    args = parser.parse_args()
+    
+    # Configure logging
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=log_level, 
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    try:
+        run_api(host=args.host, port=args.port)
+    except KeyboardInterrupt:
+        logging.info("Server stopped by user")
+        sys.exit(0)
+    except Exception as e:
+        logging.error(f"Error running server: {e}")
+        sys.exit(1)

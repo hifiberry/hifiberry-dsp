@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+
+'''
+Copyright (c) 2018 Modul 9/HiFiBerry
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+'''
+
+import os
+import csv
+import logging
+import json
+
+import requests
+
+BASEURL = "https://optimizer.hifiberry.com/api"
+
+
+def read_csv(filename):
+
+    f = []
+    db = []
+    phase = []
+
+    logging.debug("reading %s", filename)
+
+    with open(filename) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            try:
+                f.append(float(row[0]))
+                db.append(float(row[1]))
+                if len(row) > 2:
+                    phase.append(float(row[2]))
+                else:
+                    phase.append(0)
+            except:
+                logging.warning("Could not parse line %s", row)
+
+    return {"f": f, "db": db, "phase":phase }
+
+
+def call_api(baseurl, command, data, params={}):
+    url = baseurl + "/" + command
+
+    logging.debug("calling %s", url)
+    logging.debug("params: %s", params)
+
+    result = requests.post(url, json={"measurement": data, **params})
+    if result.status_code != 200:
+        logging.warn("got error code %s from web service", result.status_code)
+        return None
+
+    return result.json()
+
+
+def main():
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--url',
+                        default=BASEURL,
+                        help='URL of he optimizer')
+    parser.add_argument('-v', '--verbose',
+                        help="increase output verbosity",
+                        action="store_true")
+    parser.add_argument('-f', '--filtercount',
+                        type=int,
+                        default=4,
+                        help='number of filters to use')
+    parser.add_argument('-r', '--samplerate',
+                        type=int,
+                        default=48000,
+                        help='sample rate')
+    parser.add_argument('-o', '--optimizer',
+                        default="default",
+                        help='optimizer settings to use')
+    parser.add_argument('-c', '--curve',
+                        default="flat",
+                        help='target curve')
+    parser.add_argument('-s', '--settings',
+                        help='settings file')
+    parser.add_argument('-t', '--targetcurve',
+                        help='target curve file')
+    parser.add_argument('-a', '--auth-token',
+                        default="",
+                        help='authentication token')
+    parser.add_argument("--json",
+                        action="store_true")
+    parser.add_argument("command",
+                        choices=['range', 'optimize'],
+                        help="command")
+    parser.add_argument("responsefile",
+                        help="name of the file that contains the frequency response measurements")
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(format='%(levelname)s: %(module)s - %(message)s',
+                            level=logging.DEBUG)
+        logging.debug("enabled verbose logging")
+    else:
+        logging.basicConfig(format='%(levelname)s: %(module)s - %(message)s',
+                            level=logging.INFO)
+
+    data = read_csv(args.responsefile)
+
+    # Read settings file if one is given
+    settings = []
+    if args.settings:
+        try:
+            if os.path.isfile(args.settings):
+                with open(args.settings) as json_file:
+                    settings = json.load(json_file)
+        except Exception as e:
+            logging.error("Can't read %s: %s", args.settings, e)
+
+    # Read target curve from a file if one is given
+    curve = None
+    if args.targetcurve:
+        try:
+            if os.path.isfile(args.targetcurve):
+                with open(args.targetcurve) as json_file:
+                    curve = json.load(json_file)
+        except Exception as e:
+            logging.error("Can't read %s: %s", args.settings, e)
+
+    params = {
+        "optimizer": args.optimizer,
+        "curve": args.curve,
+        "filtercount": args.filtercount,
+        "settings": settings,
+        "auth-token": args.auth_token
+        }
+
+    if curve is not None:
+        params["curve"] = curve
+
+    res = call_api(args.url, args.command, data, params)
+    if args.json:
+        print(res)
+    else:
+        if args.command == "range":
+            print("{}-{}Hz".format(res["fmin"], res["fmax"]))
+        elif args.command == "optimize":
+            for eq in res["eqdefinitions"]:
+                print(eq)
+
+
+main()
