@@ -1,2 +1,2 @@
-__version__ = "0.21"
+__version__ = "0.3.0"
 _called_from_test = False
