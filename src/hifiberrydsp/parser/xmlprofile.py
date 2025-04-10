@@ -21,9 +21,9 @@ SOFTWARE.
 '''
 
 import logging
+import os
 
 import xmltodict
-
 from collections import OrderedDict
 
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -122,15 +122,32 @@ def replace_in_memory_block(data, startaddr, replace_dict):
 
             data[address_offset:address_offset +
                  len(content)] = content
+            
+def get_default_dspprofile_path():
+    if (os.geteuid() == 0):
+        logging.debug("running as root, XML profile in /var/lib/hifiberry")
+        mydir = "/var/lib/hifiberry"
+    else:
+        logging.debug("not running as root, XML profile in ~/.hifiberry")
+        mydir = "~/.hifiberry"
+    try:
+        if not os.path.isdir(mydir):
+            os.makedirs(mydir)
+    except Exception as e:
+        logging.error("can't creeate directory {} ({})", mydir, e)
+
+    return os.path.expanduser(mydir + "/dspprogram.xml")
 
 
 class XmlProfile():
 
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, read_default_profile=False):
         self.dsp = Adau145x()
         self.doc = None
         self.filename = filename
         self.eeprom = DummyEepromWriter(self.dsp)
+        if filename is None and read_default_profile:
+            filename = self.dsp.get_default_profile()
         if filename is not None:
             try:
                 self.read_from_file(filename)
