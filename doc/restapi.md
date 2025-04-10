@@ -390,6 +390,20 @@ If `frequencies` is not provided, the response will be calculated using a logari
 - `frequencies`: Array of frequencies (in Hz) at which the response was calculated
 - `response`: Array of corresponding gain values (in dB)
 
+### Cache Management API
+
+#### Clear Cache
+
+Clear the internal XML profile cache. This is useful if the DSP profile file has been updated externally.
+
+```
+POST /cache/clear
+```
+
+```bash
+curl -X POST http://localhost:13141/cache/clear
+```
+
 ## Filter Operations
 
 ### Filter JSON Syntax

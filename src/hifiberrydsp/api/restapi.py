@@ -24,6 +24,7 @@ import logging
 import os
 import json
 import binascii
+import time
 from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
@@ -37,6 +38,15 @@ DEFAULT_HOST = "localhost"
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
+
+# Cache for XML profile
+_xml_profile_cache = {
+    "profile": None,
+    "path": None,
+    "timestamp": 0,
+    "metadata": None,
+    "cache_timeout": 3600  # Cache valid for one hour
+}
 
 
 def isBiquad(value):
@@ -67,14 +77,68 @@ def isBiquad(value):
         # If conversion to int fails
         return False
 
+
+def get_xml_profile():
+    """
+    Get the cached XML profile or read from disk if needed
+    
+    Returns:
+        XmlProfile: The cached or newly read XML profile
+    """
+    global _xml_profile_cache
+    
+    profile_path = get_default_dspprofile_path()
+    
+    # Check if file exists
+    if not os.path.exists(profile_path):
+        return None
+    
+    current_time = time.time()
+    file_mtime = os.path.getmtime(profile_path)
+    
+    # Check if we need to refresh the cache
+    cache_valid = (
+        _xml_profile_cache["profile"] is not None and
+        _xml_profile_cache["path"] == profile_path and
+        current_time - _xml_profile_cache["timestamp"] < _xml_profile_cache["cache_timeout"] and
+        file_mtime <= _xml_profile_cache["timestamp"]
+    )
+    
+    if not cache_valid:
+        logging.debug("XML profile cache miss - reading from disk")
+        try:
+            xml_profile = XmlProfile(profile_path)
+            
+            # Update the cache
+            _xml_profile_cache["profile"] = xml_profile
+            _xml_profile_cache["path"] = profile_path
+            _xml_profile_cache["timestamp"] = current_time
+            _xml_profile_cache["metadata"] = None  # Reset metadata cache
+            
+            return xml_profile
+        except Exception as e:
+            logging.error(f"Error reading XML profile: {str(e)}")
+            return None
+    else:
+        logging.debug("XML profile cache hit")
+        return _xml_profile_cache["profile"]
+
+
 def get_profile_metadata():
     """
-    Retrieve metadata from the active DSP profile by reading the XML file directly.
+    Retrieve metadata from the active DSP profile by reading the XML file (using cache when possible).
 
     Returns:
         Dictionary containing metadata from the DSP profile
     """
+    global _xml_profile_cache
+    
     try:
+        # Check if we have cached metadata
+        if _xml_profile_cache["metadata"] is not None:
+            logging.debug("Using cached metadata")
+            return _xml_profile_cache["metadata"]
+        
         metadata = {}
 
         # Calculate program checksum
@@ -86,35 +150,42 @@ def get_profile_metadata():
         except Exception as e:
             logging.warning(f"Could not get checksum: {str(e)}")
 
-        # Read XML profile directly from file
-        try:
-            profile_path = get_default_dspprofile_path()
-            if not os.path.exists(profile_path):
-                return {"error": "DSP profile file not found"}
-
-            xml_profile = XmlProfile(profile_path)
-            
-            # Extract metadata from XML
-            for k in xml_profile.get_meta_keys():
-                logging.debug("Meta key: %s", k)
-                metadata[k] = xml_profile.get_meta(k)
-            
-            # Add system metadata
-            metadata["_system"] = {
-                "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
-                "profileVersion": xml_profile.get_meta("profileVersion") or "Unknown Version",
-                "sampleRate": xml_profile.samplerate()
-            }
-
-            return metadata
-
-        except Exception as e:
-            logging.error(f"Error reading XML profile: {str(e)}")
-            return {"error": "Could not read DSP profile"}
+        # Get XML profile from cache or disk
+        xml_profile = get_xml_profile()
+        if not xml_profile:
+            return {"error": "DSP profile file not found or invalid"}
+        
+        # Extract metadata from XML
+        for k in xml_profile.get_meta_keys():
+            logging.debug("Meta key: %s", k)
+            metadata[k] = xml_profile.get_meta(k)
+        
+        # Add system metadata
+        metadata["_system"] = {
+            "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
+            "profileVersion": xml_profile.get_meta("profileVersion") or "Unknown Version",
+            "sampleRate": xml_profile.samplerate()
+        }
+        
+        # Cache the metadata
+        _xml_profile_cache["metadata"] = metadata
+        
+        return metadata
 
     except Exception as e:
         logging.error(f"Error getting metadata: {str(e)}")
         return {"error": str(e)}
+
+
+def invalidate_cache():
+    """
+    Invalidate the XML profile cache
+    """
+    global _xml_profile_cache
+    _xml_profile_cache["profile"] = None
+    _xml_profile_cache["metadata"] = None
+    _xml_profile_cache["timestamp"] = 0
+
 
 @app.route('/metadata', methods=['GET'])
 def get_metadata():
@@ -158,6 +229,7 @@ def get_metadata():
     
     return jsonify(filtered_metadata)
 
+
 def split_to_bytes(value, byte_count):
     """Splits an integer value into a list of bytes.
 
@@ -169,6 +241,7 @@ def split_to_bytes(value, byte_count):
         list: A list of bytes representing the integer value.
     """
     return [(value >> (8 * i)) & 0xFF for i in reversed(range(byte_count))]
+
 
 @app.route('/memory', methods=['POST'])
 def memory_access():
@@ -212,6 +285,9 @@ def memory_access():
                     byte_data = Adau145x.int_data(int_value, 4)
                     Adau145x.write_memory(current_addr, byte_data)
 
+                # Invalidate cache after memory write
+                invalidate_cache()
+                
                 return jsonify({"address": hex(address), "values": [hex(v) if isinstance(v, int) else v for v in values], "status": "success"})
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
@@ -219,6 +295,7 @@ def memory_access():
     except Exception as e:
         logging.error(f"Error in memory_access: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/memory/<address>', defaults={'length': 1}, methods=['GET'])
 @app.route('/memory/<address>/<int:length>', methods=['GET'])
@@ -268,6 +345,7 @@ def memory_read(address, length):
         logging.error(f"Error in memory_read: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/register/<address>', defaults={'length': 1}, methods=['GET'])
 @app.route('/register/<address>/<int:length>', methods=['GET'])
 def register_read(address, length):
@@ -306,6 +384,7 @@ def register_read(address, length):
         logging.error(f"Error in register_read: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/register', methods=['POST'])
 def register_write():
     """API endpoint to write a 16-bit register in hex notation"""
@@ -328,6 +407,9 @@ def register_write():
             
             # Write directly to registers using Adau145x
             Adau145x.write_memory(address, byte_data)
+            
+            # Invalidate cache after register write
+            invalidate_cache()
 
             return jsonify({"address": hex(address), "value": hex(value), "status": "success"})
         except Exception as e:
@@ -336,6 +418,7 @@ def register_write():
     except Exception as e:
         logging.error(f"Error in register_write: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/checksum', methods=['GET'])
 def get_program_checksum():
@@ -357,6 +440,7 @@ def get_program_checksum():
     except Exception as e:
         logging.error(f"Error getting program checksum: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/frequency-response', methods=['POST'])
 def get_frequency_response():
@@ -422,6 +506,18 @@ def get_frequency_response():
         logging.error(f"Error calculating frequency response: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/cache/clear', methods=['POST'])
+def clear_cache():
+    """API endpoint to clear the XML profile cache"""
+    try:
+        invalidate_cache()
+        return jsonify({"status": "success", "message": "Cache cleared"})
+    except Exception as e:
+        logging.error(f"Error clearing cache: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     """
     Run the metadata API server
@@ -432,6 +528,7 @@ def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     """
     logging.info(f"Starting REST API on {host}:{port} using Waitress")
     serve(app, host=host, port=port)  # Use Waitress to serve the app
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
