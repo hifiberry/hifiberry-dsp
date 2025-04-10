@@ -33,7 +33,7 @@ import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
 
 
-DEFAULT_PORT = 31415
+DEFAULT_PORT = 13141
 DEFAULT_HOST = "localhost"
 
 app = Flask(__name__)
@@ -386,7 +386,7 @@ def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     
     Args:
         host: Host to bind to (default: localhost)
-        port: Port to bind to (default: 31415)
+        port: Port to bind to (default: 13141)
     """
     logging.info(f"Starting REST API on {host}:{port} using Waitress")
     serve(app, host=host, port=port)  # Use Waitress to serve the app

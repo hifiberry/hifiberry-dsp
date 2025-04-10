@@ -6,7 +6,7 @@ This document describes the REST API provided by the HiFiBerry DSP service for i
 
 The API server runs by default on:
 ```
-http://localhost:31415
+http://localhost:13141
 ```
 
 ## Endpoints
@@ -35,7 +35,7 @@ GET /metadata
 ```
 
 ```bash
-curl -X GET http://localhost:31415/metadata
+curl -X GET http://localhost:13141/metadata
 ```
 
 Get metadata with keys starting with "eq1_":
@@ -44,7 +44,7 @@ GET /metadata?start=eq1_
 ```
 
 ```bash
-curl -X GET "http://localhost:31415/metadata?start=eq1_"
+curl -X GET "http://localhost:13141/metadata?start=eq1_"
 ```
 
 Get only biquad filter metadata:
@@ -53,7 +53,7 @@ GET /metadata?filter=biquad
 ```
 
 ```bash
-curl -X GET "http://localhost:31415/metadata?filter=biquad"
+curl -X GET "http://localhost:13141/metadata?filter=biquad"
 ```
 
 Get biquad filters with keys starting with "eq1_":
@@ -62,7 +62,7 @@ GET /metadata?filter=biquad&start=eq1_
 ```
 
 ```bash
-curl -X GET "http://localhost:31415/metadata?filter=biquad&start=eq1_"
+curl -X GET "http://localhost:13141/metadata?filter=biquad&start=eq1_"
 ```
 
 **Example Response:**
@@ -109,7 +109,7 @@ GET /memory/0x100/4
 ```
 
 ```bash
-curl -X GET http://localhost:31415/memory/0x100/4
+curl -X GET http://localhost:13141/memory/0x100/4
 ```
 
 Read 2 memory cells starting at address 0x200 in integer format:
@@ -118,7 +118,7 @@ GET /memory/0x200/2?format=int
 ```
 
 ```bash
-curl -X GET "http://localhost:31415/memory/0x200/2?format=int"
+curl -X GET "http://localhost:13141/memory/0x200/2?format=int"
 ```
 
 Read 1 memory cell at address 0x300 in floating-point format:
@@ -127,7 +127,7 @@ GET /memory/0x300?format=float
 ```
 
 ```bash
-curl -X GET "http://localhost:31415/memory/0x300?format=float"
+curl -X GET "http://localhost:13141/memory/0x300?format=float"
 ```
 
 **Example Response (Hexadecimal Format):**
@@ -175,7 +175,7 @@ You can write values in different formats:
 ```
 
 ```bash
-curl -X POST http://localhost:31415/memory \
+curl -X POST http://localhost:13141/memory \
   -H "Content-Type: application/json" \
   -d '{"address": "0x100", "value": ["0x12345678", "0xabcdef01"]}'
 ```
@@ -189,7 +189,7 @@ curl -X POST http://localhost:31415/memory \
 ```
 
 ```bash
-curl -X POST http://localhost:31415/memory \
+curl -X POST http://localhost:13141/memory \
   -H "Content-Type: application/json" \
   -d '{"address": "0x100", "value": [1.23, -0.45, 0.0078125]}'
 ```
@@ -203,7 +203,7 @@ curl -X POST http://localhost:31415/memory \
 ```
 
 ```bash
-curl -X POST http://localhost:31415/memory \
+curl -X POST http://localhost:13141/memory \
   -H "Content-Type: application/json" \
   -d '{"address": "0x100", "value": ["0x12345678", 1.23, -0.45]}'
 ```
@@ -217,7 +217,7 @@ curl -X POST http://localhost:31415/memory \
 ```
 
 ```bash
-curl -X POST http://localhost:31415/memory \
+curl -X POST http://localhost:13141/memory \
   -H "Content-Type: application/json" \
   -d '{"address": "0x100", "value": "0x12345678"}'
 ```
@@ -232,7 +232,7 @@ or
 ```
 
 ```bash
-curl -X POST http://localhost:31415/memory \
+curl -X POST http://localhost:13141/memory \
   -H "Content-Type: application/json" \
   -d '{"address": "0x100", "value": 1.23}'
 ```
@@ -270,7 +270,7 @@ GET /register/0x200/2
 ```
 
 ```bash
-curl -X GET http://localhost:31415/register/0x200/2
+curl -X GET http://localhost:13141/register/0x200/2
 ```
 
 **Example Response:**
@@ -298,7 +298,7 @@ POST /register
 ```
 
 ```bash
-curl -X POST http://localhost:31415/register \
+curl -X POST http://localhost:13141/register \
   -H "Content-Type: application/json" \
   -d '{"address": "0x200", "value": "0x1234"}'
 ```
@@ -346,7 +346,7 @@ POST /frequency-response
 ```
 
 ```bash
-curl -X POST http://localhost:31415/frequency-response \
+curl -X POST http://localhost:13141/frequency-response \
   -H "Content-Type: application/json" \
   -d '{
   "filters": [
