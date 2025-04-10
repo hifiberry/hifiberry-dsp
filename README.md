@@ -38,41 +38,35 @@ You can also enable the REST API with this server:
 sigmatcpserver --enable-rest
 ```
 
-## Command line utility
+## REST API (Recommended)
 
-The dsptoolkit command is the main command line tool to communicate 
-with the DSP TCP server. The command line parameters are documented
-in [doc/dsptoolkit.md](doc/dsptoolkit.md)
+The DSP REST API provides a RESTful interface to access metadata, memory, registers, and more from the currently loaded DSP profile. It runs by default on localhost port 13141.
 
-
-## REW integration
-
-The software can be used to push filters created by Room Equalisation 
-Wizard (REW) to the DSP.
-Have a look at the guide in[doc/rew-basic.md](doc/rew-basics.md)
-
-## REST API
-
-The DSP REST API provides a REST interface to access metadata from the currently loaded DSP profile. It runs by default on localhost port 31415.
-
-Start the API server either as a standalone:
-
-```bash
-dsp-metadata-server
-```
-
-Or integrated with the sigmatcpserver:
+The REST API can be enabled with the sigmatcpserver:
 
 ```bash
 sigmatcpserver --enable-rest
 ```
 
-Access the metadata:
-```bash
-curl http://localhost:31415/metadata
-```
+Read the detailed documentation in [doc/restapi.md](/doc/restapi.md).
 
-Read more about it in [doc/metadata-api.md](/doc/metadata-api.md).
+**Note:** The REST API is the recommended interface for all new development. It provides a more modern, flexible, and powerful way to interact with the DSP.
+
+## Command line utility (Deprecated)
+
+> **DEPRECATED:** The dsptoolkit command line interface is now considered deprecated. For new development, please use the REST API instead, which provides more functionality and better integration options.
+
+The dsptoolkit command is the legacy command line tool to communicate 
+with the DSP TCP server. The command line parameters are documented
+in [doc/dsptoolkit.md](doc/dsptoolkit.md).
+
+We are no longer adding new features to dsptoolkit and it will eventually be phased out. All new development should use the REST API instead.
+
+## REW integration
+
+The software can be used to push filters created by Room Equalisation 
+Wizard (REW) to the DSP.
+Have a look at the guide in [doc/rew-basic.md](doc/rew-basics.md)
 
 ## DSP profile format
 
