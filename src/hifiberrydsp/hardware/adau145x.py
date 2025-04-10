@@ -44,6 +44,12 @@ class Adau145x():
     DATA_ADDR = 0x0000
     DATA_LENGTH = 0xb000
 
+    MIN_REGISTER = 0xf000
+    MAX_REGISTER = 0xffff
+
+    MIN_MEMORY = 0x0000
+    MAX_MEMORY = 0xdfff
+
     RESET_REGISTER = 0xf890
     HIBERNATE_REGISTER = 0xf400
 
@@ -106,6 +112,32 @@ class Adau145x():
             return 4
         else:
             return 2
+
+    @staticmethod
+    def is_valid_memory_address(addr):
+        '''
+        Check if an address is a valid memory address
+        
+        Args:
+            addr: Address to check
+            
+        Returns:
+            bool: True if the address is a valid memory address
+        '''
+        return Adau145x.MIN_MEMORY <= addr <= Adau145x.MAX_MEMORY
+
+    @staticmethod
+    def is_valid_register_address(addr):
+        '''
+        Check if an address is a valid register address
+        
+        Args:
+            addr: Address to check
+            
+        Returns:
+            bool: True if the address is a valid register address
+        '''
+        return Adau145x.MIN_REGISTER <= addr <= Adau145x.MAX_REGISTER
         
     @staticmethod
     def detect_dsp(debug=False):
@@ -119,5 +151,4 @@ class Adau145x():
             return True
         else:
             return False
-        
-    
+
