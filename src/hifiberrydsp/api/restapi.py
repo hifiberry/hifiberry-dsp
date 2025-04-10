@@ -25,8 +25,12 @@ import os
 from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile
 from hifiberrydsp.client.sigmatcp import SigmaTCPClient
+from hifiberrydsp.server.constants import COMMAND_XML, COMMAND_XML_RESPONSE
 from hifiberrydsp.datatools import parse_int_length
+from hifiberrydsp.api.filters import Filter
 from waitress import serve
+import numpy as np
+
 
 DEFAULT_PORT = 31415
 DEFAULT_HOST = "localhost"
@@ -34,92 +38,131 @@ DEFAULT_HOST = "localhost"
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 
+
+def isBiquad(value):
+    """
+    Check if a value follows the format xxx/yy where xxx and yy are integers,
+    and yy is a multiple of 5.
+    
+    Args:
+        value (str): The string to check
+        
+    Returns:
+        bool: True if the string matches the required format, False otherwise
+    """
+    try:
+        if '/' not in value:
+            return False
+            
+        parts = value.split('/')
+        if len(parts) != 2:
+            return False
+            
+        xxx = int(parts[0])
+        yy = int(parts[1])
+        
+        # Check if yy is a multiple of 5
+        return yy % 5 == 0
+    except ValueError:
+        # If conversion to int fails
+        return False
+
 def get_profile_metadata(client=None):
     """
     Retrieve metadata from the active DSP profile.
-    
+
     Args:
         client: Optional SigmaTCPClient instance. If not provided, a new one will be created.
-        
+
     Returns:
         Dictionary containing metadata from the DSP profile
     """
     try:
         if client is None:
             client = SigmaTCPClient(None, "localhost", autoconnect=True)
-            
+
         metadata = {}
         checksum = None
-        
+
         # Try to get checksum to verify profile
         try:
             checksum = client.request_metadata("checksum")
             metadata["checksum"] = checksum
         except Exception as e:
             logging.warning(f"Could not get checksum: {str(e)}")
-        
-        # Get XML profile through metadata request
-        xml_data = client.request_metadata("xml")
-        if xml_data:
-            xml_profile = XmlProfile(xmldata=xml_data)
+
+        # Get XML profile through cmd_get_xml
+        try:
+            xml_data = client.request_generic(COMMAND_XML,COMMAND_XML_RESPONSE)
             
-            # Extract all metadata from beometa section
-            for meta in xml_profile.doc["ROM"]["beometa"]["metadata"]:
-                attr_type = meta["@type"]
-                attr_value = meta["#text"]
-                
-                # Process additional attributes
-                attrs = {}
-                for key, value in meta.items():
-                    if key not in ["@type", "#text"]:
-                        attrs[key.replace("@", "")] = value
-                
-                # Add to metadata dictionary
-                if attrs:
-                    metadata[attr_type] = {
-                        "value": attr_value,
-                        "attributes": attrs
-                    }
-                else:
-                    metadata[attr_type] = attr_value
-                    
-                # Process register addresses with lengths
-                if attr_type in xml_profile.REGISTER_ATTRIBUTES:
-                    try:
-                        addr, length = parse_int_length(attr_value)
-                        if length > 1:
-                            if attr_type in metadata:
-                                if isinstance(metadata[attr_type], dict):
-                                    metadata[attr_type]["address"] = addr
-                                    metadata[attr_type]["length"] = length
-                                else:
-                                    metadata[attr_type] = {
-                                        "value": attr_value,
-                                        "address": addr,
-                                        "length": length
-                                    }
-                    except Exception as e:
-                        logging.debug(f"Could not parse address/length for {attr_type}: {str(e)}")
-                    
+            logging.debug("XML profile retrieved successfully")
+            xml_profile = XmlProfile()
+            xml_profile.read_from_text(xml_data.decode("utf-8", errors="replace"))
+            logging.debug("XML profile parsed successfully")
+
+            for k in xml_profile.get_meta_keys():
+                logging.debug("Meta key: %s", k)
+                metadata[k] = xml_profile.get_meta(k)
+            
+
             # Add some system metadata
             metadata["_system"] = {
                 "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
                 "profileVersion": xml_profile.get_meta("profileVersion") or "Unknown Version",
                 "sampleRate": xml_profile.samplerate()
             }
-            
+
             return metadata
-            
-        return {"error": "Could not retrieve profile metadata"}
-        
+
+        except Exception as e:
+            logging.error(f"Error retrieving XML profile: {str(e)}")
+            return {"error": "Could not retrieve XML profile"}
+
     except Exception as e:
         logging.error(f"Error getting metadata: {str(e)}")
         return {"error": str(e)}
 
 @app.route('/metadata', methods=['GET'])
 def get_metadata():
-    """API endpoint to retrieve metadata from the current DSP profile"""
-    return jsonify(get_profile_metadata())
+    """
+    API endpoint to retrieve metadata from the current DSP profile
+    
+    Query Parameters:
+        start (str): Optional parameter to filter metadata keys that start with this string
+        filter (str): Optional parameter to filter metadata by type (e.g., 'biquad')
+    """
+    metadata = get_profile_metadata()
+    
+    # Get start parameter with empty string as default
+    start_filter = request.args.get('start', '')
+    # Get filter type parameter
+    filter_type = request.args.get('filter', '')
+    
+    # Apply filters
+    filtered_metadata = {}
+    
+    for key, value in metadata.items():
+        # Skip system metadata unless copying to final result
+        if key == "_system":
+            continue
+            
+        # Apply start filter
+        if start_filter and not key.startswith(start_filter):
+            continue
+            
+        # Apply type filter if specified
+        if filter_type == 'biquad':
+            if isinstance(value, str) and isBiquad(value):
+                filtered_metadata[key] = value
+        elif not filter_type:  # No filter type specified, include all items passing start filter
+            filtered_metadata[key] = value
+        # Future filter types can be added here with additional elif clauses
+    
+    # Always include system metadata if it exists
+    if "_system" in metadata:
+        filtered_metadata["_system"] = metadata["_system"]
+    
+    return jsonify(filtered_metadata)
 
 def split_to_bytes(value, byte_count):
     """Splits an integer value into a list of bytes.
@@ -255,6 +298,70 @@ def register_write():
 
     except Exception as e:
         logging.error(f"Error in register_write: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/frequency-response', methods=['POST'])
+def get_frequency_response():
+    """API endpoint to calculate frequency response of a filter chain"""
+    try:
+        data = request.json
+        if not data or 'filters' not in data:
+            return jsonify({"error": "Filter definitions are required in the request body"}), 400
+            
+        # Get filters from request
+        filter_defs = data['filters']
+        if not isinstance(filter_defs, list):
+            filter_defs = [filter_defs]  # Convert single filter to list
+            
+        # Create filter objects
+        filters = []
+        for filter_def in filter_defs:
+            try:
+                # Convert dict to JSON string and then create filter object
+                filter_json = json.dumps(filter_def)
+                filter_obj = Filter.fromJSON(filter_json)
+                filters.append(filter_obj)
+            except Exception as e:
+                logging.error(f"Error creating filter: {str(e)}")
+                return jsonify({"error": f"Invalid filter definition: {str(e)}"}), 400
+                
+        # Get sample rate from profile or use default
+        sample_rate = 48000  # Default value
+        try:
+            metadata = get_profile_metadata()
+            if "_system" in metadata and "sampleRate" in metadata["_system"]:
+                sample_rate = metadata["_system"]["sampleRate"]
+        except Exception as e:
+            logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+            
+        # Get custom frequencies if provided
+        frequencies = None
+        if 'frequencies' in data and isinstance(data['frequencies'], list):
+            try:
+                frequencies = [float(f) for f in data['frequencies']]
+            except (ValueError, TypeError):
+                return jsonify({"error": "Frequencies must be numeric values"}), 400
+                
+        # Get points per octave if provided
+        points_per_octave = 8  # Default
+        if 'pointsPerOctave' in data:
+            try:
+                points_per_octave = int(data['pointsPerOctave'])
+                if points_per_octave < 1:
+                    points_per_octave = 8
+            except (ValueError, TypeError):
+                pass
+                
+        # Calculate frequency response
+        if not frequencies:
+            frequencies = Filter.logspace_frequencies(20, 20000, points_per_octave)
+            
+        response_data = Filter.getFrequencyResponse(sample_rate, filters, frequencies)
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logging.error(f"Error calculating frequency response: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):

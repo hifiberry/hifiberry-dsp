@@ -238,6 +238,16 @@ class XmlProfile():
             t = metadata["@type"]
             if (t == name):
                 return metadata["#text"]
+            
+    def get_meta_keys(self):
+        """
+        Get a list of all metadata keys
+        """
+        keys = []
+        for metadata in self.doc["ROM"]["beometa"]["metadata"]:
+            keys.append(metadata["@type"])
+
+        return keys
 
     def get_storable_registers(self):
         storables = []
