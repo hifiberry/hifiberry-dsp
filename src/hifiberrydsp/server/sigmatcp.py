@@ -41,7 +41,8 @@ from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
 from hifiberrydsp.datatools import int_data
 from hifiberrydsp.parser.xmlprofile import \
-    XmlProfile, ATTRIBUTE_VOL_CTL, ATTRIBUTE_SPDIF_ACTIVE
+    XmlProfile, ATTRIBUTE_VOL_CTL, ATTRIBUTE_SPDIF_ACTIVE, \
+    get_default_dspprofile_path
 from hifiberrydsp.alsa.alsasync import AlsaSync
 from hifiberrydsp.lg.soundsync import SoundSync
 from hifiberrydsp import datatools
@@ -107,7 +108,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     checksum = None
     dsp = adau145x.Adau145x
-    dspprogramfile = dspprogramfile()
+    dspprogramfile = get_default_dspprofile_path()
     parameterfile = parameterfile()
     alsasync = None
     lgsoundsync = None
