@@ -279,24 +279,46 @@ class Volume(Filter):
         return self._biquad.coefficients_b_a(a0=True)
 
 class GenericBiquad(Filter):
-    def __init__(self, a0=1.0, a1=0.0, a2=0.0, b0=1.0, b1=0.0, b2=0.0, **kwargs):
+    def __init__(self, a0=1.0, a1=0.0, a2=0.0, b0=1.0, b1=0.0, b2=0.0, fs=48000, **kwargs):
         kwargs['type'] = 'GenericBiquad'
-        super().__init__(a0=a0, a1=a1, a2=a2, b0=b0, b1=b1, b2=b2, **kwargs)
+        super().__init__(a0=a0, a1=a1, a2=a2, b0=b0, b1=b1, b2=b2, fs=fs, **kwargs)
         self.a0 = a0
         self.a1 = a1
         self.a2 = a2
         self.b0 = b0
         self.b1 = b1
         self.b2 = b2
+        self.fs = fs
         
     def biquadCoefficients(self, fs):
-        # Return the coefficients directly, no need for Biquad class
-        return [self.b0, self.b1, self.b2, self.a0, self.a1, self.a2]
+        # Return the coefficients directly if sample rate matches
+        if fs == self.fs:
+            return [self.b0, self.b1, self.b2, self.a0, self.a1, self.a2]
+        
+        # Apply frequency warping if the requested sample rate is different
+        # from the sample rate the filter was designed for
+        k = math.tan(math.pi * 0.5 * self.fs / fs) / math.tan(math.pi * 0.5)
+        
+        # Apply the warping to the coefficients
+        # Formula based on bilinear transform frequency warping
+        b0_w = self.b0
+        b1_w = self.b1 * k
+        b2_w = self.b2 * k * k
+        a0_w = self.a0
+        a1_w = self.a1 * k
+        a2_w = self.a2 * k * k
+        
+        # Return the warped coefficients
+        return [b0_w, b1_w, b2_w, a0_w, a1_w, a2_w]
     
     @classmethod
-    def from_biquad(cls, biquad):
+    def from_biquad(cls, biquad, fs=48000):
         """
         Create a GenericBiquad from a Biquad object
+        
+        Args:
+            biquad: Biquad object to convert
+            fs: Sample rate in Hz that filter was designed for, default 48000
         """
         return cls(
             a0=biquad.a0,
@@ -304,5 +326,6 @@ class GenericBiquad(Filter):
             a2=biquad.a2,
             b0=biquad.b0,
             b1=biquad.b1,
-            b2=biquad.b2
+            b2=biquad.b2,
+            fs=fs
         )
