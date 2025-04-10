@@ -23,6 +23,7 @@ SOFTWARE.
 import math
 import logging
 import time
+import hashlib
 
 from hifiberrydsp.hardware.spi import SpiHandler
 
@@ -64,6 +65,9 @@ class Adau145x():
         "PM": 0xc000,
         "REG": 0xf000,
     }
+    
+    # Cache for program checksum
+    _checksum_cache = None
 
     @staticmethod
     def decimal_repr(f):
@@ -138,17 +142,237 @@ class Adau145x():
             bool: True if the address is a valid register address
         '''
         return Adau145x.MIN_REGISTER <= addr <= Adau145x.MAX_REGISTER
+    
+    @staticmethod
+    def int_data(value, length):
+        '''
+        Convert an integer to a byte array for the DSP
+        
+        Args:
+            value: Integer value to convert
+            length: Number of bytes
+            
+        Returns:
+            list: Byte array representing the integer
+        '''
+        data = []
+        for i in range(length):
+            data.append(value & 0xff)
+            value = value >> 8
+        return data
         
     @staticmethod
     def detect_dsp(debug=False):
-        SpiHandler.write(0xf890, [0], debug)
+        '''
+        Detect if a DSP is connected and responding
+        
+        Args:
+            debug: Enable debug output
+            
+        Returns:
+            bool: True if DSP detected, False otherwise
+        '''
+        spi = SpiHandler()
+        spi.write(0xf890, [0], debug)
         time.sleep(1)
-        SpiHandler.write(0xf890, [1], debug)
+        spi.write(0xf890, [1], debug)
         time.sleep(1)
-        reg1 = int.from_bytes(SpiHandler.read(0xf000, 2), byteorder='big') # PLL feedback divider must be != 0
-        reg2 = int.from_bytes(SpiHandler.read(0xf890, 2), byteorder='big') # Soft reset is expected to be 1 
+        reg1 = int.from_bytes(spi.read(0xf000, 2), byteorder='big') # PLL feedback divider must be != 0
+        reg2 = int.from_bytes(spi.read(0xf890, 2), byteorder='big') # Soft reset is expected to be 1 
         if (reg1!=0) and (reg2==1):
             return True
         else:
             return False
+    
+    @staticmethod
+    def kill_dsp():
+        '''
+        Kill the DSP core (stop processing)
+        '''
+        logging.debug("killing DSP core")
+        spi = SpiHandler()
+        
+        spi.write(Adau145x.HIBERNATE_REGISTER, 
+                  Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(Adau145x.KILLCORE_REGISTER, 
+                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(Adau145x.KILLCORE_REGISTER, 
+                  Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
+
+    @staticmethod
+    def start_dsp():
+        '''
+        Start the DSP core (begin processing)
+        '''
+        logging.debug("starting DSP core")
+        spi = SpiHandler()
+
+        spi.write(Adau145x.KILLCORE_REGISTER, 
+                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(Adau145x.STARTCORE_REGISTER, 
+                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(Adau145x.STARTCORE_REGISTER, 
+                  Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
+        time.sleep(0.0001)
+        spi.write(Adau145x.HIBERNATE_REGISTER, 
+                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+    
+    @staticmethod
+    def read_memory(addr, length):
+        '''
+        Read memory from the DSP
+        
+        Args:
+            addr: Start address
+            length: Number of bytes to read
+            
+        Returns:
+            bytearray: Memory data
+        '''
+        spi = SpiHandler()
+        return spi.read(addr, length)
+        
+    @staticmethod
+    def write_memory(addr, data):
+        '''
+        Write memory to the DSP
+        
+        Args:
+            addr: Start address
+            data: Data bytes to write
+            
+        Returns:
+            int: Result code (0 = success)
+        '''
+        spi = SpiHandler()
+        return spi.write(addr, data)
+    
+    @staticmethod
+    def get_memory_block(addr, length):
+        '''
+        Read a block of memory from the DSP
+        
+        Args:
+            addr: Start address
+            length: Length in words
+            
+        Returns:
+            bytearray: Memory content
+        '''
+        block_size = 2048
+        spi = SpiHandler()
+
+        logging.debug("reading %s bytes from memory", 
+                      length * Adau145x.WORD_LENGTH)
+
+        # Must kill the core to read program memory, but it doesn't
+        # hurt doing it also for other memory types
+        Adau145x.kill_dsp()
+
+        memory = bytearray()
+
+        while len(memory) < length * Adau145x.WORD_LENGTH:
+            logging.debug("reading memory code block from addr %s", addr)
+            data = spi.read(addr, block_size)
+            memory += data
+            addr = addr + int(block_size / Adau145x.WORD_LENGTH)
+
+        # Restart the core
+        Adau145x.start_dsp()
+
+        return memory[0:length * Adau145x.WORD_LENGTH]
+    
+    @staticmethod
+    def get_program_memory():
+        '''
+        Read the program memory from the DSP including program end detection
+        
+        Returns:
+            bytearray: Program memory content up to the end marker
+        '''
+        memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
+                                          Adau145x.PROGRAM_LENGTH)
+
+        end_index = memory.find(Adau145x.PROGRAM_END_SIGNATURE)
+
+        if end_index < 0:
+            memsum = 0
+            for i in memory:
+                memsum = memsum + i
+
+            if (memsum > 0):
+                logging.error("couldn't find program end signature," +
+                              " using full program memory")
+                end_index = Adau145x.PROGRAM_LENGTH - Adau145x.WORD_LENGTH
+            else:
+                logging.error("SPI returned only zeros - communication "
+                              "error")
+                return None
+        else:
+            end_index = end_index + len(Adau145x.PROGRAM_END_SIGNATURE)
+
+        logging.debug("Program lengths = %s words",
+                      end_index / Adau145x.WORD_LENGTH)
+
+        return memory[0:end_index]
+    
+    @staticmethod
+    def get_data_memory():
+        '''
+        Read the data memory from the DSP
+        
+        Returns:
+            bytearray: Data memory content
+        '''
+        memory = Adau145x.get_memory_block(Adau145x.DATA_ADDR,
+                                          Adau145x.DATA_LENGTH)
+        logging.debug("Data lengths = %s words",
+                      Adau145x.DATA_LENGTH / Adau145x.WORD_LENGTH)
+
+        return memory[0:Adau145x.DATA_LENGTH]
+        
+    @staticmethod
+    def calculate_program_checksum(program_data=None, cached=True):
+        '''
+        Calculate MD5 checksum of program memory
+        
+        Args:
+            program_data: Optional program data. If None, reads from DSP
+            cached: Whether to use cached checksum if available
+            
+        Returns:
+            bytes: MD5 digest
+        '''
+        if cached and Adau145x._checksum_cache is not None:
+            logging.debug("using cached program checksum")
+            return Adau145x._checksum_cache
+
+        if program_data is None:
+            program_data = Adau145x.get_program_memory()
+            
+        if program_data is None:
+            return None
+            
+        m = hashlib.md5()
+        try:
+            m.update(program_data)
+        except:
+            logging.error("Can't calculate checksum")
+            return None
+
+        logging.debug("length: %s, digest: %s", len(program_data), m.digest())
+        
+        # Cache the result
+        Adau145x._checksum_cache = m.digest()
+        
+        return m.digest()
+    
+    @staticmethod
+    def clear_checksum_cache():
+        '''Clear the cached program checksum'''
+        Adau145x._checksum_cache = None
 
