@@ -799,9 +799,12 @@ class SigmaTCPServerMain():
         params = self.parse_config()
 
         if params["localhost"]:
-            self.server = SigmaTCPServer(server_address=("localhost", DEFAULT_PORT))
+            bind_host = "localhost"
         else:
-            self.server = SigmaTCPServer()
+            bind_host = "0.0.0.0"
+
+        logging.info(f"Starting SigmaTCP server on {bind_host}:{DEFAULT_PORT}")
+        self.server = SigmaTCPServer(server_address=(bind_host, DEFAULT_PORT))
 
         if params["alsa"]:
             logging.info("initializing ALSA mixer control %s", alsa_mixer_name)
@@ -853,6 +856,7 @@ class SigmaTCPServerMain():
         parser.add_argument("--alsa", action="store_true", help="Enable ALSA volume control")
         parser.add_argument("--lgsoundsync", action="store_true", help="Enable LG Sound Sync")
         parser.add_argument("--enable-rest", action="store_true", help="Enable REST API server")
+        parser.add_argument("--disable-tcp", action="store_true", help="Disable SigmaTCP server (only useful with --enable-rest)")
         parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
         parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
@@ -861,6 +865,7 @@ class SigmaTCPServerMain():
         params["alsa"] = args.alsa
         params["lgsoundsync"] = args.lgsoundsync
         params["enable_rest"] = args.enable_rest
+        params["disable_tcp"] = args.disable_tcp
         params["restore"] = args.restore
         params["verbose"] = args.verbose
         params["localhost"] = args.localhost
@@ -907,18 +912,28 @@ class SigmaTCPServerMain():
         notifier_thread.start()
         
         if self.params.get("enable_rest"):
-            logging.info("Starting REST API server on port 13141")
-            rest_thread = Thread(target=run_api, kwargs={"host": "0.0.0.0", "port": 13141})
+            # Use the same host (localhost or 0.0.0.0) as the TCP server
+            rest_host = "localhost" if self.params.get("localhost") else "0.0.0.0"
+            logging.info(f"Starting REST API server on {rest_host}:13141")
+            rest_thread = Thread(target=run_api, kwargs={"host": rest_host, "port": 13141})
             rest_thread.daemon = True
             rest_thread.start()
 
         try:
-            if not(self.abort):
+            if not(self.abort) and not(self.params.get("disable_tcp")):
                 logging.info("starting TCP server")
                 self.server.serve_forever()
+            elif self.params.get("disable_tcp") and self.params.get("enable_rest"):
+                logging.info("TCP server disabled, running REST API only")
+                # Keep main thread alive for REST API
+                while True:
+                    time.sleep(1)
+            else:
+                logging.warning("Both TCP server and REST API are disabled. Nothing to do!")
         except KeyboardInterrupt:
             logging.info("aborting ")
-            self.server.server_close()
+            if not self.params.get("disable_tcp"):
+                self.server.server_close()
 
         if SigmaTCPHandler.alsasync is not None:
             SigmaTCPHandler.alsasync.finish()
