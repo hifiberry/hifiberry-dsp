@@ -102,7 +102,6 @@ def startup_notify():
     logging.info("calling %s", this.command_after_startup)
     os.system(this.command_after_startup)
     
-    
 
 class SigmaTCPHandler(BaseRequestHandler):
 
@@ -321,6 +320,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def read_xml_profile():
+        logging.info("reading XML file %s", SigmaTCPHandler.dspprogramfile)
         SigmaTCPHandler.xml = XmlProfile(SigmaTCPHandler.dspprogramfile)
         cs = SigmaTCPHandler.xml.get_meta("checksum")
         logging.debug("checksum from XML: %s", cs)
