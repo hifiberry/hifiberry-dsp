@@ -191,12 +191,21 @@ def memory_access():
 
             try:
                 address = int(data['address'], 16)
+                
+                # Check if address is valid memory address
+                if not Adau145x.is_valid_memory_address(address):
+                    return jsonify({"error": f"Invalid memory address: {hex(address)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
+                
                 values = data['value']
 
                 if not isinstance(values, list):
                     values = [values]  # Convert single value to list
 
                 for i, value in enumerate(values):
+                    # Check if next address is still valid
+                    if not Adau145x.is_valid_memory_address(address + i):
+                        return jsonify({"error": f"Invalid memory address: {hex(address + i)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
+                        
                     if isinstance(value, str) and value.startswith("0x"):
                         value = int(value, 16)  # Hexadecimal value
                     elif isinstance(value, (float, int)):
@@ -229,6 +238,14 @@ def memory_read(address, length):
         try:
             # Support hex or decimal address
             address = int(address, 0)  # Automatically handles 0x... or decimal
+            
+            # Check if address is valid memory address
+            if not Adau145x.is_valid_memory_address(address):
+                return jsonify({"error": f"Invalid memory address: {hex(address)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
+            
+            # Check if last address in the range is still valid
+            if not Adau145x.is_valid_memory_address(address + length - 1):
+                return jsonify({"error": f"Invalid memory range: {hex(address)} to {hex(address + length - 1)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
 
             # Read bytes from memory
             byte_count = length * 4  # 4 bytes per 32-bit memory cell
@@ -271,6 +288,14 @@ def register_read(address, length):
         try:
             # Support hex or decimal address
             address = int(address, 0)  # Automatically handles 0x... or decimal
+            
+            # Check if address is valid register address
+            if not Adau145x.is_valid_register_address(address):
+                return jsonify({"error": f"Invalid register address: {hex(address)}. Valid range is {hex(Adau145x.MIN_REGISTER)} to {hex(Adau145x.MAX_REGISTER)}"}), 400
+            
+            # Check if last address in the range is still valid
+            if not Adau145x.is_valid_register_address(address + length - 1):
+                return jsonify({"error": f"Invalid register range: {hex(address)} to {hex(address + length - 1)}. Valid range is {hex(Adau145x.MIN_REGISTER)} to {hex(Adau145x.MAX_REGISTER)}"}), 400
 
             # Read bytes from registers
             byte_count = length * 2  # 2 bytes per 16-bit register
@@ -302,6 +327,11 @@ def register_write():
 
         try:
             address = int(data['address'], 16)
+            
+            # Check if address is valid register address
+            if not Adau145x.is_valid_register_address(address):
+                return jsonify({"error": f"Invalid register address: {hex(address)}. Valid range is {hex(Adau145x.MIN_REGISTER)} to {hex(Adau145x.MAX_REGISTER)}"}), 400
+            
             value = int(data['value'], 16)
 
             # Use split_to_bytes to split 16-bit value into 2 bytes
