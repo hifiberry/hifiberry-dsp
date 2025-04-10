@@ -34,9 +34,17 @@ Get all metadata:
 GET /metadata
 ```
 
+```bash
+curl -X GET http://localhost:31415/metadata
+```
+
 Get metadata with keys starting with "eq1_":
 ```
 GET /metadata?start=eq1_
+```
+
+```bash
+curl -X GET "http://localhost:31415/metadata?start=eq1_"
 ```
 
 Get only biquad filter metadata:
@@ -44,9 +52,17 @@ Get only biquad filter metadata:
 GET /metadata?filter=biquad
 ```
 
+```bash
+curl -X GET "http://localhost:31415/metadata?filter=biquad"
+```
+
 Get biquad filters with keys starting with "eq1_":
 ```
 GET /metadata?filter=biquad&start=eq1_
+```
+
+```bash
+curl -X GET "http://localhost:31415/metadata?filter=biquad&start=eq1_"
 ```
 
 **Example Response:**
@@ -92,14 +108,26 @@ Read 4 memory cells starting at address 0x100 in hexadecimal format:
 GET /memory/0x100/4
 ```
 
+```bash
+curl -X GET http://localhost:31415/memory/0x100/4
+```
+
 Read 2 memory cells starting at address 0x200 in integer format:
 ```
 GET /memory/0x200/2?format=int
 ```
 
+```bash
+curl -X GET "http://localhost:31415/memory/0x200/2?format=int"
+```
+
 Read 1 memory cell at address 0x300 in floating-point format:
 ```
 GET /memory/0x300?format=float
+```
+
+```bash
+curl -X GET "http://localhost:31415/memory/0x300?format=float"
 ```
 
 **Example Response (Hexadecimal Format):**
@@ -146,12 +174,24 @@ You can write values in different formats:
 }
 ```
 
+```bash
+curl -X POST http://localhost:31415/memory \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x100", "value": ["0x12345678", "0xabcdef01"]}'
+```
+
 2. Floating-point values (automatically converted to DSP fixed-point format):
 ```json
 {
   "address": "0x100",
   "value": [1.23, -0.45, 0.0078125]
 }
+```
+
+```bash
+curl -X POST http://localhost:31415/memory \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x100", "value": [1.23, -0.45, 0.0078125]}'
 ```
 
 3. Mix of formats:
@@ -162,12 +202,24 @@ You can write values in different formats:
 }
 ```
 
+```bash
+curl -X POST http://localhost:31415/memory \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x100", "value": ["0x12345678", 1.23, -0.45]}'
+```
+
 4. Single value:
 ```json
 {
   "address": "0x100",
   "value": "0x12345678"
 }
+```
+
+```bash
+curl -X POST http://localhost:31415/memory \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x100", "value": "0x12345678"}'
 ```
 
 or
@@ -177,6 +229,12 @@ or
   "address": "0x100",
   "value": 1.23
 }
+```
+
+```bash
+curl -X POST http://localhost:31415/memory \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x100", "value": 1.23}'
 ```
 
 **Example Response:**
@@ -211,6 +269,10 @@ GET /register/{address}[/{length}]
 GET /register/0x200/2
 ```
 
+```bash
+curl -X GET http://localhost:31415/register/0x200/2
+```
+
 **Example Response:**
 ```json
 {
@@ -233,6 +295,12 @@ POST /register
   "address": "0x200",
   "value": "0x1234"
 }
+```
+
+```bash
+curl -X POST http://localhost:31415/register \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x200", "value": "0x1234"}'
 ```
 
 **Example Response:**
@@ -275,6 +343,29 @@ POST /frequency-response
   "frequencies": [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000],
   "pointsPerOctave": 8
 }
+```
+
+```bash
+curl -X POST http://localhost:31415/frequency-response \
+  -H "Content-Type: application/json" \
+  -d '{
+  "filters": [
+    {
+      "type": "PeakingEq",
+      "f": 1000,
+      "db": -3.0,
+      "q": 1.0
+    },
+    {
+      "type": "HighPass",
+      "f": 80,
+      "db": 0.0,
+      "q": 0.707
+    }
+  ],
+  "frequencies": [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000],
+  "pointsPerOctave": 8
+}'
 ```
 
 **Parameters:**
