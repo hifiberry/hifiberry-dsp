@@ -67,8 +67,7 @@ setup(name='hifiberrydsp',
                'bin/sigmatcpserver',
                'bin/mergeparameters',
                'bin/optimizer-client',
-               'bin/spdifclockgen',
-               'bin/dsp-metadata-server'],
+               'bin/spdifclockgen'],
 
       keywords='audio raspberrypi dsp',
       zip_safe=False)
