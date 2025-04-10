@@ -538,6 +538,157 @@ def get_xml_profile_data():
         return jsonify({"error": str(e)}), 500
 
 
+def resolve_address_from_metadata(key):
+    """
+    Resolve a memory address from a metadata key.
+    
+    Args:
+        key (str): The metadata key to resolve
+        
+    Returns:
+        int or None: The resolved memory address or None if not found
+    """
+    try:
+        metadata = get_profile_metadata()
+        if key in metadata:
+            value = metadata[key]
+            # Check if value is in biquad format (address/offset)
+            if isinstance(value, str) and isBiquad(value):
+                parts = value.split('/')
+                base_addr = int(parts[0])
+                return base_addr
+        return None
+    except Exception as e:
+        logging.error(f"Error resolving address from metadata: {str(e)}")
+        return None
+
+
+@app.route('/biquad', methods=['POST'])
+def set_biquad_filter():
+    """
+    API endpoint to set a biquad filter at the specified address
+    
+    The request body should contain:
+    - address: Memory address or metadata key
+    - offset: Offset (will be multiplied by 5)
+    - filter: Filter parameters (either as object with a0,a1,a2,b0,b1,b2 or as a Filter object)
+    """
+    try:
+        data = request.json
+        if not data or 'address' not in data or 'filter' not in data:
+            return jsonify({"error": "Address and filter are required in the request body"}), 400
+            
+        # Get offset (default to 0)
+        offset = int(data.get('offset', 0))
+        
+        # Resolve address
+        raw_address = data['address']
+        base_address = None
+        
+        # Check if address is a direct hex or integer value
+        if isinstance(raw_address, (int, float)) or (isinstance(raw_address, str) and 
+                                                   (raw_address.startswith('0x') or raw_address.isdigit())):
+            try:
+                base_address = int(raw_address, 0)
+            except ValueError:
+                return jsonify({"error": f"Invalid address format: {raw_address}"}), 400
+        else:
+            # Try to resolve from metadata
+            base_address = resolve_address_from_metadata(raw_address)
+            if base_address is None:
+                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 404
+                
+        # Calculate actual address with offset
+        actual_address = base_address + (offset * 5)
+        
+        # Check if address is valid
+        if not Adau145x.is_valid_memory_address(actual_address) or not Adau145x.is_valid_memory_address(actual_address + 4):
+            return jsonify({"error": f"Invalid memory address range: {hex(actual_address)} to {hex(actual_address + 4)}"}), 400
+            
+        # Process filter parameters
+        filter_data = data['filter']
+        
+        try:
+            if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
+                # Direct coefficients provided
+                a0 = float(filter_data['a0'])
+                a1 = float(filter_data['a1'])
+                a2 = float(filter_data['a2'])
+                b0 = float(filter_data['b0'])
+                b1 = float(filter_data['b1'])
+                b2 = float(filter_data['b2'])
+                
+                # Use the static method to write biquad
+                try:
+                    from hifiberrydsp.filtering.biquad import Biquad
+                    # Create a Biquad object and write it to DSP memory
+                    bq = Biquad.from_parameters(a0, a1, a2, b0, b1, b2)
+                    Adau145x.write_biquad(actual_address, bq)
+                    
+                    return jsonify({
+                        "status": "success", 
+                        "address": hex(actual_address),
+                        "coefficients": {
+                            "a0": a0, "a1": a1, "a2": a2,
+                            "b0": b0, "b1": b1, "b2": b2
+                        }
+                    })
+                except ImportError:
+                    # If Biquad class is not available, use direct approach
+                    from hifiberrydsp.hardware.adau145x import Adau145x
+                    Adau145x.write_biquad_direct(actual_address, a0, a1, a2, b0, b1, b2)
+                    
+                    return jsonify({
+                        "status": "success", 
+                        "address": hex(actual_address),
+                        "coefficients": {
+                            "a0": a0, "a1": a1, "a2": a2,
+                            "b0": b0, "b1": b1, "b2": b2
+                        }
+                    })
+                    
+            elif isinstance(filter_data, dict) and 'type' in filter_data:
+                # This is a filter specification, create a Filter object
+                filter_json = json.dumps(filter_data)
+                from hifiberrydsp.api.filters import Filter
+                filter_obj = Filter.fromJSON(filter_json)
+                
+                # Get sample rate from profile or use default
+                sample_rate = 48000  # Default value
+                try:
+                    metadata = get_profile_metadata()
+                    if "_system" in metadata and "sampleRate" in metadata["_system"]:
+                        sample_rate = metadata["_system"]["sampleRate"]
+                except Exception as e:
+                    logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+                
+                # Calculate biquad coefficients
+                biquad = filter_obj.biquad(sample_rate)
+                
+                # Use the static method to write biquad
+                Adau145x.write_biquad(actual_address, biquad)
+                
+                return jsonify({
+                    "status": "success", 
+                    "address": hex(actual_address),
+                    "filter": filter_data,
+                    "coefficients": {
+                        "a0": biquad.a0, "a1": biquad.a1, "a2": biquad.a2,
+                        "b0": biquad.b0, "b1": biquad.b1, "b2": biquad.b2
+                    }
+                })
+            else:
+                return jsonify({"error": "Invalid filter format. Expected direct coefficients or filter specification"}), 400
+                
+        except Exception as e:
+            logging.error(f"Error processing filter parameters: {str(e)}")
+            return jsonify({"error": f"Error processing filter: {str(e)}"}), 500
+                
+    except Exception as e:
+        logging.error(f"Error setting biquad filter: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     """
     Run the metadata API server
