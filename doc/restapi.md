@@ -449,6 +449,32 @@ Used for creating peaking equalization filters.
 - `db`: Gain in decibels
 - `q`: Q factor (bandwidth)
 
+##### GenericBiquad Filter
+
+Used for creating custom biquad filters with direct coefficient specification. This is useful for advanced filter design or when importing filter coefficients from external applications.
+
+```json
+{
+  "type": "GenericBiquad",
+  "a0": 1.0,
+  "a1": -1.8,
+  "a2": 0.81,
+  "b0": 0.5,
+  "b1": 0.0,
+  "b2": -0.5
+}
+```
+
+**Parameters:**
+- `a0`: Denominator coefficient (typically normalized to 1.0)
+- `a1`: Denominator coefficient
+- `a2`: Denominator coefficient
+- `b0`: Numerator coefficient
+- `b1`: Numerator coefficient
+- `b2`: Numerator coefficient
+
+All coefficients default to neutral values (a0=1.0, b0=1.0, others=0.0) if not specified.
+
 ##### LowPass Filter
 
 Used for creating low pass filters that attenuate high frequencies.

@@ -3,9 +3,12 @@ import math
 import numpy as np
 import cmath
 
+from hifiberrydsp.filtering.biquad import Biquad
+
 class Filter:
     def __init__(self, **kwargs):
         self.params = kwargs
+        self.type = kwargs.get('type', None)
 
     def toJSON(self):
         return json.dumps(self.params)
@@ -34,7 +37,15 @@ class Filter:
         # Normalize coefficients by dividing by a0
         return (b0/a0, b1/a0, b2/a0, 1.0, a1/a0, a2/a0)
 
-    def biquadCoefficients(self):
+    def biquadCoefficients(self, fs):
+        """
+        Return biquad coefficients for the filter.
+        Subclasses should implement this, but default implementation
+        uses the internal Biquad object if available.
+        """
+        if hasattr(self, '_biquad'):
+            coeffs = self._biquad.coefficients_b_a(a0=True)
+            return coeffs
         raise NotImplementedError("Subclasses must implement this method")
 
     def frequencyResponse(self, f, fs):
@@ -181,135 +192,117 @@ class Filter:
             return HighShelf(**data)
         elif filter_type == "Volume":
             return Volume(**data)
+        elif filter_type == "GenericBiquad":
+            return GenericBiquad(**data)
         else:
             raise ValueError(f"Unknown filter type: {filter_type}")
 
 class PeakingEq(Filter):
     def __init__(self, f, db, q, **kwargs):
+        kwargs['type'] = 'PeakingEq'
         super().__init__(f=f, db=db, q=q, **kwargs)
         self.f = f
         self.db = db
         self.q = q
-
+        
     def biquadCoefficients(self, fs):
-        omega = 2 * math.pi * self.f / fs
-        alpha = math.sin(omega) / (2 * self.q)
-        A = 10 ** (self.db / 40)
-        
-        b0 = 1 + alpha * A
-        b1 = -2 * math.cos(omega)
-        b2 = 1 - alpha * A
-        a0 = 1 + alpha / A
-        a1 = -2 * math.cos(omega)
-        a2 = 1 - alpha / A
-        
-        # Return normalized coefficients
-        return Filter.normalize_biquad(b0, b1, b2, a0, a1, a2)
+        # Create Biquad object for the filter if not already created
+        if not hasattr(self, '_biquad'):
+            self._biquad = Biquad.peaking_eq(self.f, self.q, self.db, fs)
+        return self._biquad.coefficients_b_a(a0=True)
 
 class LowPass(Filter):
     def __init__(self, f, db, q, **kwargs):
+        kwargs['type'] = 'LowPass'
         super().__init__(f=f, db=db, q=q, **kwargs)
         self.f = f
         self.db = db
         self.q = q
-
+        
     def biquadCoefficients(self, fs):
-        omega = 2 * math.pi * self.f / fs
-        alpha = math.sin(omega) / (2 * self.q)
-        
-        b0 = (1 - math.cos(omega)) / 2
-        b1 = 1 - math.cos(omega)
-        b2 = (1 - math.cos(omega)) / 2
-        a0 = 1 + alpha
-        a1 = -2 * math.cos(omega)
-        a2 = 1 - alpha
-        
-        # Return normalized coefficients
-        return Filter.normalize_biquad(b0, b1, b2, a0, a1, a2)
+        if not hasattr(self, '_biquad'):
+            self._biquad = Biquad.low_pass(self.f, self.q, fs)
+        return self._biquad.coefficients_b_a(a0=True)
 
 class HighPass(Filter):
     def __init__(self, f, db, q, **kwargs):
+        kwargs['type'] = 'HighPass'
         super().__init__(f=f, db=db, q=q, **kwargs)
         self.f = f
         self.db = db
         self.q = q
-
+        
     def biquadCoefficients(self, fs):
-        omega = 2 * math.pi * self.f / fs
-        alpha = math.sin(omega) / (2 * self.q)
-        
-        b0 = (1 + math.cos(omega)) / 2
-        b1 = -(1 + math.cos(omega))
-        b2 = (1 + math.cos(omega)) / 2
-        a0 = 1 + alpha
-        a1 = -2 * math.cos(omega)
-        a2 = 1 - alpha
-        
-        # Return normalized coefficients
-        return Filter.normalize_biquad(b0, b1, b2, a0, a1, a2)
+        if not hasattr(self, '_biquad'):
+            self._biquad = Biquad.high_pass(self.f, self.q, fs)
+        return self._biquad.coefficients_b_a(a0=True)
 
 class LowShelf(Filter):
     def __init__(self, f, db, slope, gain, **kwargs):
+        kwargs['type'] = 'LowShelf'
         super().__init__(f=f, db=db, slope=slope, gain=gain, **kwargs)
         self.f = f
         self.db = db
         self.slope = slope
         self.gain = gain
-
+        
     def biquadCoefficients(self, fs):
-        A = 10 ** (self.gain / 40)
-        omega = 2 * math.pi * self.f / fs
-        alpha = math.sin(omega) / 2 * math.sqrt((A + 1/A) * (1/self.slope - 1) + 2)
-        
-        b0 = A * ((A + 1) - (A - 1) * math.cos(omega) + 2 * math.sqrt(A) * alpha)
-        b1 = 2 * A * ((A - 1) - (A + 1) * math.cos(omega))
-        b2 = A * ((A + 1) - (A - 1) * math.cos(omega) - 2 * math.sqrt(A) * alpha)
-        a0 = (A + 1) + (A - 1) * math.cos(omega) + 2 * math.sqrt(A) * alpha
-        a1 = -2 * ((A - 1) + (A + 1) * math.cos(omega))
-        a2 = (A + 1) + (A - 1) * math.cos(omega) - 2 * math.sqrt(A) * alpha
-        
-        # Return normalized coefficients
-        return Filter.normalize_biquad(b0, b1, b2, a0, a1, a2)
+        if not hasattr(self, '_biquad'):
+            # The Biquad.low_shelf uses db gain directly, pass gain as db
+            self._biquad = Biquad.low_shelf(self.f, self.slope, self.gain, fs)
+        return self._biquad.coefficients_b_a(a0=True)
 
 class HighShelf(Filter):
     def __init__(self, f, db, slope, gain, **kwargs):
+        kwargs['type'] = 'HighShelf'
         super().__init__(f=f, db=db, slope=slope, gain=gain, **kwargs)
         self.f = f
         self.db = db
         self.slope = slope
         self.gain = gain
-
+        
     def biquadCoefficients(self, fs):
-        A = 10 ** (self.gain / 40)
-        omega = 2 * math.pi * self.f / fs
-        alpha = math.sin(omega) / 2 * math.sqrt((A + 1/A) * (1/self.slope - 1) + 2)
-        
-        b0 = A * ((A + 1) + (A - 1) * math.cos(omega) + 2 * math.sqrt(A) * alpha)
-        b1 = -2 * A * ((A - 1) + (A + 1) * math.cos(omega))
-        b2 = A * ((A + 1) + (A - 1) * math.cos(omega) - 2 * math.sqrt(A) * alpha)
-        a0 = (A + 1) - (A - 1) * math.cos(omega) + 2 * math.sqrt(A) * alpha
-        a1 = 2 * ((A - 1) - (A + 1) * math.cos(omega))
-        a2 = (A + 1) - (A - 1) * math.cos(omega) - 2 * math.sqrt(A) * alpha
-        
-        # Return normalized coefficients
-        return Filter.normalize_biquad(b0, b1, b2, a0, a1, a2)
+        if not hasattr(self, '_biquad'):
+            # The Biquad.high_shelf uses db gain directly, pass gain as db
+            self._biquad = Biquad.high_shelf(self.f, self.slope, self.gain, fs)
+        return self._biquad.coefficients_b_a(a0=True)
 
 class Volume(Filter):
     def __init__(self, db, **kwargs):
+        kwargs['type'] = 'Volume'
         super().__init__(db=db, **kwargs)
         self.db = db
-
+        
     def biquadCoefficients(self, fs):
-        # A simple volume control can be implemented as a gain
-        gain = 10 ** (self.db / 20)
+        if not hasattr(self, '_biquad'):
+            self._biquad = Biquad.volume(self.db)
+        return self._biquad.coefficients_b_a(a0=True)
+
+class GenericBiquad(Filter):
+    def __init__(self, a0=1.0, a1=0.0, a2=0.0, b0=1.0, b1=0.0, b2=0.0, **kwargs):
+        kwargs['type'] = 'GenericBiquad'
+        super().__init__(a0=a0, a1=a1, a2=a2, b0=b0, b1=b1, b2=b2, **kwargs)
+        self.a0 = a0
+        self.a1 = a1
+        self.a2 = a2
+        self.b0 = b0
+        self.b1 = b1
+        self.b2 = b2
         
-        # For a simple gain, we only need b0
-        b0 = gain
-        b1 = 0
-        b2 = 0
-        a0 = 1
-        a1 = 0
-        a2 = 0
-        
-        # Since a0 is already 1, no need for normalization, but using the method for consistency
-        return Filter.normalize_biquad(b0, b1, b2, a0, a1, a2)
+    def biquadCoefficients(self, fs):
+        # Return the coefficients directly, no need for Biquad class
+        return [self.b0, self.b1, self.b2, self.a0, self.a1, self.a2]
+    
+    @classmethod
+    def from_biquad(cls, biquad):
+        """
+        Create a GenericBiquad from a Biquad object
+        """
+        return cls(
+            a0=biquad.a0,
+            a1=biquad.a1,
+            a2=biquad.a2,
+            b0=biquad.b0,
+            b1=biquad.b1,
+            b2=biquad.b2
+        )
