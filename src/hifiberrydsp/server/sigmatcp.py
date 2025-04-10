@@ -106,7 +106,6 @@ def startup_notify():
 class SigmaTCPHandler(BaseRequestHandler):
 
     checksum = None
-    spi = SpiHandler()
     dsp = adau145x.Adau145x
     dspprogramfile = dspprogramfile()
     parameterfile = parameterfile()
@@ -387,9 +386,9 @@ class SigmaTCPHandler(BaseRequestHandler):
         addr = int.from_bytes(data[10:12], byteorder='big')
         length = int.from_bytes(data[6:10], byteorder='big')
         
-        logging.debug("Handle read %s/%s",addr,length)
+        logging.debug("Handle read %s/%s", addr, length)
 
-        spi_response = SigmaTCPHandler.spi.read(addr, length)
+        spi_response = adau145x.Adau145x.read_memory(addr, length)
         logging.debug("read {} bytes from {}".format(length, addr))
 
         res = SigmaTCPHandler._response_packet(COMMAND_READRESPONSE,
@@ -420,7 +419,7 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         logging.debug("writing {} bytes to {}".format(length, addr))
         memdata = data[14:]
-        res = SigmaTCPHandler.spi.write(addr, memdata)
+        res = adau145x.Adau145x.write_memory(addr, memdata)
 
         if addr == SigmaTCPHandler.dsp.HIBERNATE_REGISTER and \
                 SigmaTCPHandler.updating and memdata == b'\00\00':
@@ -432,7 +431,6 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def write_eeprom_content(xmldata):
-
         logging.info("writing XML file: %s", xmldata)
 
         try:
@@ -451,7 +449,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                         data.append(value)
 
                     logging.debug("writeXbytes %s %s", addr, len(data))
-                    SigmaTCPHandler.spi.write(addr, data)
+                    adau145x.Adau145x.write_memory(addr, data)
 
                     # Sleep after erase operations
                     if ("g_Erase" in paramname):
@@ -497,9 +495,8 @@ class SigmaTCPHandler(BaseRequestHandler):
     @staticmethod
     def save_data_memory():
         logging.info("store: getting checksum")
-        checksum = SigmaTCPHandler.program_checksum()
-        memory = SigmaTCPHandler.get_memory_block(SigmaTCPHandler.dsp.DATA_ADDR,
-                                                  SigmaTCPHandler.dsp.DATA_LENGTH)
+        checksum = adau145x.Adau145x.calculate_program_checksum(cached=True)
+        memory = adau145x.Adau145x.get_data_memory()
         logging.info("store: writing memory dump to file")
         SigmaTCPHandler.store_parameters(checksum, memory)
 
@@ -507,7 +504,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     def restore_data_memory():
 
         logging.info("restore: checking checksum")
-        checksum = SigmaTCPHandler.program_checksum(cached=False)
+        checksum = adau145x.Adau145x.calculate_program_checksum(cached=False)
         memory = SigmaTCPHandler.restore_parameters(checksum)
 
         if memory is None:
@@ -523,105 +520,32 @@ class SigmaTCPHandler(BaseRequestHandler):
                           dsp.DATA_LENGTH * dsp.WORD_LENGTH)
 
         # Make sure DSP isn't running for this operation
-        SigmaTCPHandler._kill_dsp()
-        SigmaTCPHandler.spi.write(dsp.DATA_ADDR, memory)
+        adau145x.Adau145x.kill_dsp()
+        adau145x.Adau145x.write_memory(dsp.DATA_ADDR, memory)
         # Restart the core
-        SigmaTCPHandler._start_dsp()
+        adau145x.Adau145x.start_dsp()
 
     @staticmethod
     def get_memory_block(addr, length):
-        block_size = 2048
-
-        dsp = SigmaTCPHandler.dsp
-
-        logging.debug("reading %s bytes from memory",
-                      length * dsp.WORD_LENGTH)
-
-        # Must kill the core to read program memory, but it doesn't
-        # hurt doing it also for other memory types :(
-        SigmaTCPHandler._kill_dsp()
-
-        memory = bytearray()
-
-        while len(memory) < length * dsp.WORD_LENGTH:
-            logging.debug("reading memory code block from addr %s", addr)
-            data = SigmaTCPHandler.spi.read(addr, block_size)
-            # logging.debug("%s", data)
-            memory += data
-            addr = addr + int(block_size / dsp.WORD_LENGTH)
-
-        # Restart the core
-        SigmaTCPHandler._start_dsp()
-
-        return memory[0:length * dsp.WORD_LENGTH]
+        return adau145x.Adau145x.get_memory_block(addr, length)
 
     @staticmethod
     def get_program_memory():
         '''
-        Calculate a checksum of the program memory of the DSP
+        Get the program memory from the DSP
         '''
-        dsp = SigmaTCPHandler.dsp
-        memory = SigmaTCPHandler.get_memory_block(dsp.PROGRAM_ADDR,
-                                                  dsp.PROGRAM_LENGTH)
-
-        end_index = memory.find(dsp.PROGRAM_END_SIGNATURE)
-
-        if end_index < 0:
-            memsum = 0
-            for i in memory:
-                memsum = memsum + i
-
-            if (memsum > 0):
-                logging.error("couldn't find program end signature," +
-                              " using full program memory")
-                end_index = dsp.PROGRAM_LENGTH - dsp.WORD_LENGTH
-            else:
-                logging.error("SPI returned only zeros - communication"
-                              "error")
-                return None
-        else:
-            end_index = end_index + len(dsp.PROGRAM_END_SIGNATURE)
-
-        logging.debug("Program lengths = %s words",
-                      end_index / dsp.WORD_LENGTH)
-
-        # logging.debug("%s", memory[0:end_index])
-        return memory[0:end_index]
+        return adau145x.Adau145x.get_program_memory()
 
     @staticmethod
     def get_data_memory():
         '''
-        Calculate a checksum of the program memory of the DSP
+        Get the data memory from the DSP
         '''
-        dsp = SigmaTCPHandler.dsp
-        memory = SigmaTCPHandler.get_memory_block(dsp.DATA_ADDR,
-                                                  dsp.DATA_LENGTH)
-        logging.debug("Data lengths = %s words",
-                      dsp.DATA_LENGTH / dsp.WORD_LENGTH)
-
-        # logging.debug("%s", memory[0:end_index])
-        return memory[0:dsp.DATA_LENGTH]
+        return adau145x.Adau145x.get_data_memory()
 
     @staticmethod
     def program_checksum(cached=True):
-        if cached and SigmaTCPHandler.checksum is not None:
-            logging.debug("using cached program checksum, "
-                          "might not always be correct")
-            return SigmaTCPHandler.checksum
-
-        data = SigmaTCPHandler.get_program_memory()
-        m = hashlib.md5()
-        try:
-            m.update(data)
-        except:
-            logging.error("Can't calculate checksum from %s", data)
-            return None
-
-        logging.debug("length: %s, digest: %s", len(data), m.digest())
-
-        logging.info("caching program memory checksum")
-        SigmaTCPHandler.checksum = m.digest()
-        return SigmaTCPHandler.checksum
+        return adau145x.Adau145x.calculate_program_checksum(cached=cached)
 
     @staticmethod
     def _list_str(int_list):
@@ -647,36 +571,11 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def _kill_dsp():
-        logging.debug("killing DSP core")
-        dsp = SigmaTCPHandler.dsp
-        spi = SigmaTCPHandler.spi
-
-        spi.write(dsp.HIBERNATE_REGISTER,
-                  int_data(1, dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(dsp.KILLCORE_REGISTER,
-                  int_data(0, dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(dsp.KILLCORE_REGISTER,
-                  int_data(1, dsp.REGISTER_WORD_LENGTH))
+        adau145x.Adau145x.kill_dsp()
 
     @staticmethod
     def _start_dsp():
-        logging.debug("starting DSP core")
-        dsp = SigmaTCPHandler.dsp
-        spi = SigmaTCPHandler.spi
-
-        spi.write(dsp.KILLCORE_REGISTER,
-                  int_data(0, dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(dsp.STARTCORE_REGISTER,
-                  int_data(0, dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(dsp.STARTCORE_REGISTER,
-                  int_data(1, dsp.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(dsp.HIBERNATE_REGISTER,
-                  int_data(0, dsp.REGISTER_WORD_LENGTH))
+        adau145x.Adau145x.start_dsp()
 
     @staticmethod
     def store_parameters(checksum, memory):
@@ -700,6 +599,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         Call this method if the DSP program might change soon
         '''
         logging.info("preparing for memory update")
+        adau145x.Adau145x.clear_checksum_cache()
         SigmaTCPHandler.checksum = None
         SigmaTCPHandler.update_alsasync(clear=True)
         SigmaTCPHandler.update_lgsoundsync(clear=True)
