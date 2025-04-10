@@ -30,6 +30,7 @@ from hifiberrydsp.datatools import parse_int_length
 from hifiberrydsp.api.filters import Filter
 from waitress import serve
 import numpy as np
+from hifiberrydsp.hardware.adau145x import Adau145x
 
 
 DEFAULT_PORT = 31415
@@ -178,7 +179,7 @@ def split_to_bytes(value, byte_count):
 
 @app.route('/memory', methods=['POST'])
 def memory_access():
-    """API endpoint to write 32-bit memory cells in hex notation"""
+    """API endpoint to write 32-bit memory cells in hex or float notation."""
     try:
         client = SigmaTCPClient(None, "localhost", autoconnect=True)
 
@@ -196,13 +197,18 @@ def memory_access():
                     values = [values]  # Convert single value to list
 
                 for i, value in enumerate(values):
-                    value = int(value, 16)
+                    if isinstance(value, str) and value.startswith("0x"):
+                        value = int(value, 16)  # Hexadecimal value
+                    elif isinstance(value, (float, int)):
+                        value = Adau145x.decimal_repr(value)  # Convert float to fixed-point
+                    else:
+                        raise ValueError(f"Unsupported value type: {value}")
 
                     # Use split_to_bytes to split 32-bit value into 4 bytes
                     byte_data = split_to_bytes(value, 4)
                     client.write_memory(address + i, byte_data)
 
-                return jsonify({"address": hex(address), "values": [hex(int(v, 16)) for v in values], "status": "success"})
+                return jsonify({"address": hex(address), "values": [hex(v) if isinstance(v, int) else v for v in values], "status": "success"})
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
@@ -213,7 +219,7 @@ def memory_access():
 @app.route('/memory/<address>', defaults={'length': 1}, methods=['GET'])
 @app.route('/memory/<address>/<int:length>', methods=['GET'])
 def memory_read(address, length):
-    """API endpoint to read memory cells in hex notation (32-bit)"""
+    """API endpoint to read memory cells in hex, int, or float notation (32-bit)"""
     try:
         client = SigmaTCPClient(None, "localhost", autoconnect=True)
 
@@ -226,15 +232,25 @@ def memory_read(address, length):
 
             # Read bytes from memory
             byte_count = length * 4  # 4 bytes per 32-bit memory cell
-            bytes_data = client.read_memory(address, byte_count)  # address is absolute independent of mememory cell length
+            bytes_data = client.read_memory(address, byte_count)  # address is absolute independent of memory cell length
+
+            # Get format parameter
+            output_format = request.args.get('format', 'hex').lower()
+            if output_format not in ['hex', 'int', 'float']:
+                return jsonify({"error": "Invalid format. Supported values are 'hex', 'int', 'float'"}), 400
 
             # Concatenate 4 bytes to form 32-bit values
             values_32bit = []
             for i in range(0, len(bytes_data), 4):
                 value = (bytes_data[i] << 24) | (bytes_data[i + 1] << 16) | (bytes_data[i + 2] << 8) | bytes_data[i + 3]
-                values_32bit.append(value & 0xFFFFFFFF)
+                if output_format == 'hex':
+                    values_32bit.append(hex(value))
+                elif output_format == 'int':
+                    values_32bit.append(value)
+                elif output_format == 'float':
+                    values_32bit.append(Adau145x.decimal_val(value))
 
-            return jsonify({"address": hex(address), "values": [hex(value) for value in values_32bit]})
+            return jsonify({"address": hex(address), "values": values_32bit})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
