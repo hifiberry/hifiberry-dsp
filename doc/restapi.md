@@ -404,6 +404,18 @@ POST /cache/clear
 curl -X POST http://localhost:13141/cache/clear
 ```
 
+#### Get DSP Profile
+
+Retrieve the full DSP profile configuration in XML format.
+
+```
+GET /dspprofile
+```
+
+```bash
+curl -X GET http://localhost:13141/dspprofile
+```
+
 ## Filter Operations
 
 ### Filter JSON Syntax

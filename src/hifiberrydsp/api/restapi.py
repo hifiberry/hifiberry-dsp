@@ -518,6 +518,26 @@ def clear_cache():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/dspprofile', methods=['GET'])
+def get_xml_profile_data():
+    """API endpoint to get the full XML profile data"""
+    try:
+        # Get the XML profile from cache or disk
+        xml_profile = get_xml_profile()
+        if not xml_profile:
+            return jsonify({"error": "DSP profile file not found or invalid"}), 404
+        
+        # Get the raw XML data as string
+        xml_data = str(xml_profile)
+        
+        # Return the XML data with the correct content type
+        return xml_data, 200, {'Content-Type': 'application/xml'}
+        
+    except Exception as e:
+        logging.error(f"Error retrieving XML profile: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     """
     Run the metadata API server
