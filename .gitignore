@@ -13,3 +13,4 @@ build
 dist
 *.tar.gz
 deb_dist
+beocreate-universal-10.xml
