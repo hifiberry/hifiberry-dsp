@@ -22,11 +22,10 @@ SOFTWARE.
 
 import logging
 import os
+import json
+import binascii
 from flask import Flask, jsonify, request
-from hifiberrydsp.parser.xmlprofile import XmlProfile
-from hifiberrydsp.client.sigmatcp import SigmaTCPClient
-from hifiberrydsp.server.constants import COMMAND_XML, COMMAND_XML_RESPONSE
-from hifiberrydsp.datatools import parse_int_length
+from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
 from waitress import serve
 import numpy as np
@@ -68,45 +67,39 @@ def isBiquad(value):
         # If conversion to int fails
         return False
 
-def get_profile_metadata(client=None):
+def get_profile_metadata():
     """
-    Retrieve metadata from the active DSP profile.
-
-    Args:
-        client: Optional SigmaTCPClient instance. If not provided, a new one will be created.
+    Retrieve metadata from the active DSP profile by reading the XML file directly.
 
     Returns:
         Dictionary containing metadata from the DSP profile
     """
     try:
-        if client is None:
-            client = SigmaTCPClient(None, "localhost", autoconnect=True)
-
         metadata = {}
-        checksum = None
 
-        # Try to get checksum to verify profile
+        # Calculate program checksum
         try:
-            checksum = client.request_metadata("checksum")
-            metadata["checksum"] = checksum
+            checksum_bytes = Adau145x.calculate_program_checksum(cached=True)
+            if checksum_bytes:
+                checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8')
+                metadata["checksum"] = checksum_hex
         except Exception as e:
             logging.warning(f"Could not get checksum: {str(e)}")
 
-        # Get XML profile through cmd_get_xml
+        # Read XML profile directly from file
         try:
-            xml_data = client.request_generic(COMMAND_XML,COMMAND_XML_RESPONSE)
-            
-            logging.debug("XML profile retrieved successfully")
-            xml_profile = XmlProfile()
-            xml_profile.read_from_text(xml_data.decode("utf-8", errors="replace"))
-            logging.debug("XML profile parsed successfully")
+            profile_path = get_default_dspprofile_path()
+            if not os.path.exists(profile_path):
+                return {"error": "DSP profile file not found"}
 
+            xml_profile = XmlProfile(profile_path)
+            
+            # Extract metadata from XML
             for k in xml_profile.get_meta_keys():
                 logging.debug("Meta key: %s", k)
                 metadata[k] = xml_profile.get_meta(k)
             
-
-            # Add some system metadata
+            # Add system metadata
             metadata["_system"] = {
                 "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
                 "profileVersion": xml_profile.get_meta("profileVersion") or "Unknown Version",
@@ -116,8 +109,8 @@ def get_profile_metadata(client=None):
             return metadata
 
         except Exception as e:
-            logging.error(f"Error retrieving XML profile: {str(e)}")
-            return {"error": "Could not retrieve XML profile"}
+            logging.error(f"Error reading XML profile: {str(e)}")
+            return {"error": "Could not read DSP profile"}
 
     except Exception as e:
         logging.error(f"Error getting metadata: {str(e)}")
@@ -181,8 +174,6 @@ def split_to_bytes(value, byte_count):
 def memory_access():
     """API endpoint to write 32-bit memory cells in hex or float notation."""
     try:
-        client = SigmaTCPClient(None, "localhost", autoconnect=True)
-
         if request.method == 'POST':
             # Write memory cells
             data = request.json
@@ -203,19 +194,23 @@ def memory_access():
 
                 for i, value in enumerate(values):
                     # Check if next address is still valid
-                    if not Adau145x.is_valid_memory_address(address + i):
-                        return jsonify({"error": f"Invalid memory address: {hex(address + i)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
+                    current_addr = address + i
+                    if not Adau145x.is_valid_memory_address(current_addr):
+                        return jsonify({"error": f"Invalid memory address: {hex(current_addr)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
                         
                     if isinstance(value, str) and value.startswith("0x"):
-                        value = int(value, 16)  # Hexadecimal value
+                        int_value = int(value, 16)  # Hexadecimal value
                     elif isinstance(value, (float, int)):
-                        value = Adau145x.decimal_repr(value)  # Convert float to fixed-point
+                        if isinstance(value, float):
+                            int_value = Adau145x.decimal_repr(value)  # Convert float to fixed-point
+                        else:
+                            int_value = value
                     else:
                         raise ValueError(f"Unsupported value type: {value}")
 
-                    # Use split_to_bytes to split 32-bit value into 4 bytes
-                    byte_data = split_to_bytes(value, 4)
-                    client.write_memory(address + i, byte_data)
+                    # Convert to bytes and write directly to DSP memory
+                    byte_data = Adau145x.int_data(int_value, 4)
+                    Adau145x.write_memory(current_addr, byte_data)
 
                 return jsonify({"address": hex(address), "values": [hex(v) if isinstance(v, int) else v for v in values], "status": "success"})
             except Exception as e:
@@ -230,8 +225,6 @@ def memory_access():
 def memory_read(address, length):
     """API endpoint to read memory cells in hex, int, or float notation (32-bit)"""
     try:
-        client = SigmaTCPClient(None, "localhost", autoconnect=True)
-
         if length < 1:
             return jsonify({"error": "Length must be at least 1"}), 400
 
@@ -247,9 +240,9 @@ def memory_read(address, length):
             if not Adau145x.is_valid_memory_address(address + length - 1):
                 return jsonify({"error": f"Invalid memory range: {hex(address)} to {hex(address + length - 1)}. Valid range is {hex(Adau145x.MIN_MEMORY)} to {hex(Adau145x.MAX_MEMORY)}"}), 400
 
-            # Read bytes from memory
+            # Read bytes from memory directly using Adau145x
             byte_count = length * 4  # 4 bytes per 32-bit memory cell
-            bytes_data = client.read_memory(address, byte_count)  # address is absolute independent of memory cell length
+            bytes_data = Adau145x.read_memory(address, byte_count)
 
             # Get format parameter
             output_format = request.args.get('format', 'hex').lower()
@@ -280,8 +273,6 @@ def memory_read(address, length):
 def register_read(address, length):
     """API endpoint to read registers in hex notation (16-bit)"""
     try:
-        client = SigmaTCPClient(None, "localhost", autoconnect=True)
-
         if length < 1:
             return jsonify({"error": "Length must be at least 1"}), 400
 
@@ -297,9 +288,9 @@ def register_read(address, length):
             if not Adau145x.is_valid_register_address(address + length - 1):
                 return jsonify({"error": f"Invalid register range: {hex(address)} to {hex(address + length - 1)}. Valid range is {hex(Adau145x.MIN_REGISTER)} to {hex(Adau145x.MAX_REGISTER)}"}), 400
 
-            # Read bytes from registers
+            # Read directly from registers using Adau145x
             byte_count = length * 2  # 2 bytes per 16-bit register
-            bytes_data = client.read_memory(address, byte_count)  # address is absolute independent of mememory cell length
+            bytes_data = Adau145x.read_memory(address, byte_count)
 
             # Concatenate 2 bytes to form 16-bit values
             values_16bit = []
@@ -319,8 +310,6 @@ def register_read(address, length):
 def register_write():
     """API endpoint to write a 16-bit register in hex notation"""
     try:
-        client = SigmaTCPClient(None, "localhost", autoconnect=True)
-
         data = request.json
         if not data or 'address' not in data or 'value' not in data:
             return jsonify({"error": "Address and value are required in the request body"}), 400
@@ -334,9 +323,11 @@ def register_write():
             
             value = int(data['value'], 16)
 
-            # Use split_to_bytes to split 16-bit value into 2 bytes
-            byte_data = split_to_bytes(value, 2)
-            client.write_memory(address * 2, byte_data)
+            # Use Adau145x.int_data to convert value to bytes
+            byte_data = Adau145x.int_data(value, 2)
+            
+            # Write directly to registers using Adau145x
+            Adau145x.write_memory(address, byte_data)
 
             return jsonify({"address": hex(address), "value": hex(value), "status": "success"})
         except Exception as e:
@@ -344,6 +335,27 @@ def register_write():
 
     except Exception as e:
         logging.error(f"Error in register_write: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/checksum', methods=['GET'])
+def get_program_checksum():
+    """API endpoint to get the checksum of the current DSP program"""
+    try:
+        # Use Adau145x directly for checksum calculation
+        checksum_bytes = Adau145x.calculate_program_checksum(cached=False)
+        
+        if checksum_bytes:
+            # Convert bytes to hex representation
+            checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8')
+            return jsonify({
+                "checksum": checksum_hex,
+                "format": "md5"
+            })
+        else:
+            return jsonify({"error": "Failed to retrieve checksum"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error getting program checksum: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/frequency-response', methods=['POST'])

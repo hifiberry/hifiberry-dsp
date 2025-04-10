@@ -122,19 +122,28 @@ def replace_in_memory_block(data, startaddr, replace_dict):
 
             data[address_offset:address_offset +
                  len(content)] = content
-            
+
+
 def get_default_dspprofile_path():
+    """
+    Get the default path for the DSP profile file
+    
+    Returns:
+        str: Path to the default DSP profile file
+    """
     if (os.geteuid() == 0):
-        logging.debug("running as root, XML profile in /var/lib/hifiberry")
+        logging.info(
+            "running as root, XML profile location is /var/lib/hifiberry")
         mydir = "/var/lib/hifiberry"
     else:
-        logging.debug("not running as root, XML profile in ~/.hifiberry")
         mydir = "~/.hifiberry"
+        logging.info(
+            "not running as root, XML profile location is  ~/.hifiberry")
     try:
-        if not os.path.isdir(mydir):
-            os.makedirs(mydir)
+        if not os.path.isdir(os.path.expanduser(mydir)):
+            os.makedirs(os.path.expanduser(mydir))
     except Exception as e:
-        logging.error("can't creeate directory {} ({})", mydir, e)
+        logging.error("can't create directory {} ({})", mydir, e)
 
     return os.path.expanduser(mydir + "/dspprogram.xml")
 
