@@ -78,16 +78,51 @@ GET /memory/{address}[/{length}]
 - `address`: Memory address in decimal or hexadecimal (with 0x prefix)
 - `length` (optional, default: 1): Number of 32-bit memory cells to read
 
-**Example Request:**
+**Query Parameters:**
+
+- `format` (optional, default: `hex`): Output format for the memory values. Supported values:
+  - `hex`: Return values as hexadecimal strings (e.g., "0x12345678")
+  - `int`: Return values as integers
+  - `float`: Return values as floating-point numbers (converted from 32-bit fixed-point representation)
+
+**Example Requests:**
+
+Read 4 memory cells starting at address 0x100 in hexadecimal format:
 ```
 GET /memory/0x100/4
 ```
 
-**Example Response:**
+Read 2 memory cells starting at address 0x200 in integer format:
+```
+GET /memory/0x200/2?format=int
+```
+
+Read 1 memory cell at address 0x300 in floating-point format:
+```
+GET /memory/0x300?format=float
+```
+
+**Example Response (Hexadecimal Format):**
 ```json
 {
   "address": "0x100",
   "values": ["0x12345678", "0xabcdef01", "0x87654321", "0x10abcdef"]
+}
+```
+
+**Example Response (Integer Format):**
+```json
+{
+  "address": "0x200",
+  "values": [305419896, 2882400001]
+}
+```
+
+**Example Response (Float Format):**
+```json
+{
+  "address": "0x300",
+  "values": [1.23, -0.45, 0.0078125]
 }
 ```
 
@@ -100,6 +135,10 @@ POST /memory
 ```
 
 **Request Body:**
+
+You can write values in different formats:
+
+1. Hexadecimal strings:
 ```json
 {
   "address": "0x100",
@@ -107,8 +146,23 @@ POST /memory
 }
 ```
 
-or for a single value:
+2. Floating-point values (automatically converted to DSP fixed-point format):
+```json
+{
+  "address": "0x100",
+  "value": [1.23, -0.45, 0.0078125]
+}
+```
 
+3. Mix of formats:
+```json
+{
+  "address": "0x100",
+  "value": ["0x12345678", 1.23, -0.45]
+}
+```
+
+4. Single value:
 ```json
 {
   "address": "0x100",
@@ -116,14 +170,26 @@ or for a single value:
 }
 ```
 
+or
+
+```json
+{
+  "address": "0x100",
+  "value": 1.23
+}
+```
+
 **Example Response:**
 ```json
 {
   "address": "0x100",
-  "values": ["0x12345678", "0xabcdef01"],
+  "values": ["0x12345678", 1.23, -0.45],
   "status": "success"
 }
 ```
+
+**Note on Float Values:**
+When using floating-point values, they must be within the valid range for the SigmaDSP fixed-point representation (approximately -256 to 256). Values will be automatically converted to the appropriate 32-bit fixed-point representation understood by the DSP.
 
 ### Register Access API
 
