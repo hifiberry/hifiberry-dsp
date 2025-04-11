@@ -155,27 +155,24 @@ class Adau145x():
         Returns:
             list: Byte array representing the integer
         '''
-        data = []
-        for i in range(length):
-            data.append(value & 0xff)
-            value = value >> 8
-        return data
+        octets = bytearray()
+        for i in range(length, 0, -1):
+            octets.append((value >> (i - 1) * 8) & 0xff)
+
+        return octets
         
     @staticmethod
-    def detect_dsp(debug=False):
+    def detect_dsp():
         '''
         Detect if a DSP is connected and responding
         
-        Args:
-            debug: Enable debug output
-            
         Returns:
             bool: True if DSP detected, False otherwise
         '''
         spi = SpiHandler()
-        spi.write(0xf890, [0], debug)
+        spi.write(0xf890, [0])
         time.sleep(1)
-        spi.write(0xf890, [1], debug)
+        spi.write(0xf890, [1])
         time.sleep(1)
         reg1 = int.from_bytes(spi.read(0xf000, 2), byteorder='big') # PLL feedback divider must be != 0
         reg2 = int.from_bytes(spi.read(0xf890, 2), byteorder='big') # Soft reset is expected to be 1 
@@ -294,10 +291,15 @@ class Adau145x():
         Returns:
             bytearray: Program memory content up to the end marker
         '''
+        Adau145x.kill_dsp()
+        time.sleep(0.0001)
         memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
                                           Adau145x.PROGRAM_LENGTH)
+        Adau145x.start_dsp()
+        logging.debug("Read program from address %s to %s", Adau145x.PROGRAM_ADDR, Adau145x.PROGRAM_ADDR + Adau145x.PROGRAM_LENGTH)
 
         end_index = memory.find(Adau145x.PROGRAM_END_SIGNATURE)
+        logging.debug("Program end signature found at %s", end_index)
 
         if end_index < 0:
             memsum = 0
@@ -375,4 +377,56 @@ class Adau145x():
     def clear_checksum_cache():
         '''Clear the cached program checksum'''
         Adau145x._checksum_cache = None
+        
+    @staticmethod
+    def write_biquad(start_addr, bq):
+        '''
+        Write biquad filter coefficients to DSP memory.
+        
+        Args:
+            start_addr: Starting address for the biquad coefficients
+            bq: Biquad filter object with a1, a2, b0, b1, b2 coefficients
+        '''
+        # Normalize the biquad coefficients
+        bqn = bq.normalized()
+        
+        # Create array of parameters in the order they should be written
+        bq_params = []
+        bq_params.append(-bqn.a1)  # Negative a1
+        bq_params.append(-bqn.a2)  # Negative a2
+        bq_params.append(bqn.b0)   # b0
+        bq_params.append(bqn.b1)   # b1
+        bq_params.append(bqn.b2)   # b2
+        
+        # Write params to registers starting from highest address
+        reg = start_addr + 4
+        for param in bq_params:
+            data = Adau145x.int_data(Adau145x.decimal_repr(param), Adau145x.DECIMAL_LEN)
+            Adau145x.write_memory(reg, data)
+            reg = reg - 1
+        
+        logging.debug(f"Wrote biquad to address {start_addr}: a1={-bqn.a1}, a2={-bqn.a2}, b0={bqn.b0}, b1={bqn.b1}, b2={bqn.b2}")
+    
+    @staticmethod
+    def write_biquad_direct(start_addr, a0, a1, a2, b0, b1, b2):
+        '''
+        Write biquad filter coefficients directly to DSP memory without normalization.
+        
+        Args:
+            start_addr: Starting address for the biquad coefficients
+            a0: Denominator coefficient 0 (typically 1.0)
+            a1: Denominator coefficient 1
+            a2: Denominator coefficient 2
+            b0: Numerator coefficient 0
+            b1: Numerator coefficient 1
+            b2: Numerator coefficient 2
+        '''
+        from hifiberrydsp.filtering.biquad import Biquad
+        
+        # Create a Biquad object with the provided coefficients
+        # We use the constructor that accepts a0, a1, a2, b0, b1, b2
+        bq = Biquad.from_parameters(a0, a1, a2, b0, b1, b2)
+        
+        # Use the existing write_biquad method
+        Adau145x.write_biquad(start_addr, bq)
 
