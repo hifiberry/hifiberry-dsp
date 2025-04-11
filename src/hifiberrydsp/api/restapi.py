@@ -188,6 +188,35 @@ def invalidate_cache():
     _xml_profile_cache["timestamp"] = 0
 
 
+def get_or_guess_samplerate():
+    """
+    Get the sample rate from the profile metadata or try to guess it from the DSP registers.
+    Falls back to default 48000 Hz if not available.
+    
+    Returns:
+        int: Sample rate in Hz
+    """
+    sample_rate = None
+    try:
+        metadata = get_profile_metadata()
+        if "_system" in metadata and "sampleRate" in metadata["_system"]:
+            sample_rate = metadata["_system"]["sampleRate"]
+            logging.debug("Using sample rate from profile metadata: %d", sample_rate)
+        else:
+            sample_rate = Adau145x.guess_samplerate()
+            if sample_rate is None:
+                logging.warning("Could not guess sample rate from DSP registers, and none given in DSP profile")
+            else:
+                logging.debug("Using guessed sample rate from DSP registers: %d", sample_rate)
+    except Exception as e:
+        logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+    
+    if sample_rate is None:
+        sample_rate = 48000
+        
+    return sample_rate
+
+
 @app.route('/metadata', methods=['GET'])
 def get_metadata():
     """
@@ -468,14 +497,8 @@ def get_frequency_response():
                 logging.error(f"Error creating filter: {str(e)}")
                 return jsonify({"error": f"Invalid filter definition: {str(e)}"}), 400
                 
-        # Get sample rate from profile or use default
-        sample_rate = 48000  # Default value
-        try:
-            metadata = get_profile_metadata()
-            if "_system" in metadata and "sampleRate" in metadata["_system"]:
-                sample_rate = metadata["_system"]["sampleRate"]
-        except Exception as e:
-            logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+        # Get sample rate from profile or guess it
+        sample_rate = get_or_guess_samplerate()
             
         # Get custom frequencies if provided
         frequencies = None
@@ -609,14 +632,8 @@ def set_biquad_filter():
         # Process filter parameters
         filter_data = data['filter']
         
-        # Get sample rate from profile or use default
-        sample_rate = 48000  # Default value
-        try:
-            metadata = get_profile_metadata()
-            if "_system" in metadata and "sampleRate" in metadata["_system"]:
-                sample_rate = metadata["_system"]["sampleRate"]
-        except Exception as e:
-            logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+        # Get sample rate from profile or guess it
+        sample_rate = get_or_guess_samplerate()
         
         try:
             if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
