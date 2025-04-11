@@ -432,56 +432,15 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def write_eeprom_content(xmldata):
-        logging.info("writing XML file: %s", xmldata)
-
-        try:
-            doc = xmltodict.parse(xmldata)
-
-            SigmaTCPHandler.prepare_update()
-            for action in doc["ROM"]["page"]["action"]:
-                instr = action["@instr"]
-
-                if instr == "writeXbytes":
-                    addr = int(action["@addr"])
-                    paramname = action["@ParamName"]
-                    data = []
-                    for d in action["#text"].split(" "):
-                        value = int(d, 16)
-                        data.append(value)
-
-                    logging.debug("writeXbytes %s %s", addr, len(data))
-                    adau145x.Adau145x.write_memory(addr, data)
-
-                    # Sleep after erase operations
-                    if ("g_Erase" in paramname):
-                        logging.debug(
-                            "found erase command, waiting 10 seconds to finish")
-                        time.sleep(10)
-
-                    # Delay after a page write
-                    if ("Page_" in paramname):
-                        logging.debug(
-                            "found page write command, waiting 0.5 seconds to finish")
-                        time.sleep(0.5)
-
-                if instr == "delay":
-                    logging.debug("delay")
-                    time.sleep(1)
-
+        logging.info("writing XML file through Adau145x implementation")
+        result = adau145x.Adau145x.write_eeprom_content(xmldata)
+        
+        # After the EEPROM write is done, set internal state as needed
+        if result:  # Success
             SigmaTCPHandler.finish_update()
-
-            # Write current DSP profile
-            with open(SigmaTCPHandler.dspprogramfile, "w+b") as dspprogram:
-                if (isinstance(xmldata, str)):
-                    xmldata = xmldata.encode("utf-8")
-                dspprogram.write(xmldata)
-
-        except Exception as e:
-            logging.error("exception during EEPROM write: %s", e)
-            logging.exception(e)
-            return b'\00'
-
-        return b'\01'
+            return b'\01'  # Convert True to binary 1
+        else:
+            return b'\00'  # Convert False to binary 0
 
     @staticmethod
     def write_eeprom_file(filename):

@@ -611,6 +611,86 @@ GET /dspprofile
 curl -X GET http://localhost:13141/dspprofile
 ```
 
+#### Update DSP Profile
+
+Upload a new DSP profile to the device. The profile can be provided in one of three ways:
+- Direct XML content in the request body
+- A path to a local file on the server
+- A URL pointing to a remote XML profile
+
+The new profile will be written to the DSP's EEPROM and also cached in the standard location.
+
+```
+POST /dspprofile
+```
+
+**Request Body Options:**
+
+1. Direct XML content:
+```json
+{
+  "xml": "<XML content of DSP profile>"
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -H "Content-Type: application/json" \
+  -d '{"xml": "<XML content of DSP profile>"}'
+```
+
+2. Local file path on the server:
+```json
+{
+  "file": "/path/to/dspprofile.xml"
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -H "Content-Type: application/json" \
+  -d '{"file": "/path/to/dspprofile.xml"}'
+```
+
+3. URL to a remote file:
+```json
+{
+  "url": "https://example.com/profiles/dspprofile.xml"
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/profiles/dspprofile.xml"}'
+```
+
+4. Direct file upload (multipart/form-data):
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -F "file=@/path/to/local/dspprofile.xml"
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Profile from direct successfully written to EEPROM",
+  "checksum": {
+    "memory": "1a2b3c4d5e6f7890...",
+    "profile": "1a2b3c4d5e6f7890...",
+    "match": true
+  }
+}
+```
+
+**Notes:**
+1. After writing the DSP profile, the system will verify if the checksum in memory matches the one in the profile.
+2. The profile will be saved to the standard location and the cache will be updated.
+3. The API requires sufficient permissions to write to the DSP EEPROM.
+4. For security reasons, when using the `file` option, the file must be accessible on the server running the REST API.
+
 ## Filter Operations
 
 ### Filter JSON Syntax
