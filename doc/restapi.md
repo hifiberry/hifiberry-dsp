@@ -268,6 +268,7 @@ You can specify biquad filters in different ways:
 {
   "address": "0x100",
   "offset": 0,
+  "sampleRate": 96000,
   "filter": {
     "a0": 1.0,
     "a1": -1.8,
@@ -285,6 +286,7 @@ curl -X POST http://localhost:13141/biquad \
   -d '{
   "address": "0x100",
   "offset": 0,
+  "sampleRate": 96000,
   "filter": {
     "a0": 1.0,
     "a1": -1.8,
@@ -301,6 +303,7 @@ curl -X POST http://localhost:13141/biquad \
 {
   "address": "0x100",
   "offset": 1,
+  "sampleRate": 48000,
   "filter": {
     "type": "PeakingEq",
     "f": 1000,
@@ -316,6 +319,7 @@ curl -X POST http://localhost:13141/biquad \
   -d '{
   "address": "0x100",
   "offset": 1,
+  "sampleRate": 48000,
   "filter": {
     "type": "PeakingEq",
     "f": 1000,
@@ -358,6 +362,7 @@ curl -X POST http://localhost:13141/biquad \
 
 - `address`: Memory address (hexadecimal or decimal), or a metadata key that resolves to a memory address
 - `offset` (optional, default: 0): Offset from the base address, will be multiplied by 5 (as each biquad filter requires 5 memory cells)
+- `sampleRate` (optional): Override the sample rate used for filter calculations. If not provided, the system will use the sample rate from the profile metadata or try to guess it.
 - `filter`: Either direct biquad coefficients or a filter specification object
 
 **Example Response (Direct Coefficients):**
@@ -365,6 +370,7 @@ curl -X POST http://localhost:13141/biquad \
 {
   "status": "success",
   "address": "0x100",
+  "sampleRate": 48000,
   "coefficients": {
     "a0": 1.0,
     "a1": -1.8,
@@ -381,6 +387,7 @@ curl -X POST http://localhost:13141/biquad \
 {
   "status": "success",
   "address": "0x100",
+  "sampleRate": 96000,
   "filter": {
     "type": "PeakingEq",
     "f": 1000,
@@ -403,6 +410,7 @@ curl -X POST http://localhost:13141/biquad \
 1. When using a metadata key as the address, the system will look up the key in the metadata and extract the base address from it.
 2. The offset parameter is useful when you have multiple filters starting at a base address. For example, with offset=1, the filter will be written 5 memory cells after the base address.
 3. Filter coefficients are automatically normalized to ensure a0 = 1.0 before being written to the DSP.
+4. The sample rate is important for calculating the correct filter coefficients. Specify it explicitly when you know your system is running at a non-standard rate.
 
 ### Register Access API
 
