@@ -249,6 +249,161 @@ curl -X POST http://localhost:13141/memory \
 **Note on Float Values:**
 When using floating-point values, they must be within the valid range for the SigmaDSP fixed-point representation (approximately -256 to 256). Values will be automatically converted to the appropriate 32-bit fixed-point representation understood by the DSP.
 
+### Biquad Filter API
+
+#### Set Biquad Filter
+
+Write biquad filter coefficients to DSP memory.
+
+```
+POST /biquad
+```
+
+**Request Body:**
+
+You can specify biquad filters in different ways:
+
+1. Direct coefficients:
+```json
+{
+  "address": "0x100",
+  "offset": 0,
+  "filter": {
+    "a0": 1.0,
+    "a1": -1.8,
+    "a2": 0.81,
+    "b0": 0.5,
+    "b1": 0.0,
+    "b2": -0.5
+  }
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/biquad \
+  -H "Content-Type: application/json" \
+  -d '{
+  "address": "0x100",
+  "offset": 0,
+  "filter": {
+    "a0": 1.0,
+    "a1": -1.8,
+    "a2": 0.81,
+    "b0": 0.5,
+    "b1": 0.0,
+    "b2": -0.5
+  }
+}'
+```
+
+2. Using filter specification:
+```json
+{
+  "address": "0x100",
+  "offset": 1,
+  "filter": {
+    "type": "PeakingEq",
+    "f": 1000,
+    "db": -3.0,
+    "q": 1.0
+  }
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/biquad \
+  -H "Content-Type: application/json" \
+  -d '{
+  "address": "0x100",
+  "offset": 1,
+  "filter": {
+    "type": "PeakingEq",
+    "f": 1000,
+    "db": -3.0,
+    "q": 1.0
+  }
+}'
+```
+
+3. Using a metadata key as address:
+```json
+{
+  "address": "eq1_band1",
+  "offset": 0,
+  "filter": {
+    "type": "LowShelf",
+    "f": 100,
+    "db": 3.0,
+    "slope": 1.0
+  }
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/biquad \
+  -H "Content-Type: application/json" \
+  -d '{
+  "address": "eq1_band1",
+  "offset": 0,
+  "filter": {
+    "type": "LowShelf",
+    "f": 100,
+    "db": 3.0,
+    "slope": 1.0
+  }
+}'
+```
+
+**Parameters:**
+
+- `address`: Memory address (hexadecimal or decimal), or a metadata key that resolves to a memory address
+- `offset` (optional, default: 0): Offset from the base address, will be multiplied by 5 (as each biquad filter requires 5 memory cells)
+- `filter`: Either direct biquad coefficients or a filter specification object
+
+**Example Response (Direct Coefficients):**
+```json
+{
+  "status": "success",
+  "address": "0x100",
+  "coefficients": {
+    "a0": 1.0,
+    "a1": -1.8,
+    "a2": 0.81,
+    "b0": 0.5,
+    "b1": 0.0,
+    "b2": -0.5
+  }
+}
+```
+
+**Example Response (Filter Specification):**
+```json
+{
+  "status": "success",
+  "address": "0x100",
+  "filter": {
+    "type": "PeakingEq",
+    "f": 1000,
+    "db": -3.0,
+    "q": 1.0
+  },
+  "coefficients": {
+    "a0": 1.0,
+    "a1": -1.8969,
+    "a2": 0.9025,
+    "b0": 0.9513,
+    "b1": -1.8969,
+    "b2": 0.8538
+  }
+}
+```
+
+**Notes:**
+
+1. When using a metadata key as the address, the system will look up the key in the metadata and extract the base address from it.
+2. The offset parameter is useful when you have multiple filters starting at a base address. For example, with offset=1, the filter will be written 5 memory cells after the base address.
+3. Filter coefficients are automatically normalized to ensure a0 = 1.0 before being written to the DSP.
+
 ### Register Access API
 
 #### Read Register
@@ -448,6 +603,32 @@ Used for creating peaking equalization filters.
 - `f`: Center frequency in Hz
 - `db`: Gain in decibels
 - `q`: Q factor (bandwidth)
+
+##### GenericBiquad Filter
+
+Used for creating custom biquad filters with direct coefficient specification. This is useful for advanced filter design or when importing filter coefficients from external applications.
+
+```json
+{
+  "type": "GenericBiquad",
+  "a0": 1.0,
+  "a1": -1.8,
+  "a2": 0.81,
+  "b0": 0.5,
+  "b1": 0.0,
+  "b2": -0.5
+}
+```
+
+**Parameters:**
+- `a0`: Denominator coefficient (typically normalized to 1.0)
+- `a1`: Denominator coefficient
+- `a2`: Denominator coefficient
+- `b0`: Numerator coefficient
+- `b1`: Numerator coefficient
+- `b2`: Numerator coefficient
+
+All coefficients default to neutral values (a0=1.0, b0=1.0, others=0.0) if not specified.
 
 ##### LowPass Filter
 
