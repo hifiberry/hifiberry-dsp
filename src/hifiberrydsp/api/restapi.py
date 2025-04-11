@@ -596,6 +596,7 @@ def set_biquad_filter():
     - address: Memory address or metadata key
     - offset: Offset (will be multiplied by 5)
     - filter: Filter parameters (either as object with a0,a1,a2,b0,b1,b2 or as a Filter object)
+    - sampleRate: (optional) Override the sample rate for filter calculation
     """
     try:
         data = request.json
@@ -632,8 +633,18 @@ def set_biquad_filter():
         # Process filter parameters
         filter_data = data['filter']
         
-        # Get sample rate from profile or guess it
-        sample_rate = get_or_guess_samplerate()
+        # Override sample rate if provided, otherwise get from profile or guess
+        sample_rate = None
+        if 'sampleRate' in data:
+            try:
+                sample_rate = int(data['sampleRate'])
+                logging.debug(f"Using provided sample rate: {sample_rate}")
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid sample rate value"}), 400
+        
+        # If sample rate wasn't provided or was invalid, get it from profile or guess
+        if not sample_rate:
+            sample_rate = get_or_guess_samplerate()
         
         try:
             if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
@@ -652,6 +663,7 @@ def set_biquad_filter():
                 return jsonify({
                     "status": "success", 
                     "address": hex(actual_address),
+                    "sampleRate": sample_rate,
                     "coefficients": {
                         "a0": a0, "a1": a1, "a2": a2,
                         "b0": b0, "b1": b1, "b2": b2
@@ -685,6 +697,7 @@ def set_biquad_filter():
                 return jsonify({
                     "status": "success", 
                     "address": hex(actual_address),
+                    "sampleRate": sample_rate,
                     "filter": filter_data,
                     "coefficients": {
                         "a0": a0, "a1": a1, "a2": a2,
