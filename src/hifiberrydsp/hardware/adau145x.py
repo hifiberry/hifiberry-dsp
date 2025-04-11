@@ -429,4 +429,29 @@ class Adau145x():
         
         # Use the existing write_biquad method
         Adau145x.write_biquad(start_addr, bq)
+    
+    @staticmethod
+    def guess_samplerate():
+        '''
+        Guess the DSP sample rate by checking the clock generator registers.
+        
+        Returns:
+            int or None: Sample rate in Hz (48000, 96000, 192000) or None if detection fails
+        '''
+        try:
+            # read START_PULSE (0xf401) to find DSP sample rate (assume 294.912MHz core frequency)
+            start_pulse = Adau145x.read_memory(0xf401)
+            if start_pulse == 2:
+                return 48000
+            elif start_pulse == 3:
+                return 96000
+            elif start_pulse == 4:
+                return 192000
+            else:
+                logging.warning(f"Unexpected START_PULSE value: {start_pulse}, expected 2, 3 or 4")
+                return None
+                
+        except Exception as e:
+            logging.warning(f"Error guessing sample rate: {str(e)}")
+            return None
 
