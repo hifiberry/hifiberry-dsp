@@ -31,6 +31,7 @@ from hifiberrydsp.api.filters import Filter
 from waitress import serve
 import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
+from hifiberrydsp.filtering.biquad import Biquad
 
 
 DEFAULT_PORT = 13141
@@ -608,6 +609,15 @@ def set_biquad_filter():
         # Process filter parameters
         filter_data = data['filter']
         
+        # Get sample rate from profile or use default
+        sample_rate = 48000  # Default value
+        try:
+            metadata = get_profile_metadata()
+            if "_system" in metadata and "sampleRate" in metadata["_system"]:
+                sample_rate = metadata["_system"]["sampleRate"]
+        except Exception as e:
+            logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+        
         try:
             if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
                 # Direct coefficients provided
@@ -618,63 +628,50 @@ def set_biquad_filter():
                 b1 = float(filter_data['b1'])
                 b2 = float(filter_data['b2'])
                 
-                # Use the static method to write biquad
-                try:
-                    from hifiberrydsp.filtering.biquad import Biquad
-                    # Create a Biquad object and write it to DSP memory
-                    bq = Biquad.from_parameters(a0, a1, a2, b0, b1, b2)
-                    Adau145x.write_biquad(actual_address, bq)
-                    
-                    return jsonify({
-                        "status": "success", 
-                        "address": hex(actual_address),
-                        "coefficients": {
-                            "a0": a0, "a1": a1, "a2": a2,
-                            "b0": b0, "b1": b1, "b2": b2
-                        }
-                    })
-                except ImportError:
-                    # If Biquad class is not available, use direct approach
-                    from hifiberrydsp.hardware.adau145x import Adau145x
-                    Adau145x.write_biquad_direct(actual_address, a0, a1, a2, b0, b1, b2)
-                    
-                    return jsonify({
-                        "status": "success", 
-                        "address": hex(actual_address),
-                        "coefficients": {
-                            "a0": a0, "a1": a1, "a2": a2,
-                            "b0": b0, "b1": b1, "b2": b2
-                        }
-                    })
-                    
+                # Create a Biquad object and write it to DSP memory
+                bq = Biquad(a0, a1, a2, b0, b1, b2, "Custom biquad")
+                Adau145x.write_biquad(actual_address, bq)
+                
+                return jsonify({
+                    "status": "success", 
+                    "address": hex(actual_address),
+                    "coefficients": {
+                        "a0": a0, "a1": a1, "a2": a2,
+                        "b0": b0, "b1": b1, "b2": b2
+                    }
+                })
+                
             elif isinstance(filter_data, dict) and 'type' in filter_data:
                 # This is a filter specification, create a Filter object
                 filter_json = json.dumps(filter_data)
-                from hifiberrydsp.api.filters import Filter
                 filter_obj = Filter.fromJSON(filter_json)
                 
-                # Get sample rate from profile or use default
-                sample_rate = 48000  # Default value
-                try:
-                    metadata = get_profile_metadata()
-                    if "_system" in metadata and "sampleRate" in metadata["_system"]:
-                        sample_rate = metadata["_system"]["sampleRate"]
-                except Exception as e:
-                    logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
-                
                 # Calculate biquad coefficients
-                biquad = filter_obj.biquad(sample_rate)
+                coeffs = filter_obj.biquadCoefficients(sample_rate)
                 
-                # Use the static method to write biquad
-                Adau145x.write_biquad(actual_address, biquad)
+                if not coeffs or len(coeffs) != 6:
+                    return jsonify({"error": "Invalid coefficients returned from filter"}), 500
+                
+                # Extract coefficients
+                b0, b1, b2, a0, a1, a2 = coeffs
+                
+                # Create a Biquad object
+                description = f"{filter_data.get('type', 'Filter')} at {filter_data.get('f', '')}Hz"
+                bq = Biquad(a0, a1, a2, b0, b1, b2, description)
+                
+                # Write the biquad to DSP memory
+                Adau145x.write_biquad(actual_address, bq)
+                
+                # Invalidate cache after biquad write
+                invalidate_cache()
                 
                 return jsonify({
                     "status": "success", 
                     "address": hex(actual_address),
                     "filter": filter_data,
                     "coefficients": {
-                        "a0": biquad.a0, "a1": biquad.a1, "a2": biquad.a2,
-                        "b0": biquad.b0, "b1": biquad.b1, "b2": biquad.b2
+                        "a0": a0, "a1": a1, "a2": a2,
+                        "b0": b0, "b1": b1, "b2": b2
                     }
                 })
             else:
