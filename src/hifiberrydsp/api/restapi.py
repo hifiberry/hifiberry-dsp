@@ -44,7 +44,8 @@ app.config['JSON_SORT_KEYS'] = False
 _xml_profile_cache = {
     "profile": None,
     "path": None,
-    "metadata": None
+    "metadata": None,
+    "valid": None
 }
 
 
@@ -79,10 +80,11 @@ def isBiquad(value):
 
 def get_xml_profile():
     """
-    Get the cached XML profile or read from disk if needed
+    Get the cached XML profile or read from disk if needed.
+    Validates that the XML profile's checksum matches what's in memory.
     
     Returns:
-        XmlProfile: The cached or newly read XML profile
+        XmlProfile: The cached or newly read XML profile, or None if invalid or not found
     """
     global _xml_profile_cache
     
@@ -92,31 +94,64 @@ def get_xml_profile():
     if not os.path.exists(profile_path):
         return None
     
-    file_mtime = os.path.getmtime(profile_path)
-    
     # Check if we need to refresh the cache
     cache_valid = (
         _xml_profile_cache["profile"] is not None and
         _xml_profile_cache["path"] == profile_path
     )
     
-    if not cache_valid:
-        logging.debug("XML profile cache miss - reading from disk")
-        try:
-            xml_profile = XmlProfile(profile_path)
-            
-            # Update the cache
-            _xml_profile_cache["profile"] = xml_profile
-            _xml_profile_cache["path"] = profile_path
-            _xml_profile_cache["metadata"] = None  # Reset metadata cache
-            
-            return xml_profile
-        except Exception as e:
-            logging.error(f"Error reading XML profile: {str(e)}")
-            return None
-    else:
+    # If we have a cached profile, check if it's valid or invalid
+    if cache_valid:
         logging.debug("XML profile cache hit")
+        if _xml_profile_cache["valid"] is False:
+            logging.warning("Cached XML profile is marked as invalid (checksum mismatch) - returning None")
+            return None
         return _xml_profile_cache["profile"]
+    
+    # Cache miss - read from disk
+    logging.debug("XML profile cache miss - reading from disk")
+    try:
+        xml_profile = XmlProfile(profile_path)
+        
+        # Validate checksum - compare memory checksum with XML profile checksum
+        profile_valid = True
+        try:
+            # Get memory checksum
+            memory_checksum = Adau145x.calculate_program_checksum(cached=True)
+            memory_checksum_hex = None
+            if memory_checksum:
+                memory_checksum_hex = binascii.hexlify(memory_checksum).decode('utf-8')
+                
+            # Get XML profile checksum
+            profile_checksum = xml_profile.get_meta("checksum")
+            
+            # Compare checksums if both are available
+            if memory_checksum_hex and profile_checksum:
+                if memory_checksum_hex.lower() != profile_checksum.lower():
+                    logging.warning(f"Checksum mismatch - Memory: {memory_checksum_hex}, XML: {profile_checksum}")
+                    profile_valid = False
+                else:
+                    logging.debug(f"Checksum match - Memory: {memory_checksum_hex}, XML: {profile_checksum}")
+        except Exception as e:
+            logging.error(f"Error validating checksum: {str(e)}")
+            # If we can't validate, assume it's valid rather than blocking
+            profile_valid = True
+        
+        # Update the cache
+        _xml_profile_cache["profile"] = xml_profile
+        _xml_profile_cache["path"] = profile_path
+        _xml_profile_cache["metadata"] = None  # Reset metadata cache
+        _xml_profile_cache["valid"] = profile_valid
+        
+        # Return profile if valid, None if invalid
+        if profile_valid:
+            return xml_profile
+        else:
+            return None
+            
+    except Exception as e:
+        logging.error(f"Error reading XML profile: {str(e)}")
+        return None
 
 
 def get_profile_metadata():
@@ -179,6 +214,7 @@ def invalidate_cache():
     global _xml_profile_cache
     _xml_profile_cache["profile"] = None
     _xml_profile_cache["metadata"] = None
+    _xml_profile_cache["valid"] = None
 
 
 def get_or_guess_samplerate():
@@ -526,6 +562,52 @@ def clear_cache():
         return jsonify({"status": "success", "message": "Cache cleared"})
     except Exception as e:
         logging.error(f"Error clearing cache: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/cache', methods=['GET'])
+def get_cache_status():
+    """API endpoint to get information about the current cache status"""
+    try:
+        global _xml_profile_cache
+        
+        # Create response with cache information
+        cache_info = {
+            "profile": {
+                "cached": _xml_profile_cache["profile"] is not None,
+                "path": _xml_profile_cache["path"],
+                "valid": _xml_profile_cache["valid"]
+            },
+            "metadata": {
+                "cached": _xml_profile_cache["metadata"] is not None
+            }
+        }
+        
+        # Add profile name if available
+        if _xml_profile_cache["profile"] is not None:
+            try:
+                profile_name = _xml_profile_cache["profile"].get_meta("profileName")
+                if profile_name:
+                    cache_info["profile"]["name"] = profile_name
+            except:
+                pass
+                
+        # Add metadata key count if available
+        if _xml_profile_cache["metadata"] is not None:
+            try:
+                # Count non-system metadata keys
+                meta_count = len(_xml_profile_cache["metadata"]) - (1 if "_system" in _xml_profile_cache["metadata"] else 0)
+                cache_info["metadata"]["keyCount"] = meta_count
+                
+                # Add system metadata if available
+                if "_system" in _xml_profile_cache["metadata"]:
+                    cache_info["metadata"]["system"] = _xml_profile_cache["metadata"]["_system"]
+            except:
+                pass
+                
+        return jsonify(cache_info)
+    except Exception as e:
+        logging.error(f"Error getting cache status: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
