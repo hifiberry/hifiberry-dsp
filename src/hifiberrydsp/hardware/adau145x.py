@@ -440,7 +440,8 @@ class Adau145x():
         '''
         try:
             # read START_PULSE (0xf401) to find DSP sample rate (assume 294.912MHz core frequency)
-            start_pulse = Adau145x.read_memory(0xf401)
+            start_pulse = Adau145x.read_memory(0xf401,2)[1]
+            logging.debug(f"START_PULSE value: {start_pulse}")
             if start_pulse == 2:
                 return 48000
             elif start_pulse == 3:
