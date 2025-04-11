@@ -44,9 +44,7 @@ app.config['JSON_SORT_KEYS'] = False
 _xml_profile_cache = {
     "profile": None,
     "path": None,
-    "timestamp": 0,
-    "metadata": None,
-    "cache_timeout": 3600  # Cache valid for one hour
+    "metadata": None
 }
 
 
@@ -94,15 +92,12 @@ def get_xml_profile():
     if not os.path.exists(profile_path):
         return None
     
-    current_time = time.time()
     file_mtime = os.path.getmtime(profile_path)
     
     # Check if we need to refresh the cache
     cache_valid = (
         _xml_profile_cache["profile"] is not None and
-        _xml_profile_cache["path"] == profile_path and
-        current_time - _xml_profile_cache["timestamp"] < _xml_profile_cache["cache_timeout"] and
-        file_mtime <= _xml_profile_cache["timestamp"]
+        _xml_profile_cache["path"] == profile_path
     )
     
     if not cache_valid:
@@ -113,7 +108,6 @@ def get_xml_profile():
             # Update the cache
             _xml_profile_cache["profile"] = xml_profile
             _xml_profile_cache["path"] = profile_path
-            _xml_profile_cache["timestamp"] = current_time
             _xml_profile_cache["metadata"] = None  # Reset metadata cache
             
             return xml_profile
@@ -315,9 +309,6 @@ def memory_access():
                     byte_data = Adau145x.int_data(int_value, 4)
                     Adau145x.write_memory(current_addr, byte_data)
 
-                # Invalidate cache after memory write
-                invalidate_cache()
-                
                 return jsonify({"address": hex(address), "values": [hex(v) if isinstance(v, int) else v for v in values], "status": "success"})
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
@@ -438,9 +429,6 @@ def register_write():
             # Write directly to registers using Adau145x
             Adau145x.write_memory(address, byte_data)
             
-            # Invalidate cache after register write
-            invalidate_cache()
-
             return jsonify({"address": hex(address), "value": hex(value), "status": "success"})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -690,9 +678,6 @@ def set_biquad_filter():
                 
                 # Write the biquad to DSP memory
                 Adau145x.write_biquad(actual_address, bq)
-                
-                # Invalidate cache after biquad write
-                invalidate_cache()
                 
                 return jsonify({
                     "status": "success", 
