@@ -155,27 +155,24 @@ class Adau145x():
         Returns:
             list: Byte array representing the integer
         '''
-        data = []
-        for i in range(length):
-            data.append(value & 0xff)
-            value = value >> 8
-        return data
+        octets = bytearray()
+        for i in range(length, 0, -1):
+            octets.append((value >> (i - 1) * 8) & 0xff)
+
+        return octets
         
     @staticmethod
-    def detect_dsp(debug=False):
+    def detect_dsp():
         '''
         Detect if a DSP is connected and responding
         
-        Args:
-            debug: Enable debug output
-            
         Returns:
             bool: True if DSP detected, False otherwise
         '''
         spi = SpiHandler()
-        spi.write(0xf890, [0], debug)
+        spi.write(0xf890, [0])
         time.sleep(1)
-        spi.write(0xf890, [1], debug)
+        spi.write(0xf890, [1])
         time.sleep(1)
         reg1 = int.from_bytes(spi.read(0xf000, 2), byteorder='big') # PLL feedback divider must be != 0
         reg2 = int.from_bytes(spi.read(0xf890, 2), byteorder='big') # Soft reset is expected to be 1 
@@ -294,10 +291,15 @@ class Adau145x():
         Returns:
             bytearray: Program memory content up to the end marker
         '''
+        Adau145x.kill_dsp()
+        time.sleep(0.0001)
         memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
                                           Adau145x.PROGRAM_LENGTH)
+        Adau145x.start_dsp()
+        logging.debug("Read program from address %s to %s", Adau145x.PROGRAM_ADDR, Adau145x.PROGRAM_ADDR + Adau145x.PROGRAM_LENGTH)
 
         end_index = memory.find(Adau145x.PROGRAM_END_SIGNATURE)
+        logging.debug("Program end signature found at %s", end_index)
 
         if end_index < 0:
             memsum = 0
