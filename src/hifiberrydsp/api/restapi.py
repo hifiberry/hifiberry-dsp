@@ -179,7 +179,6 @@ def invalidate_cache():
     global _xml_profile_cache
     _xml_profile_cache["profile"] = None
     _xml_profile_cache["metadata"] = None
-    _xml_profile_cache["timestamp"] = 0
 
 
 def get_or_guess_samplerate():
