@@ -758,6 +758,7 @@ class SigmaTCPServerMain():
         parser.add_argument("--lgsoundsync", action="store_true", help="Enable LG Sound Sync")
         parser.add_argument("--enable-rest", action="store_true", help="Enable REST API server")
         parser.add_argument("--disable-tcp", action="store_true", help="Disable SigmaTCP server (only useful with --enable-rest)")
+        parser.add_argument("--store", action="store_true", help="Store data memory to a file on exit")
         parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
         parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
@@ -767,6 +768,7 @@ class SigmaTCPServerMain():
         params["lgsoundsync"] = args.lgsoundsync
         params["enable_rest"] = args.enable_rest
         params["disable_tcp"] = args.disable_tcp
+        params["store"] = args.store
         params["restore"] = args.restore
         params["verbose"] = args.verbose
         params["localhost"] = args.localhost
@@ -842,5 +844,9 @@ class SigmaTCPServerMain():
         if SigmaTCPHandler.lgsoundsync is not None:
             SigmaTCPHandler.lgsoundsync.finish()
 
-        logging.info("saving DSP data memory")
-        SigmaTCPHandler.save_data_memory()
+        if self.params.get("store"):
+            try:
+                logging.info("saving DSP data memory")
+                SigmaTCPHandler.save_data_memory()
+            except Exception as e:
+                logging.error("Error saving DSP data memory: %s", e)
