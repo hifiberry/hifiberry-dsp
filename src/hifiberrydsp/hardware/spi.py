@@ -51,7 +51,7 @@ class SpiHandler():
     spi = init_spi()
 
     @staticmethod
-    def read(addr, length, debug=False):
+    def read(addr, length):
         spi_request = []
         a0 = addr & 0xff
         a1 = (addr >> 8) & 0xff
@@ -64,12 +64,13 @@ class SpiHandler():
             spi_request.append(0)
 
         spi_response = SpiHandler.spi.xfer(spi_request)  # SPI read
-        if debug:
-            logging.debug("spi read %s bytes from %s", len(spi_request), addr)
+        logging.debug("spi read %s bytes from %s", len(spi_request), addr)
         return bytearray(spi_response[3:])
 
     @staticmethod
-    def write(addr, data, debug=False):
+    def write(addr, data):
+        logging.debug("spi write %s bytes to %s", len(data), addr)
+
         a0 = addr & 0xff
         a1 = (addr >> 8) & 0xff
 
@@ -77,28 +78,24 @@ class SpiHandler():
         spi_request.append(0)
         spi_request.append(a1)
         spi_request.append(a0)
+
         for d in data:
             spi_request.append(d)
 
         if len(spi_request) < 4096:
+            logging.debug(f"spi write {len(spi_request) - 3} bytes: {spi_request}")
             SpiHandler.spi.xfer(spi_request)
-            if debug:
-                logging.debug("spi write %s bytes",  len(spi_request) - 3)
         else:
             finished = False
             while not finished:
                 if len(spi_request) < 4096:
                     SpiHandler.spi.xfer(spi_request)
-                    if debug:
-                        logging.debug("spi write %s bytes",
-                                      len(spi_request) - 3)
+                    logging.debug("spi write %s bytes", len(spi_request) - 3)
                     finished = True
                 else:
                     short_request = spi_request[:4003]
                     SpiHandler.spi.xfer(short_request)
-                    if debug:
-                        logging.debug("spi write %s bytes",
-                                      len(short_request) - 3)
+                    logging.debug("spi write %s bytes", len(short_request) - 3)
 
                     # skip forward 1000 cells
                     addr = addr + 1000  # each memory cell is 4 bytes long
