@@ -555,6 +555,38 @@ If `frequencies` is not provided, the response will be calculated using a logari
 
 ### Cache Management API
 
+#### Get Cache Status
+
+Get information about the current cache status, including whether the XML profile and metadata are cached.
+
+```
+GET /cache
+```
+
+```bash
+curl -X GET http://localhost:13141/cache
+```
+
+**Example Response:**
+```json
+{
+  "profile": {
+    "cached": true,
+    "path": "/etc/hifiberry/dspprofile.xml",
+    "name": "4-Way IIR Crossover"
+  },
+  "metadata": {
+    "cached": true,
+    "keyCount": 24,
+    "system": {
+      "profileName": "4-Way IIR Crossover",
+      "profileVersion": "1.0",
+      "sampleRate": 48000
+    }
+  }
+}
+```
+
 #### Clear Cache
 
 Clear the internal XML profile cache. This is useful if the DSP profile file has been updated externally.
