@@ -611,24 +611,129 @@ def get_cache_status():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/dspprofile', methods=['GET'])
+@app.route('/dspprofile', methods=['GET', 'POST'])
 def get_xml_profile_data():
-    """API endpoint to get the full XML profile data"""
-    try:
-        # Get the XML profile from cache or disk
-        xml_profile = get_xml_profile()
-        if not xml_profile:
-            return jsonify({"error": "DSP profile file not found or invalid"}), 404
-        
-        # Get the raw XML data as string
-        xml_data = str(xml_profile)
-        
-        # Return the XML data with the correct content type
-        return xml_data, 200, {'Content-Type': 'application/xml'}
-        
-    except Exception as e:
-        logging.error(f"Error retrieving XML profile: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    """
+    API endpoint to get or update the DSP profile
+    
+    GET: Retrieve the full XML profile data
+    POST: Upload a new DSP profile from XML content, local file, or URL (JSON-only API)
+    """
+    if request.method == 'GET':
+        try:
+            # Get the XML profile from cache or disk
+            xml_profile = get_xml_profile()
+            if not xml_profile:
+                return jsonify({"error": "DSP profile file not found or invalid"}), 404
+            
+            # Get the raw XML data as string
+            xml_data = str(xml_profile)
+            
+            # Return the XML data with the correct content type
+            return xml_data, 200, {'Content-Type': 'application/xml'}
+            
+        except Exception as e:
+            logging.error(f"Error retrieving XML profile: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    
+    elif request.method == 'POST':
+        try:
+            # Check request format - only JSON is supported
+            if not request.is_json:
+                return jsonify({"error": "Only JSON format is supported. Content-Type must be application/json"}), 400
+                
+            data = request.json
+            
+            # Check which source type is provided
+            if 'xml' in data:
+                # Direct XML content
+                xml_content = data['xml']
+                source_type = 'direct'
+                
+            elif 'file' in data:
+                # Local file path
+                file_path = data['file']
+                try:
+                    with open(file_path, 'r') as f:
+                        xml_content = f.read()
+                    source_type = 'file'
+                except Exception as e:
+                    return jsonify({"error": f"Could not read file {file_path}: {str(e)}"}), 400
+            
+            elif 'url' in data:
+                # URL to remote file
+                url = data['url']
+                try:
+                    import requests
+                    response = requests.get(url, timeout=10)
+                    if response.status_code != 200:
+                        return jsonify({"error": f"Failed to retrieve profile from URL, status code: {response.status_code}"}), 400
+                    xml_content = response.text
+                    source_type = 'url'
+                except Exception as e:
+                    return jsonify({"error": f"Could not download from URL {url}: {str(e)}"}), 400
+            
+            else:
+                return jsonify({"error": "Request must contain one of: 'xml', 'file', or 'url'"}), 400
+            
+            # Write the profile to EEPROM
+            from hifiberrydsp.hardware.adau145x import Adau145x
+            
+            # Invalidate cache before writing
+            invalidate_cache()
+            
+            # Write the EEPROM content
+            result = Adau145x.write_eeprom_content(xml_content)
+            
+            if not result:
+                return jsonify({"status": "error", "message": "Failed to write profile to EEPROM"}), 500
+            
+            # Verify the checksum after writing
+            try:
+                # Wait a moment for the DSP to stabilize
+                import time
+                time.sleep(0.5)
+                
+                # Calculate new program checksum
+                memory_checksum = Adau145x.calculate_program_checksum(cached=False)
+                memory_checksum_hex = None
+                if memory_checksum:
+                    memory_checksum_hex = binascii.hexlify(memory_checksum).decode('utf-8')
+                
+                # Load the profile again to get its checksum
+                profile_path = get_default_dspprofile_path()
+                xml_profile = XmlProfile(profile_path)
+                profile_checksum = xml_profile.get_meta("checksum")
+                
+                checksums_match = False
+                if memory_checksum_hex and profile_checksum:
+                    checksums_match = memory_checksum_hex.lower() == profile_checksum.lower()
+                
+                # The cache should have already been updated by the write_eeprom_content function,
+                # but we'll invalidate it again to be sure the next read loads the new profile
+                invalidate_cache()
+                
+                return jsonify({
+                    "status": "success",
+                    "message": f"Profile from {source_type} successfully written to EEPROM",
+                    "checksum": {
+                        "memory": memory_checksum_hex,
+                        "profile": profile_checksum,
+                        "match": checksums_match
+                    }
+                })
+                
+            except Exception as e:
+                logging.error(f"Error verifying checksum after profile write: {str(e)}")
+                return jsonify({
+                    "status": "warning",
+                    "message": f"Profile from {source_type} written to EEPROM, but checksum verification failed",
+                    "error": str(e)
+                }), 200
+                
+        except Exception as e:
+            logging.error(f"Error processing DSP profile update: {str(e)}")
+            return jsonify({"error": str(e)}), 500
 
 
 def resolve_address_from_metadata(key):

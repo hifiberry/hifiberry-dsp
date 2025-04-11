@@ -456,3 +456,75 @@ class Adau145x():
             logging.warning(f"Error guessing sample rate: {str(e)}")
             return None
 
+    @staticmethod
+    def write_eeprom_content(xmldata):
+        """
+        Write EEPROM content based on XML data.
+        
+        Args:
+            xmldata (str or bytes): XML data containing DSP configuration
+            
+        Returns:
+            bool: True for success, False for failure
+        """
+        import xmltodict
+        import os
+        import time
+        from hifiberrydsp.parser.xmlprofile import get_default_dspprofile_path
+        
+        logging.info("Writing EEPROM content from XML")
+        dspprogramfile = get_default_dspprofile_path()
+        
+        try:
+            doc = xmltodict.parse(xmldata)
+
+            # Kill DSP and clear checksum cache before updating
+            Adau145x.clear_checksum_cache()
+            Adau145x.kill_dsp()
+            
+            for action in doc["ROM"]["page"]["action"]:
+                instr = action["@instr"]
+
+                if instr == "writeXbytes":
+                    addr = int(action["@addr"])
+                    paramname = action["@ParamName"]
+                    data = []
+                    for d in action["#text"].split(" "):
+                        value = int(d, 16)
+                        data.append(value)
+
+                    logging.debug("writeXbytes %s %s", addr, len(data))
+                    Adau145x.write_memory(addr, data)
+
+                    # Sleep after erase operations
+                    if ("g_Erase" in paramname):
+                        logging.debug(
+                            "found erase command, waiting 10 seconds to finish")
+                        time.sleep(10)
+
+                    # Delay after a page write
+                    if ("Page_" in paramname):
+                        logging.debug(
+                            "found page write command, waiting 0.5 seconds to finish")
+                        time.sleep(0.5)
+
+                if instr == "delay":
+                    logging.debug("delay")
+                    time.sleep(1)
+
+            # Restart the DSP core
+            Adau145x.start_dsp()
+
+            # Write current DSP profile to file
+            with open(dspprogramfile, "w+b") as dspprogram:
+                if isinstance(xmldata, str):
+                    xmldata = xmldata.encode("utf-8")
+                dspprogram.write(xmldata)
+
+        except Exception as e:
+            logging.error("Exception during EEPROM write: %s", e)
+            logging.exception(e)
+            return False
+
+        return True
+
