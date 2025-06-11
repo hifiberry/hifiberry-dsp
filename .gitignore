@@ -15,3 +15,4 @@ dist
 deb_dist
 beocreate-universal-10.xml
 update-clock
+.vscode/settings.json

@@ -429,4 +429,102 @@ class Adau145x():
         
         # Use the existing write_biquad method
         Adau145x.write_biquad(start_addr, bq)
+    
+    @staticmethod
+    def guess_samplerate():
+        '''
+        Guess the DSP sample rate by checking the clock generator registers.
+        
+        Returns:
+            int or None: Sample rate in Hz (48000, 96000, 192000) or None if detection fails
+        '''
+        try:
+            # read START_PULSE (0xf401) to find DSP sample rate (assume 294.912MHz core frequency)
+            start_pulse = Adau145x.read_memory(0xf401,2)[1]
+            logging.debug(f"START_PULSE value: {start_pulse}")
+            if start_pulse == 2:
+                return 48000
+            elif start_pulse == 3:
+                return 96000
+            elif start_pulse == 4:
+                return 192000
+            else:
+                logging.warning(f"Unexpected START_PULSE value: {start_pulse}, expected 2, 3 or 4")
+                return None
+                
+        except Exception as e:
+            logging.warning(f"Error guessing sample rate: {str(e)}")
+            return None
+
+    @staticmethod
+    def write_eeprom_content(xmldata):
+        """
+        Write EEPROM content based on XML data.
+        
+        Args:
+            xmldata (str or bytes): XML data containing DSP configuration
+            
+        Returns:
+            bool: True for success, False for failure
+        """
+        import xmltodict
+        import os
+        import time
+        from hifiberrydsp.parser.xmlprofile import get_default_dspprofile_path
+        
+        logging.info("Writing EEPROM content from XML")
+        dspprogramfile = get_default_dspprofile_path()
+        
+        try:
+            doc = xmltodict.parse(xmldata)
+
+            # Kill DSP and clear checksum cache before updating
+            Adau145x.clear_checksum_cache()
+            Adau145x.kill_dsp()
+            
+            for action in doc["ROM"]["page"]["action"]:
+                instr = action["@instr"]
+
+                if instr == "writeXbytes":
+                    addr = int(action["@addr"])
+                    paramname = action["@ParamName"]
+                    data = []
+                    for d in action["#text"].split(" "):
+                        value = int(d, 16)
+                        data.append(value)
+
+                    logging.debug("writeXbytes %s %s", addr, len(data))
+                    Adau145x.write_memory(addr, data)
+
+                    # Sleep after erase operations
+                    if ("g_Erase" in paramname):
+                        logging.debug(
+                            "found erase command, waiting 10 seconds to finish")
+                        time.sleep(10)
+
+                    # Delay after a page write
+                    if ("Page_" in paramname):
+                        logging.debug(
+                            "found page write command, waiting 1 second to finish")
+                        time.sleep(1)
+
+                if instr == "delay":
+                    logging.debug("delay")
+                    time.sleep(1)
+
+            # Restart the DSP core
+            Adau145x.start_dsp()
+
+            # Write current DSP profile to file
+            with open(dspprogramfile, "w+b") as dspprogram:
+                if isinstance(xmldata, str):
+                    xmldata = xmldata.encode("utf-8")
+                dspprogram.write(xmldata)
+
+        except Exception as e:
+            logging.error("Exception during EEPROM write: %s", e)
+            logging.exception(e)
+            return False
+
+        return True
 

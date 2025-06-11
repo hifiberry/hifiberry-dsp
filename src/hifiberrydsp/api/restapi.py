@@ -31,6 +31,7 @@ from hifiberrydsp.api.filters import Filter
 from waitress import serve
 import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
+from hifiberrydsp.filtering.biquad import Biquad
 
 
 DEFAULT_PORT = 13141
@@ -43,9 +44,8 @@ app.config['JSON_SORT_KEYS'] = False
 _xml_profile_cache = {
     "profile": None,
     "path": None,
-    "timestamp": 0,
     "metadata": None,
-    "cache_timeout": 3600  # Cache valid for one hour
+    "valid": None
 }
 
 
@@ -80,10 +80,11 @@ def isBiquad(value):
 
 def get_xml_profile():
     """
-    Get the cached XML profile or read from disk if needed
+    Get the cached XML profile or read from disk if needed.
+    Validates that the XML profile's checksum matches what's in memory.
     
     Returns:
-        XmlProfile: The cached or newly read XML profile
+        XmlProfile: The cached or newly read XML profile, or None if invalid or not found
     """
     global _xml_profile_cache
     
@@ -93,35 +94,64 @@ def get_xml_profile():
     if not os.path.exists(profile_path):
         return None
     
-    current_time = time.time()
-    file_mtime = os.path.getmtime(profile_path)
-    
     # Check if we need to refresh the cache
     cache_valid = (
         _xml_profile_cache["profile"] is not None and
-        _xml_profile_cache["path"] == profile_path and
-        current_time - _xml_profile_cache["timestamp"] < _xml_profile_cache["cache_timeout"] and
-        file_mtime <= _xml_profile_cache["timestamp"]
+        _xml_profile_cache["path"] == profile_path
     )
     
-    if not cache_valid:
-        logging.debug("XML profile cache miss - reading from disk")
-        try:
-            xml_profile = XmlProfile(profile_path)
-            
-            # Update the cache
-            _xml_profile_cache["profile"] = xml_profile
-            _xml_profile_cache["path"] = profile_path
-            _xml_profile_cache["timestamp"] = current_time
-            _xml_profile_cache["metadata"] = None  # Reset metadata cache
-            
-            return xml_profile
-        except Exception as e:
-            logging.error(f"Error reading XML profile: {str(e)}")
-            return None
-    else:
+    # If we have a cached profile, check if it's valid or invalid
+    if cache_valid:
         logging.debug("XML profile cache hit")
+        if _xml_profile_cache["valid"] is False:
+            logging.warning("Cached XML profile is marked as invalid (checksum mismatch) - returning None")
+            return None
         return _xml_profile_cache["profile"]
+    
+    # Cache miss - read from disk
+    logging.debug("XML profile cache miss - reading from disk")
+    try:
+        xml_profile = XmlProfile(profile_path)
+        
+        # Validate checksum - compare memory checksum with XML profile checksum
+        profile_valid = True
+        try:
+            # Get memory checksum
+            memory_checksum = Adau145x.calculate_program_checksum(cached=True)
+            memory_checksum_hex = None
+            if memory_checksum:
+                memory_checksum_hex = binascii.hexlify(memory_checksum).decode('utf-8')
+                
+            # Get XML profile checksum
+            profile_checksum = xml_profile.get_meta("checksum")
+            
+            # Compare checksums if both are available
+            if memory_checksum_hex and profile_checksum:
+                if memory_checksum_hex.lower() != profile_checksum.lower():
+                    logging.warning(f"Checksum mismatch - Memory: {memory_checksum_hex}, XML: {profile_checksum}")
+                    profile_valid = False
+                else:
+                    logging.debug(f"Checksum match - Memory: {memory_checksum_hex}, XML: {profile_checksum}")
+        except Exception as e:
+            logging.error(f"Error validating checksum: {str(e)}")
+            # If we can't validate, assume it's valid rather than blocking
+            profile_valid = True
+        
+        # Update the cache
+        _xml_profile_cache["profile"] = xml_profile
+        _xml_profile_cache["path"] = profile_path
+        _xml_profile_cache["metadata"] = None  # Reset metadata cache
+        _xml_profile_cache["valid"] = profile_valid
+        
+        # Return profile if valid, None if invalid
+        if profile_valid:
+            return xml_profile
+        else:
+            return None
+            
+    except Exception as e:
+        logging.error(f"Error reading XML profile: {str(e)}")
+        return None
 
 
 def get_profile_metadata():
@@ -184,7 +214,36 @@ def invalidate_cache():
     global _xml_profile_cache
     _xml_profile_cache["profile"] = None
     _xml_profile_cache["metadata"] = None
-    _xml_profile_cache["timestamp"] = 0
+    _xml_profile_cache["valid"] = None
+
+
+def get_or_guess_samplerate():
+    """
+    Get the sample rate from the profile metadata or try to guess it from the DSP registers.
+    Falls back to default 48000 Hz if not available.
+    
+    Returns:
+        int: Sample rate in Hz
+    """
+    sample_rate = None
+    try:
+        metadata = get_profile_metadata()
+        if "_system" in metadata and "sampleRate" in metadata["_system"]:
+            sample_rate = metadata["_system"]["sampleRate"]
+            logging.debug("Using sample rate from profile metadata: %d", sample_rate)
+        else:
+            sample_rate = Adau145x.guess_samplerate()
+            if sample_rate is None:
+                logging.warning("Could not guess sample rate from DSP registers, and none given in DSP profile")
+            else:
+                logging.debug("Using guessed sample rate from DSP registers: %d", sample_rate)
+    except Exception as e:
+        logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+    
+    if sample_rate is None:
+        sample_rate = 48000
+        
+    return sample_rate
 
 
 @app.route('/metadata', methods=['GET'])
@@ -285,9 +344,6 @@ def memory_access():
                     byte_data = Adau145x.int_data(int_value, 4)
                     Adau145x.write_memory(current_addr, byte_data)
 
-                # Invalidate cache after memory write
-                invalidate_cache()
-                
                 return jsonify({"address": hex(address), "values": [hex(v) if isinstance(v, int) else v for v in values], "status": "success"})
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
@@ -408,9 +464,6 @@ def register_write():
             # Write directly to registers using Adau145x
             Adau145x.write_memory(address, byte_data)
             
-            # Invalidate cache after register write
-            invalidate_cache()
-
             return jsonify({"address": hex(address), "value": hex(value), "status": "success"})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -467,14 +520,8 @@ def get_frequency_response():
                 logging.error(f"Error creating filter: {str(e)}")
                 return jsonify({"error": f"Invalid filter definition: {str(e)}"}), 400
                 
-        # Get sample rate from profile or use default
-        sample_rate = 48000  # Default value
-        try:
-            metadata = get_profile_metadata()
-            if "_system" in metadata and "sampleRate" in metadata["_system"]:
-                sample_rate = metadata["_system"]["sampleRate"]
-        except Exception as e:
-            logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
+        # Get sample rate from profile or guess it
+        sample_rate = get_or_guess_samplerate()
             
         # Get custom frequencies if provided
         frequencies = None
@@ -518,24 +565,175 @@ def clear_cache():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/dspprofile', methods=['GET'])
-def get_xml_profile_data():
-    """API endpoint to get the full XML profile data"""
+@app.route('/cache', methods=['GET'])
+def get_cache_status():
+    """API endpoint to get information about the current cache status"""
     try:
-        # Get the XML profile from cache or disk
-        xml_profile = get_xml_profile()
-        if not xml_profile:
-            return jsonify({"error": "DSP profile file not found or invalid"}), 404
+        global _xml_profile_cache
         
-        # Get the raw XML data as string
-        xml_data = str(xml_profile)
+        # Create response with cache information
+        cache_info = {
+            "profile": {
+                "cached": _xml_profile_cache["profile"] is not None,
+                "path": _xml_profile_cache["path"],
+                "valid": _xml_profile_cache["valid"]
+            },
+            "metadata": {
+                "cached": _xml_profile_cache["metadata"] is not None
+            }
+        }
         
-        # Return the XML data with the correct content type
-        return xml_data, 200, {'Content-Type': 'application/xml'}
-        
+        # Add profile name if available
+        if _xml_profile_cache["profile"] is not None:
+            try:
+                profile_name = _xml_profile_cache["profile"].get_meta("profileName")
+                if profile_name:
+                    cache_info["profile"]["name"] = profile_name
+            except:
+                pass
+                
+        # Add metadata key count if available
+        if _xml_profile_cache["metadata"] is not None:
+            try:
+                # Count non-system metadata keys
+                meta_count = len(_xml_profile_cache["metadata"]) - (1 if "_system" in _xml_profile_cache["metadata"] else 0)
+                cache_info["metadata"]["keyCount"] = meta_count
+                
+                # Add system metadata if available
+                if "_system" in _xml_profile_cache["metadata"]:
+                    cache_info["metadata"]["system"] = _xml_profile_cache["metadata"]["_system"]
+            except:
+                pass
+                
+        return jsonify(cache_info)
     except Exception as e:
-        logging.error(f"Error retrieving XML profile: {str(e)}")
+        logging.error(f"Error getting cache status: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/dspprofile', methods=['GET', 'POST'])
+def get_xml_profile_data():
+    """
+    API endpoint to get or update the DSP profile
+    
+    GET: Retrieve the full XML profile data
+    POST: Upload a new DSP profile from XML content, local file, or URL (JSON-only API)
+    """
+    if request.method == 'GET':
+        try:
+            # Get the XML profile from cache or disk
+            xml_profile = get_xml_profile()
+            if not xml_profile:
+                return jsonify({"error": "DSP profile file not found or invalid"}), 404
+            
+            # Get the raw XML data as string
+            xml_data = str(xml_profile)
+            
+            # Return the XML data with the correct content type
+            return xml_data, 200, {'Content-Type': 'application/xml'}
+            
+        except Exception as e:
+            logging.error(f"Error retrieving XML profile: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    
+    elif request.method == 'POST':
+        try:
+            # Check request format - only JSON is supported
+            if not request.is_json:
+                return jsonify({"error": "Only JSON format is supported. Content-Type must be application/json"}), 400
+                
+            data = request.json
+            
+            # Check which source type is provided
+            if 'xml' in data:
+                # Direct XML content
+                xml_content = data['xml']
+                source_type = 'direct'
+                
+            elif 'file' in data:
+                # Local file path
+                file_path = data['file']
+                try:
+                    with open(file_path, 'r') as f:
+                        xml_content = f.read()
+                    source_type = 'file'
+                except Exception as e:
+                    return jsonify({"error": f"Could not read file {file_path}: {str(e)}"}), 400
+            
+            elif 'url' in data:
+                # URL to remote file
+                url = data['url']
+                try:
+                    import requests
+                    response = requests.get(url, timeout=10)
+                    if response.status_code != 200:
+                        return jsonify({"error": f"Failed to retrieve profile from URL, status code: {response.status_code}"}), 400
+                    xml_content = response.text
+                    source_type = 'url'
+                except Exception as e:
+                    return jsonify({"error": f"Could not download from URL {url}: {str(e)}"}), 400
+            
+            else:
+                return jsonify({"error": "Request must contain one of: 'xml', 'file', or 'url'"}), 400
+            
+            # Write the profile to EEPROM
+            from hifiberrydsp.hardware.adau145x import Adau145x
+            
+            # Invalidate cache before writing
+            invalidate_cache()
+            
+            # Write the EEPROM content
+            result = Adau145x.write_eeprom_content(xml_content)
+            
+            if not result:
+                return jsonify({"status": "error", "message": "Failed to write profile to EEPROM"}), 500
+            
+            # Verify the checksum after writing
+            try:
+                # Wait a moment for the DSP to stabilize
+                import time
+                time.sleep(0.5)
+                
+                # Calculate new program checksum
+                memory_checksum = Adau145x.calculate_program_checksum(cached=False)
+                memory_checksum_hex = None
+                if memory_checksum:
+                    memory_checksum_hex = binascii.hexlify(memory_checksum).decode('utf-8')
+                
+                # Load the profile again to get its checksum
+                profile_path = get_default_dspprofile_path()
+                xml_profile = XmlProfile(profile_path)
+                profile_checksum = xml_profile.get_meta("checksum")
+                
+                checksums_match = False
+                if memory_checksum_hex and profile_checksum:
+                    checksums_match = memory_checksum_hex.lower() == profile_checksum.lower()
+                
+                # The cache should have already been updated by the write_eeprom_content function,
+                # but we'll invalidate it again to be sure the next read loads the new profile
+                invalidate_cache()
+                
+                return jsonify({
+                    "status": "success",
+                    "message": f"Profile from {source_type} successfully written to EEPROM",
+                    "checksum": {
+                        "memory": memory_checksum_hex,
+                        "profile": profile_checksum,
+                        "match": checksums_match
+                    }
+                })
+                
+            except Exception as e:
+                logging.error(f"Error verifying checksum after profile write: {str(e)}")
+                return jsonify({
+                    "status": "warning",
+                    "message": f"Profile from {source_type} written to EEPROM, but checksum verification failed",
+                    "error": str(e)
+                }), 200
+                
+        except Exception as e:
+            logging.error(f"Error processing DSP profile update: {str(e)}")
+            return jsonify({"error": str(e)}), 500
 
 
 def resolve_address_from_metadata(key):
@@ -572,6 +770,7 @@ def set_biquad_filter():
     - address: Memory address or metadata key
     - offset: Offset (will be multiplied by 5)
     - filter: Filter parameters (either as object with a0,a1,a2,b0,b1,b2 or as a Filter object)
+    - sampleRate: (optional) Override the sample rate for filter calculation
     """
     try:
         data = request.json
@@ -608,6 +807,19 @@ def set_biquad_filter():
         # Process filter parameters
         filter_data = data['filter']
         
+        # Override sample rate if provided, otherwise get from profile or guess
+        sample_rate = None
+        if 'sampleRate' in data:
+            try:
+                sample_rate = int(data['sampleRate'])
+                logging.debug(f"Using provided sample rate: {sample_rate}")
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid sample rate value"}), 400
+        
+        # If sample rate wasn't provided or was invalid, get it from profile or guess
+        if not sample_rate:
+            sample_rate = get_or_guess_samplerate()
+        
         try:
             if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
                 # Direct coefficients provided
@@ -618,63 +830,49 @@ def set_biquad_filter():
                 b1 = float(filter_data['b1'])
                 b2 = float(filter_data['b2'])
                 
-                # Use the static method to write biquad
-                try:
-                    from hifiberrydsp.filtering.biquad import Biquad
-                    # Create a Biquad object and write it to DSP memory
-                    bq = Biquad.from_parameters(a0, a1, a2, b0, b1, b2)
-                    Adau145x.write_biquad(actual_address, bq)
-                    
-                    return jsonify({
-                        "status": "success", 
-                        "address": hex(actual_address),
-                        "coefficients": {
-                            "a0": a0, "a1": a1, "a2": a2,
-                            "b0": b0, "b1": b1, "b2": b2
-                        }
-                    })
-                except ImportError:
-                    # If Biquad class is not available, use direct approach
-                    from hifiberrydsp.hardware.adau145x import Adau145x
-                    Adau145x.write_biquad_direct(actual_address, a0, a1, a2, b0, b1, b2)
-                    
-                    return jsonify({
-                        "status": "success", 
-                        "address": hex(actual_address),
-                        "coefficients": {
-                            "a0": a0, "a1": a1, "a2": a2,
-                            "b0": b0, "b1": b1, "b2": b2
-                        }
-                    })
-                    
-            elif isinstance(filter_data, dict) and 'type' in filter_data:
-                # This is a filter specification, create a Filter object
-                filter_json = json.dumps(filter_data)
-                from hifiberrydsp.api.filters import Filter
-                filter_obj = Filter.fromJSON(filter_json)
-                
-                # Get sample rate from profile or use default
-                sample_rate = 48000  # Default value
-                try:
-                    metadata = get_profile_metadata()
-                    if "_system" in metadata and "sampleRate" in metadata["_system"]:
-                        sample_rate = metadata["_system"]["sampleRate"]
-                except Exception as e:
-                    logging.warning(f"Could not get sample rate from profile, using default: {str(e)}")
-                
-                # Calculate biquad coefficients
-                biquad = filter_obj.biquad(sample_rate)
-                
-                # Use the static method to write biquad
-                Adau145x.write_biquad(actual_address, biquad)
+                # Create a Biquad object and write it to DSP memory
+                bq = Biquad(a0, a1, a2, b0, b1, b2, "Custom biquad")
+                Adau145x.write_biquad(actual_address, bq)
                 
                 return jsonify({
                     "status": "success", 
                     "address": hex(actual_address),
+                    "sampleRate": sample_rate,
+                    "coefficients": {
+                        "a0": a0, "a1": a1, "a2": a2,
+                        "b0": b0, "b1": b1, "b2": b2
+                    }
+                })
+                
+            elif isinstance(filter_data, dict) and 'type' in filter_data:
+                # This is a filter specification, create a Filter object
+                filter_json = json.dumps(filter_data)
+                filter_obj = Filter.fromJSON(filter_json)
+                
+                # Calculate biquad coefficients
+                coeffs = filter_obj.biquadCoefficients(sample_rate)
+                
+                if not coeffs or len(coeffs) != 6:
+                    return jsonify({"error": "Invalid coefficients returned from filter"}), 500
+                
+                # Extract coefficients
+                b0, b1, b2, a0, a1, a2 = coeffs
+                
+                # Create a Biquad object
+                description = f"{filter_data.get('type', 'Filter')} at {filter_data.get('f', '')}Hz"
+                bq = Biquad(a0, a1, a2, b0, b1, b2, description)
+                
+                # Write the biquad to DSP memory
+                Adau145x.write_biquad(actual_address, bq)
+                
+                return jsonify({
+                    "status": "success", 
+                    "address": hex(actual_address),
+                    "sampleRate": sample_rate,
                     "filter": filter_data,
                     "coefficients": {
-                        "a0": biquad.a0, "a1": biquad.a1, "a2": biquad.a2,
-                        "b0": biquad.b0, "b1": biquad.b1, "b2": biquad.b2
+                        "a0": a0, "a1": a1, "a2": a2,
+                        "b0": b0, "b1": b1, "b2": b2
                     }
                 })
             else:

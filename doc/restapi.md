@@ -268,6 +268,7 @@ You can specify biquad filters in different ways:
 {
   "address": "0x100",
   "offset": 0,
+  "sampleRate": 96000,
   "filter": {
     "a0": 1.0,
     "a1": -1.8,
@@ -285,6 +286,7 @@ curl -X POST http://localhost:13141/biquad \
   -d '{
   "address": "0x100",
   "offset": 0,
+  "sampleRate": 96000,
   "filter": {
     "a0": 1.0,
     "a1": -1.8,
@@ -301,6 +303,7 @@ curl -X POST http://localhost:13141/biquad \
 {
   "address": "0x100",
   "offset": 1,
+  "sampleRate": 48000,
   "filter": {
     "type": "PeakingEq",
     "f": 1000,
@@ -316,6 +319,7 @@ curl -X POST http://localhost:13141/biquad \
   -d '{
   "address": "0x100",
   "offset": 1,
+  "sampleRate": 48000,
   "filter": {
     "type": "PeakingEq",
     "f": 1000,
@@ -358,6 +362,7 @@ curl -X POST http://localhost:13141/biquad \
 
 - `address`: Memory address (hexadecimal or decimal), or a metadata key that resolves to a memory address
 - `offset` (optional, default: 0): Offset from the base address, will be multiplied by 5 (as each biquad filter requires 5 memory cells)
+- `sampleRate` (optional): Override the sample rate used for filter calculations. If not provided, the system will use the sample rate from the profile metadata or try to guess it.
 - `filter`: Either direct biquad coefficients or a filter specification object
 
 **Example Response (Direct Coefficients):**
@@ -365,6 +370,7 @@ curl -X POST http://localhost:13141/biquad \
 {
   "status": "success",
   "address": "0x100",
+  "sampleRate": 48000,
   "coefficients": {
     "a0": 1.0,
     "a1": -1.8,
@@ -381,6 +387,7 @@ curl -X POST http://localhost:13141/biquad \
 {
   "status": "success",
   "address": "0x100",
+  "sampleRate": 96000,
   "filter": {
     "type": "PeakingEq",
     "f": 1000,
@@ -403,6 +410,7 @@ curl -X POST http://localhost:13141/biquad \
 1. When using a metadata key as the address, the system will look up the key in the metadata and extract the base address from it.
 2. The offset parameter is useful when you have multiple filters starting at a base address. For example, with offset=1, the filter will be written 5 memory cells after the base address.
 3. Filter coefficients are automatically normalized to ensure a0 = 1.0 before being written to the DSP.
+4. The sample rate is important for calculating the correct filter coefficients. Specify it explicitly when you know your system is running at a non-standard rate.
 
 ### Register Access API
 
@@ -547,6 +555,38 @@ If `frequencies` is not provided, the response will be calculated using a logari
 
 ### Cache Management API
 
+#### Get Cache Status
+
+Get information about the current cache status, including whether the XML profile and metadata are cached.
+
+```
+GET /cache
+```
+
+```bash
+curl -X GET http://localhost:13141/cache
+```
+
+**Example Response:**
+```json
+{
+  "profile": {
+    "cached": true,
+    "path": "/etc/hifiberry/dspprofile.xml",
+    "name": "4-Way IIR Crossover"
+  },
+  "metadata": {
+    "cached": true,
+    "keyCount": 24,
+    "system": {
+      "profileName": "4-Way IIR Crossover",
+      "profileVersion": "1.0",
+      "sampleRate": 48000
+    }
+  }
+}
+```
+
 #### Clear Cache
 
 Clear the internal XML profile cache. This is useful if the DSP profile file has been updated externally.
@@ -570,6 +610,86 @@ GET /dspprofile
 ```bash
 curl -X GET http://localhost:13141/dspprofile
 ```
+
+#### Update DSP Profile
+
+Upload a new DSP profile to the device. The profile can be provided in one of three ways:
+- Direct XML content in the request body
+- A path to a local file on the server
+- A URL pointing to a remote XML profile
+
+The new profile will be written to the DSP's EEPROM and also cached in the standard location.
+
+```
+POST /dspprofile
+```
+
+**Request Body Options:**
+
+1. Direct XML content:
+```json
+{
+  "xml": "<XML content of DSP profile>"
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -H "Content-Type: application/json" \
+  -d '{"xml": "<XML content of DSP profile>"}'
+```
+
+2. Local file path on the server:
+```json
+{
+  "file": "/path/to/dspprofile.xml"
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -H "Content-Type: application/json" \
+  -d '{"file": "/path/to/dspprofile.xml"}'
+```
+
+3. URL to a remote file:
+```json
+{
+  "url": "https://example.com/profiles/dspprofile.xml"
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/profiles/dspprofile.xml"}'
+```
+
+4. Direct file upload (multipart/form-data):
+```bash
+curl -X POST http://localhost:13141/dspprofile \
+  -F "file=@/path/to/local/dspprofile.xml"
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Profile from direct successfully written to EEPROM",
+  "checksum": {
+    "memory": "1a2b3c4d5e6f7890...",
+    "profile": "1a2b3c4d5e6f7890...",
+    "match": true
+  }
+}
+```
+
+**Notes:**
+1. After writing the DSP profile, the system will verify if the checksum in memory matches the one in the profile.
+2. The profile will be saved to the standard location and the cache will be updated.
+3. The API requires sufficient permissions to write to the DSP EEPROM.
+4. For security reasons, when using the `file` option, the file must be accessible on the server running the REST API.
 
 ## Filter Operations
 
