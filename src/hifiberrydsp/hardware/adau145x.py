@@ -505,8 +505,8 @@ class Adau145x():
                     # Delay after a page write
                     if ("Page_" in paramname):
                         logging.debug(
-                            "found page write command, waiting 0.5 seconds to finish")
-                        time.sleep(0.5)
+                            "found page write command, waiting 1 second to finish")
+                        time.sleep(1)
 
                 if instr == "delay":
                     logging.debug("delay")
