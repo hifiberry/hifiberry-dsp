@@ -658,7 +658,10 @@ class SigmaTCPServerMain():
 
         params = self.parse_config()
 
-        if params["localhost"]:
+        # Determine the host to bind to
+        if params["bind_address"]:
+            bind_host = params["bind_address"]
+        elif params["localhost"]:
             bind_host = "localhost"
         else:
             bind_host = "0.0.0.0"
@@ -720,6 +723,7 @@ class SigmaTCPServerMain():
         parser.add_argument("--store", action="store_true", help="Store data memory to a file on exit")
         parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
         parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
+        parser.add_argument("--bind-address", type=str, default=None, help="Specify IP address to bind to")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
         args = parser.parse_args()
 
@@ -731,6 +735,7 @@ class SigmaTCPServerMain():
         params["restore"] = args.restore
         params["verbose"] = args.verbose
         params["localhost"] = args.localhost
+        params["bind_address"] = args.bind_address
 
         try:
             this.command_after_startup = config.get("server", "command_after_startup")
@@ -774,8 +779,14 @@ class SigmaTCPServerMain():
         notifier_thread.start()
         
         if self.params.get("enable_rest"):
-            # Use the same host (localhost or 0.0.0.0) as the TCP server
-            rest_host = "localhost" if self.params.get("localhost") else "0.0.0.0"
+            # Use the same bind address for REST API
+            if self.params.get("bind_address"):
+                rest_host = self.params.get("bind_address")
+            elif self.params.get("localhost"):
+                rest_host = "localhost"
+            else:
+                rest_host = "0.0.0.0"
+                
             logging.info(f"Starting REST API server on {rest_host}:13141")
             rest_thread = Thread(target=run_api, kwargs={"host": rest_host, "port": 13141})
             rest_thread.daemon = True
