@@ -54,13 +54,37 @@ echo "Copying systemd service file..."
 cp systemd/sigmatcpserver.service debian/CONTENTS/python3-hifiberry-dsp/usr/share/hifiberry-dsp/systemd/
 cp systemd/sigmatcpserver.service debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/
 
-# Step 6: Copy Debian control files
-echo "Copying Debian control files..."
+# Step 6: Copy Debian control files with proper formatting
+echo "Copying and preparing Debian control files..."
+# Ensure control file has Unix line endings
+sed -i 's/\r$//' debian/control
 cp debian/control debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/
-cp debian/postinst debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/
-cp debian/prerm debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/
-chmod 755 debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/postinst
-chmod 755 debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/prerm
+
+# Process script files with special care
+for script in postinst prerm; do
+  echo "Processing $script script..."
+  # First, ensure Unix line endings (remove any Windows CR characters)
+  sed -i 's/\r$//' debian/$script
+  
+  # Ensure first line is a proper shebang
+  if ! grep -q "^#!/bin/sh" debian/$script; then
+    echo "Adding shebang to $script"
+    sed -i '1s/^/#!/bin/sh\n/' debian/$script
+  fi
+  
+  # Copy to package directory
+  cp debian/$script debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/
+  
+  # Ensure script has executable permissions (0755)
+  chmod 755 debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/$script
+  
+  # Extra verification
+  echo "Verifying $script is executable"
+  if [ ! -x debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/$script ]; then
+    echo "Warning: $script is not marked as executable!"
+    ls -la debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/$script
+  fi
+done
 
 # Step 7: Update version in control file
 VERSION=$(cd src && python3 -c 'from hifiberrydsp import __version__; print(__version__)')
