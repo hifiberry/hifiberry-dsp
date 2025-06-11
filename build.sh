@@ -4,6 +4,26 @@ set -e
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
 
+# Parse command-line arguments for version suffix
+VERSION_SUFFIX=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --version-suffix=*)
+      VERSION_SUFFIX="${1#*=}"
+      shift
+      ;;
+    *)
+      echo "Unknown option $1"
+      shift
+      ;;
+  esac
+done
+
+echo "Building HiFiBerry DSP package..."
+if [ -n "$VERSION_SUFFIX" ]; then
+  echo "Using version suffix: $VERSION_SUFFIX"
+fi
+
 # Step 1: Clean up any previous builds
 echo "Cleaning up previous builds..."
 rm -rf build/ dist/ *.egg-info/
@@ -44,6 +64,9 @@ chmod 755 debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/prerm
 
 # Step 7: Update version in control file
 VERSION=$(cd src && python3 -c 'from hifiberrydsp import __version__; print(__version__)')
+if [ -n "$VERSION_SUFFIX" ]; then
+  VERSION="${VERSION}${VERSION_SUFFIX}"
+fi
 sed -i "s/^Version:.*/Version: $VERSION/" debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/control
 
 # Step 8: Build the Debian package
