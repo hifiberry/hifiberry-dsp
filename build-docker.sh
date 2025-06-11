@@ -1,7 +1,25 @@
 #!/bin/bash
 set -e
 
+# Parse command-line arguments for version suffix
+VERSION_SUFFIX=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --version-suffix=*)
+      VERSION_SUFFIX="${1#*=}"
+      shift
+      ;;
+    *)
+      echo "Unknown option $1"
+      shift
+      ;;
+  esac
+done
+
 echo "Building HiFiBerry DSP package using Docker for reproducible builds..."
+if [ -n "$VERSION_SUFFIX" ]; then
+  echo "Using version suffix: $VERSION_SUFFIX"
+fi
 
 # Get the project directory path
 PROJECT_DIR=$(pwd)
@@ -82,6 +100,9 @@ chmod 755 debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/prerm
 
 # Step 7: Update version in control file
 VERSION=\$(cd src && python3 -c 'from hifiberrydsp import __version__; print(__version__)')
+if [ -n \"$VERSION_SUFFIX\" ]; then
+  VERSION=\"\${VERSION}$VERSION_SUFFIX\"
+fi
 sed -i \"s/^Version:.*/Version: \$VERSION/\" debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/control
 
 # Step 8: Install dpkg-deb
