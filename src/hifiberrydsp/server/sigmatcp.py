@@ -432,56 +432,15 @@ class SigmaTCPHandler(BaseRequestHandler):
 
     @staticmethod
     def write_eeprom_content(xmldata):
-        logging.info("writing XML file: %s", xmldata)
-
-        try:
-            doc = xmltodict.parse(xmldata)
-
-            SigmaTCPHandler.prepare_update()
-            for action in doc["ROM"]["page"]["action"]:
-                instr = action["@instr"]
-
-                if instr == "writeXbytes":
-                    addr = int(action["@addr"])
-                    paramname = action["@ParamName"]
-                    data = []
-                    for d in action["#text"].split(" "):
-                        value = int(d, 16)
-                        data.append(value)
-
-                    logging.debug("writeXbytes %s %s", addr, len(data))
-                    adau145x.Adau145x.write_memory(addr, data)
-
-                    # Sleep after erase operations
-                    if ("g_Erase" in paramname):
-                        logging.debug(
-                            "found erase command, waiting 10 seconds to finish")
-                        time.sleep(10)
-
-                    # Delay after a page write
-                    if ("Page_" in paramname):
-                        logging.debug(
-                            "found page write command, waiting 0.5 seconds to finish")
-                        time.sleep(0.5)
-
-                if instr == "delay":
-                    logging.debug("delay")
-                    time.sleep(1)
-
+        logging.info("writing XML file through Adau145x implementation")
+        result = adau145x.Adau145x.write_eeprom_content(xmldata)
+        
+        # After the EEPROM write is done, set internal state as needed
+        if result:  # Success
             SigmaTCPHandler.finish_update()
-
-            # Write current DSP profile
-            with open(SigmaTCPHandler.dspprogramfile, "w+b") as dspprogram:
-                if (isinstance(xmldata, str)):
-                    xmldata = xmldata.encode("utf-8")
-                dspprogram.write(xmldata)
-
-        except Exception as e:
-            logging.error("exception during EEPROM write: %s", e)
-            logging.exception(e)
-            return b'\00'
-
-        return b'\01'
+            return b'\01'  # Convert True to binary 1
+        else:
+            return b'\00'  # Convert False to binary 0
 
     @staticmethod
     def write_eeprom_file(filename):
@@ -699,7 +658,10 @@ class SigmaTCPServerMain():
 
         params = self.parse_config()
 
-        if params["localhost"]:
+        # Determine the host to bind to
+        if params["bind_address"]:
+            bind_host = params["bind_address"]
+        elif params["localhost"]:
             bind_host = "localhost"
         else:
             bind_host = "0.0.0.0"
@@ -758,8 +720,10 @@ class SigmaTCPServerMain():
         parser.add_argument("--lgsoundsync", action="store_true", help="Enable LG Sound Sync")
         parser.add_argument("--enable-rest", action="store_true", help="Enable REST API server")
         parser.add_argument("--disable-tcp", action="store_true", help="Disable SigmaTCP server (only useful with --enable-rest)")
+        parser.add_argument("--store", action="store_true", help="Store data memory to a file on exit")
         parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
         parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
+        parser.add_argument("--bind-address", type=str, default=None, help="Specify IP address to bind to")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
         args = parser.parse_args()
 
@@ -767,9 +731,11 @@ class SigmaTCPServerMain():
         params["lgsoundsync"] = args.lgsoundsync
         params["enable_rest"] = args.enable_rest
         params["disable_tcp"] = args.disable_tcp
+        params["store"] = args.store
         params["restore"] = args.restore
         params["verbose"] = args.verbose
         params["localhost"] = args.localhost
+        params["bind_address"] = args.bind_address
 
         try:
             this.command_after_startup = config.get("server", "command_after_startup")
@@ -813,8 +779,14 @@ class SigmaTCPServerMain():
         notifier_thread.start()
         
         if self.params.get("enable_rest"):
-            # Use the same host (localhost or 0.0.0.0) as the TCP server
-            rest_host = "localhost" if self.params.get("localhost") else "0.0.0.0"
+            # Use the same bind address for REST API
+            if self.params.get("bind_address"):
+                rest_host = self.params.get("bind_address")
+            elif self.params.get("localhost"):
+                rest_host = "localhost"
+            else:
+                rest_host = "0.0.0.0"
+                
             logging.info(f"Starting REST API server on {rest_host}:13141")
             rest_thread = Thread(target=run_api, kwargs={"host": rest_host, "port": 13141})
             rest_thread.daemon = True
@@ -842,5 +814,9 @@ class SigmaTCPServerMain():
         if SigmaTCPHandler.lgsoundsync is not None:
             SigmaTCPHandler.lgsoundsync.finish()
 
-        logging.info("saving DSP data memory")
-        SigmaTCPHandler.save_data_memory()
+        if self.params.get("store"):
+            try:
+                logging.info("saving DSP data memory")
+                SigmaTCPHandler.save_data_memory()
+            except Exception as e:
+                logging.error("Error saving DSP data memory: %s", e)
