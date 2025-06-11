@@ -1,5 +1,5 @@
 Package: python3-hifiberry-dsp
-Version: 0.3.0
+Version: 1.0
 Architecture: all
 Maintainer: Daniel Matuschek <daniel@hifiberry.com>
 Depends: python3, python3-xmltodict, python3-lxml, python3-spidev, python3-pyalsaaudio, python3-requests, python3-flask, python3-waitress, python3-numpy
