@@ -1,5 +1,4 @@
 #!/bin/sh
-set -e
 
 # Enable systemd service
 if [ -d /run/systemd/system ] && [ -f /lib/systemd/system/sigmatcpserver.service ]; then
