@@ -112,9 +112,10 @@ apt-get update && apt-get install -y dpkg-dev
 echo 'Building Debian package...'
 dpkg-deb --build debian/CONTENTS/python3-hifiberry-dsp .
 
-# Fix permissions to ensure user can access the created files
-chown -R $(id -u):$(id -g) debian/CONTENTS
-chown $(id -u):$(id -g) *.deb
+# Fix permissions to ensure user can access all created files
+echo 'Setting correct ownership of all files...'
+find . -type f -not -path "./Dockerfile.build" -exec chown $(id -u):$(id -g) {} \;
+find . -type d -exec chown $(id -u):$(id -g) {} \;
 "
 
 # Clean up
