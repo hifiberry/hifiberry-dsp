@@ -22,5 +22,12 @@ override_dh_auto_test:
 	# Skip tests due to hardware dependencies (spidev, pyalsaaudio)
 	@echo "Skipping tests due to hardware-specific dependencies"
 
-override_dh_python3:
-	dh_python3 --package=python3-hifiberry-dsp
+override_dh_auto_install:
+	dh_auto_install --sourcedirectory=src
+	# Remove Python cache directories
+	find debian/hifiberry-dsp -name "__pycache__" -type d -exec rm -rf {} + || true
+	find debian/hifiberry-dsp -name "*.pyc" -delete || true
+	
+	# Install lintian overrides
+	mkdir -p debian/hifiberry-dsp/usr/share/lintian/overrides
+	cp debian/hifiberry-dsp.lintian-overrides debian/hifiberry-dsp/usr/share/lintian/overrides/hifiberry-dsp

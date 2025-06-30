@@ -1,15 +1,16 @@
 #!/bin/sh
 
+set -e
+
 # Enable systemd service
-if [ -d /run/systemd/system ] && [ -f /lib/systemd/system/sigmatcpserver.service ]; then
-    systemctl daemon-reload
-    systemctl enable sigmatcpserver.service
-    echo "Systemd service enabled. To start it, run: systemctl start sigmatcpserver"
+if [ "$1" = "configure" ]; then
+    if [ -d /run/systemd/system ] && [ -f /lib/systemd/system/sigmatcpserver.service ]; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable sigmatcpserver.service >/dev/null 2>&1 || true
+        echo "Systemd service enabled. To start it, run: systemctl start sigmatcpserver"
+    fi
 fi
 
-# Compile Python files
-if command -v py3compile >/dev/null 2>&1; then
-    py3compile -p python3-hifiberry-dsp
-fi
+#DEBHELPER#
 
 exit 0

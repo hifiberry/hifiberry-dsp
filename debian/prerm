@@ -1,17 +1,16 @@
 #!/bin/sh
 
+set -e
+
 # Stop and disable service before removal
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     if [ -d /run/systemd/system ] && [ -f /lib/systemd/system/sigmatcpserver.service ]; then
         echo "Stopping and disabling HiFiBerry DSP systemd service"
-        systemctl stop sigmatcpserver.service || true
-        systemctl disable sigmatcpserver.service || true
+        systemctl stop sigmatcpserver.service >/dev/null 2>&1 || true
+        systemctl disable sigmatcpserver.service >/dev/null 2>&1 || true
     fi
 fi
 
-# Clean up Python files
-if which py3clean >/dev/null 2>&1; then
-    py3clean -p python3-hifiberry-dsp
-fi
+#DEBHELPER#
 
 exit 0
