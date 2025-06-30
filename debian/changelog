@@ -25,3 +25,4 @@ hifiberry-dsp (1.0) unstable; urgency=low
   * Command line utilities for DSP configuration
 
  -- HiFiBerry <info@hifiberry.com>  Thu, 24 Jun 2025 12:00:00 +0000
+ 

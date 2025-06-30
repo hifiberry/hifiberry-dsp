@@ -1,7 +1,0 @@
-# Manual pages are not provided for these specialized DSP tools
-# They are documented in the project README and web interface
-hifiberry-dsp: no-manual-page usr/bin/dsptoolkit
-hifiberry-dsp: no-manual-page usr/bin/mergeparameters
-hifiberry-dsp: no-manual-page usr/bin/optimizer-client
-hifiberry-dsp: no-manual-page usr/bin/sigmatcpserver
-hifiberry-dsp: no-manual-page usr/bin/spdifclockgen
