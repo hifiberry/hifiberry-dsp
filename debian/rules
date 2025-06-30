@@ -27,7 +27,3 @@ override_dh_auto_install:
 	# Remove Python cache directories
 	find debian/hifiberry-dsp -name "__pycache__" -type d -exec rm -rf {} + || true
 	find debian/hifiberry-dsp -name "*.pyc" -delete || true
-	
-	# Install lintian overrides
-	mkdir -p debian/hifiberry-dsp/usr/share/lintian/overrides
-	cp debian/hifiberry-dsp.lintian-overrides debian/hifiberry-dsp/usr/share/lintian/overrides/hifiberry-dsp
