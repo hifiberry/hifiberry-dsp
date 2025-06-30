@@ -8,9 +8,9 @@ Homepage: https://github.com/hifiberry/hifiberry-dsp
 Vcs-Git: https://github.com/hifiberry/hifiberry-dsp.git
 Vcs-Browser: https://github.com/hifiberry/hifiberry-dsp
 
-Package: python3-hifiberry-dsp
+Package: hifiberry-dsp
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-xmltodict, python3-lxml, python3-requests, python3-flask, python3-waitress, python3-numpy
+Depends: ${python3:Depends}, ${misc:Depends}, python3, python3-xmltodict, python3-lxml, python3-requests, python3-flask, python3-waitress, python3-numpy
 Suggests: python3-rpi.gpio, python3-pyalsaaudio, python3-spidev
 Description: HiFiBerry DSP toolkit
  Tools to configure HiFiBerry DSP boards and program them from SigmaStudio.

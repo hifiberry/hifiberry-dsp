@@ -1,3 +1,9 @@
+hifiberry-dsp (1.0.2) unstable; urgency=low
+
+  * Package renamed from python3-hifiberry-dsp to hifiberry-dsp
+
+ -- HiFiBerry <info@hifiberry.com>  Mon, 30 Jun 2025 12:00:00 +0000
+
 hifiberry-dsp (1.0.1) unstable; urgency=low
 
   * Changed packaging to debian sbuild
