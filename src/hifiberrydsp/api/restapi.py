@@ -36,6 +36,7 @@ from hifiberrydsp.filtering.biquad import Biquad
 
 DEFAULT_PORT = 13141
 DEFAULT_HOST = "localhost"
+PROFILES_DIR = "/usr/share/hifiberry/dspprofiles"
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
