@@ -207,6 +207,39 @@ curl -X GET "http://localhost:13141/metadata?filter=biquad&start=eq1_"
 }
 ```
 
+### Program Checksum API
+
+#### Get Current DSP Program Checksum
+
+Retrieves the MD5 checksum of the currently loaded DSP program in memory. This checksum can be used to verify program integrity and compare with profile checksums.
+
+```
+GET /checksum
+```
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:13141/checksum
+```
+
+**Example Response:**
+```json
+{
+  "checksum": "97C9C5A88582888D111259BF70D6D79E",
+  "format": "md5"
+}
+```
+
+**Response Properties:**
+
+- `checksum`: MD5 checksum of the current DSP program in hexadecimal format
+- `format`: Always "md5" indicating the checksum algorithm used
+
+**Notes:**
+- The checksum is calculated directly from DSP memory (not cached) to ensure it reflects the current state
+- This can be compared with profile checksums to verify the correct program is loaded
+- Useful for debugging profile loading issues and ensuring program integrity
+
 ### Memory Access API
 
 #### Read Memory
