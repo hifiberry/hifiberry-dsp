@@ -282,27 +282,29 @@ def list_dsp_profiles():
     
     Returns a list of XML profile filenames from /usr/share/hifiberry/dspprofiles/
     """
+    logging.info("=== DSP PROFILES ENDPOINT CALLED ===")
+    print("=== DSP PROFILES ENDPOINT CALLED ===")
     try:
-        profiles_dir = "/usr/share/hifiberry/dspprofiles"
-        
         # Check if directory exists
-        if not os.path.exists(profiles_dir):
-            return jsonify({"error": f"Profiles directory {profiles_dir} does not exist"}), 404
+        if not os.path.exists(PROFILES_DIR):
+            logging.error(f"Profiles directory {PROFILES_DIR} does not exist")
+            print(f"ERROR: Profiles directory {PROFILES_DIR} does not exist")
+            return jsonify({"error": f"Profiles directory {PROFILES_DIR} does not exist"}), 404
         
         # Get all XML files in the directory
         try:
-            files = os.listdir(profiles_dir)
+            files = os.listdir(PROFILES_DIR)
             xml_files = [f for f in files if f.lower().endswith('.xml')]
             xml_files.sort()  # Sort alphabetically
             
             return jsonify({
                 "profiles": xml_files,
                 "count": len(xml_files),
-                "directory": profiles_dir
+                "directory": PROFILES_DIR
             })
             
         except PermissionError:
-            return jsonify({"error": f"Permission denied accessing {profiles_dir}"}), 403
+            return jsonify({"error": f"Permission denied accessing {PROFILES_DIR}"}), 403
         except Exception as e:
             return jsonify({"error": f"Error reading directory: {str(e)}"}), 500
             
@@ -319,21 +321,19 @@ def get_all_profiles_metadata():
     Returns a dictionary with filename as key and profile metadata as value
     """
     try:
-        profiles_dir = "/usr/share/hifiberry/dspprofiles"
-        
         # Check if directory exists
-        if not os.path.exists(profiles_dir):
-            return jsonify({"error": f"Profiles directory {profiles_dir} does not exist"}), 404
+        if not os.path.exists(PROFILES_DIR):
+            return jsonify({"error": f"Profiles directory {PROFILES_DIR} does not exist"}), 404
         
         # Get all XML files in the directory
         try:
-            files = os.listdir(profiles_dir)
+            files = os.listdir(PROFILES_DIR)
             xml_files = [f for f in files if f.lower().endswith('.xml')]
             
             profiles_metadata = {}
             
             for filename in xml_files:
-                filepath = os.path.join(profiles_dir, filename)
+                filepath = os.path.join(PROFILES_DIR, filename)
                 try:
                     # Load the XML profile
                     xml_profile = XmlProfile(filepath)
@@ -368,11 +368,11 @@ def get_all_profiles_metadata():
             return jsonify({
                 "profiles": profiles_metadata,
                 "count": len(xml_files),
-                "directory": profiles_dir
+                "directory": PROFILES_DIR
             })
             
         except PermissionError:
-            return jsonify({"error": f"Permission denied accessing {profiles_dir}"}), 403
+            return jsonify({"error": f"Permission denied accessing {PROFILES_DIR}"}), 403
         except Exception as e:
             return jsonify({"error": f"Error reading directory: {str(e)}"}), 500
             
@@ -611,6 +611,8 @@ def register_write():
 @app.route('/checksum', methods=['GET'])
 def get_program_checksum():
     """API endpoint to get the checksum of the current DSP program"""
+    logging.info("=== CHECKSUM ENDPOINT CALLED ===")
+    print("=== CHECKSUM ENDPOINT CALLED ===")
     try:
         # Use Adau145x directly for checksum calculation
         checksum_bytes = Adau145x.calculate_program_checksum(cached=False)
@@ -618,11 +620,15 @@ def get_program_checksum():
         if checksum_bytes:
             # Convert bytes to hex representation
             checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8')
+            logging.info(f"Current DSP checksum: {checksum_hex}")
+            print(f"Current DSP checksum: {checksum_hex}")
             return jsonify({
                 "checksum": checksum_hex,
                 "format": "md5"
             })
         else:
+            logging.error("Failed to retrieve checksum")
+            print("ERROR: Failed to retrieve checksum")
             return jsonify({"error": "Failed to retrieve checksum"}), 500
             
     except Exception as e:
