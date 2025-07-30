@@ -11,6 +11,42 @@ http://localhost:13141
 
 ## Endpoints
 
+### Hardware Detection API
+
+#### Get Detected DSP Hardware
+
+Retrieves information about the DSP hardware detected by the sigmatcpserver. This endpoint provides the same information as the `dsptoolkit get-meta detected_dsp` command.
+
+```
+GET /hardware/dsp
+```
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:13141/hardware/dsp
+```
+
+**Example Response (DSP Detected):**
+```json
+{
+  "detected_dsp": "ADAU14xx",
+  "status": "detected"
+}
+```
+
+**Example Response (No DSP Detected):**
+```json
+{
+  "detected_dsp": "",
+  "status": "not_detected"
+}
+```
+
+**Response Properties:**
+
+- `detected_dsp`: String identifying the detected DSP chip (e.g., "ADAU14xx"), or empty string if no DSP detected
+- `status`: Either "detected" or "not_detected" indicating whether a DSP was successfully detected
+
 ### Metadata API
 
 #### Get Profile Metadata
