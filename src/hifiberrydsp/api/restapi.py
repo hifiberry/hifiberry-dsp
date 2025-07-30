@@ -246,6 +246,34 @@ def get_or_guess_samplerate():
     return sample_rate
 
 
+@app.route('/hardware/dsp', methods=['GET'])
+def get_hardware_info():
+    """
+    API endpoint to get information about the detected DSP hardware
+    
+    Returns information about the DSP chip detected by the sigmatcpserver,
+    equivalent to 'dsptoolkit get-meta detected_dsp' command.
+    """
+    try:
+        # Import here to avoid circular imports
+        from hifiberrydsp.server.sigmatcp import SigmaTCPHandler
+        
+        # Get the detected DSP information
+        detected_dsp = SigmaTCPHandler.get_meta("detected_dsp")
+        
+        # Format the response
+        hardware_info = {
+            "detected_dsp": detected_dsp if detected_dsp else "",
+            "status": "detected" if detected_dsp and detected_dsp.strip() else "not_detected"
+        }
+        
+        return jsonify(hardware_info)
+        
+    except Exception as e:
+        logging.error(f"Error getting hardware info: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/metadata', methods=['GET'])
 def get_metadata():
     """
