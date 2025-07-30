@@ -274,6 +274,112 @@ def get_hardware_info():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/profiles', methods=['GET'])
+def list_dsp_profiles():
+    """
+    API endpoint to list all available DSP profiles
+    
+    Returns a list of XML profile filenames from /usr/share/hifiberry/dspprofiles/
+    """
+    try:
+        profiles_dir = "/usr/share/hifiberry/dspprofiles"
+        
+        # Check if directory exists
+        if not os.path.exists(profiles_dir):
+            return jsonify({"error": f"Profiles directory {profiles_dir} does not exist"}), 404
+        
+        # Get all XML files in the directory
+        try:
+            files = os.listdir(profiles_dir)
+            xml_files = [f for f in files if f.lower().endswith('.xml')]
+            xml_files.sort()  # Sort alphabetically
+            
+            return jsonify({
+                "profiles": xml_files,
+                "count": len(xml_files),
+                "directory": profiles_dir
+            })
+            
+        except PermissionError:
+            return jsonify({"error": f"Permission denied accessing {profiles_dir}"}), 403
+        except Exception as e:
+            return jsonify({"error": f"Error reading directory: {str(e)}"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error listing DSP profiles: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/profiles/metadata', methods=['GET'])
+def get_all_profiles_metadata():
+    """
+    API endpoint to get metadata for all available DSP profiles
+    
+    Returns a dictionary with filename as key and profile metadata as value
+    """
+    try:
+        profiles_dir = "/usr/share/hifiberry/dspprofiles"
+        
+        # Check if directory exists
+        if not os.path.exists(profiles_dir):
+            return jsonify({"error": f"Profiles directory {profiles_dir} does not exist"}), 404
+        
+        # Get all XML files in the directory
+        try:
+            files = os.listdir(profiles_dir)
+            xml_files = [f for f in files if f.lower().endswith('.xml')]
+            
+            profiles_metadata = {}
+            
+            for filename in xml_files:
+                filepath = os.path.join(profiles_dir, filename)
+                try:
+                    # Load the XML profile
+                    xml_profile = XmlProfile(filepath)
+                    
+                    # Extract metadata
+                    metadata = {}
+                    for key in xml_profile.get_meta_keys():
+                        metadata[key] = xml_profile.get_meta(key)
+                    
+                    # Add system metadata
+                    metadata["_system"] = {
+                        "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
+                        "profileVersion": xml_profile.get_meta("profileVersion") or "Unknown Version",
+                        "sampleRate": xml_profile.samplerate(),
+                        "filename": filename,
+                        "filepath": filepath
+                    }
+                    
+                    profiles_metadata[filename] = metadata
+                    
+                except Exception as e:
+                    # If we can't parse a profile, include error info
+                    logging.warning(f"Error parsing profile {filename}: {str(e)}")
+                    profiles_metadata[filename] = {
+                        "error": f"Failed to parse profile: {str(e)}",
+                        "_system": {
+                            "filename": filename,
+                            "filepath": filepath
+                        }
+                    }
+            
+            return jsonify({
+                "profiles": profiles_metadata,
+                "count": len(xml_files),
+                "directory": profiles_dir
+            })
+            
+        except PermissionError:
+            return jsonify({"error": f"Permission denied accessing {profiles_dir}"}), 403
+        except Exception as e:
+            return jsonify({"error": f"Error reading directory: {str(e)}"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error getting profiles metadata: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/metadata', methods=['GET'])
 def get_metadata():
     """
