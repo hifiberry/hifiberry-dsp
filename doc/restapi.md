@@ -47,6 +47,98 @@ curl -X GET http://localhost:13141/hardware/dsp
 - `detected_dsp`: String identifying the detected DSP chip (e.g., "ADAU14xx"), or empty string if no DSP detected
 - `status`: Either "detected" or "not_detected" indicating whether a DSP was successfully detected
 
+### DSP Profiles API
+
+#### List Available DSP Profiles
+
+Retrieves a list of all available DSP profile files from the profiles directory.
+
+```
+GET /profiles
+```
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:13141/profiles
+```
+
+**Example Response:**
+```json
+{
+  "profiles": [
+    "beocreate-universal-11.xml",
+    "dacdsp-15.xml",
+    "dsp-addon-96-14.xml"
+  ],
+  "count": 3,
+  "directory": "/usr/share/hifiberry/dspprofiles"
+}
+```
+
+**Response Properties:**
+
+- `profiles`: Array of XML profile filenames
+- `count`: Number of available profiles
+- `directory`: Path to the profiles directory
+
+#### Get All Profiles Metadata
+
+Retrieves metadata for all available DSP profiles.
+
+```
+GET /profiles/metadata
+```
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:13141/profiles/metadata
+```
+
+**Example Response:**
+```json
+{
+  "profiles": {
+    "beocreate-universal-11.xml": {
+      "checksum": "A1B2C3D4E5F6...",
+      "profileName": "Beocreate Universal",
+      "profileVersion": "11.0",
+      "volumeControlRegister": "1234",
+      "_system": {
+        "profileName": "Beocreate Universal",
+        "profileVersion": "11.0",
+        "sampleRate": 48000,
+        "filename": "beocreate-universal-11.xml",
+        "filepath": "/usr/share/hifiberry/dspprofiles/beocreate-universal-11.xml"
+      }
+    },
+    "dacdsp-15.xml": {
+      "checksum": "F6E5D4C3B2A1...",
+      "profileName": "DAC+ DSP",
+      "profileVersion": "15.0",
+      "_system": {
+        "profileName": "DAC+ DSP",
+        "profileVersion": "15.0",
+        "sampleRate": 48000,
+        "filename": "dacdsp-15.xml",
+        "filepath": "/usr/share/hifiberry/dspprofiles/dacdsp-15.xml"
+      }
+    }
+  },
+  "count": 2,
+  "directory": "/usr/share/hifiberry/dspprofiles"
+}
+```
+
+**Response Properties:**
+
+- `profiles`: Dictionary with filename as key and profile metadata as value
+- `count`: Number of profiles processed
+- `directory`: Path to the profiles directory
+
+**Notes:**
+- Profiles that cannot be parsed will include an `error` field in their metadata
+- Each profile includes a `_system` section with filename, filepath, and parsed system information
+
 ### Metadata API
 
 #### Get Profile Metadata
