@@ -1,10 +1,18 @@
 #!/bin/sh
 
 # Enable systemd service
-if [ -d /run/systemd/system ] && [ -f /lib/systemd/system/sigmatcpserver.service ]; then
-    systemctl daemon-reload
-    systemctl enable sigmatcpserver.service
-    echo "Systemd service enabled. To start it, run: systemctl start sigmatcpserver"
+if [ -d /run/systemd/system ]; then
+    if [ -f /lib/systemd/system/sigmatcpserver.service ]; then
+        echo "Installing HiFiBerry DSP systemd service..."
+        systemctl daemon-reload
+        systemctl enable sigmatcpserver.service
+        echo "Systemd service enabled. To start it, run: systemctl start sigmatcpserver"
+    else
+        echo "Warning: systemd service file not found at /lib/systemd/system/sigmatcpserver.service"
+        echo "Service file may not have been installed correctly."
+    fi
+else
+    echo "Systemd not detected, skipping service installation."
 fi
 
 # Compile Python files
