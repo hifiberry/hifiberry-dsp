@@ -7,38 +7,26 @@ done
 cd
 git clone https://github.com/hifiberry/hifiberry-dsp
 cd hifiberry-dsp
-sudo python3 -m pip install . --break-system-packages
-for i in sigmatcp; do
- sudo systemctl stop $i
- sudo systemctl disable $i
+
+# Stop existing services
+for i in sigmatcp sigmatcpserver; do
+ sudo systemctl stop $i 2>/dev/null || true
+ sudo systemctl disable $i 2>/dev/null || true
 done
 
+# Install the package
+sudo python3 -m pip install . --break-system-packages
+
+# Install systemd service
+sudo cp systemd/sigmatcpserver.service /lib/systemd/system/
+sudo systemctl daemon-reload
 sudo mkdir -p /var/lib/hifiberry
 
 LOC=`which dsptoolkit`
 sudo mkdir ~/.dsptoolkit
 
-# Create systemd config for the TCP server
-LOC=`which sigmatcpserver`
-
-cat <<EOT >/tmp/sigmatcp.service
-[Unit]
-Description=SigmaTCP Server for HiFiBerry DSP
-Wants=network-online.target
-After=network.target network-online.target
-[Service]
-Type=simple
-ExecStart=$LOC
-StandardOutput=journal
-[Install]
-WantedBy=multi-user.target
-EOT
-
-sudo mv /tmp/sigmatcp.service /lib/systemd/system/sigmatcp.service
-
-sudo systemctl daemon-reload
-
-for i in sigmatcp; do
+# Start and enable the service
+for i in sigmatcpserver; do
  sudo systemctl start $i
  sudo systemctl enable $i
 done
