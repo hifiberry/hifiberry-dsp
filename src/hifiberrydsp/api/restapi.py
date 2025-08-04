@@ -36,6 +36,7 @@ from hifiberrydsp.filtering.biquad import Biquad
 
 DEFAULT_PORT = 13141
 DEFAULT_HOST = "localhost"
+PROFILES_DIR = "/usr/share/hifiberry/dspprofiles"
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
@@ -244,6 +245,140 @@ def get_or_guess_samplerate():
         sample_rate = 48000
         
     return sample_rate
+
+
+@app.route('/hardware/dsp', methods=['GET'])
+def get_hardware_info():
+    """
+    API endpoint to get information about the detected DSP hardware
+    
+    Returns information about the DSP chip detected by the sigmatcpserver,
+    equivalent to 'dsptoolkit get-meta detected_dsp' command.
+    """
+    try:
+        # Import here to avoid circular imports
+        from hifiberrydsp.server.sigmatcp import SigmaTCPHandler
+        
+        # Get the detected DSP information
+        detected_dsp = SigmaTCPHandler.get_meta("detected_dsp")
+        
+        # Format the response
+        hardware_info = {
+            "detected_dsp": detected_dsp if detected_dsp else "",
+            "status": "detected" if detected_dsp and detected_dsp.strip() else "not_detected"
+        }
+        
+        return jsonify(hardware_info)
+        
+    except Exception as e:
+        logging.error(f"Error getting hardware info: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/profiles', methods=['GET'])
+def list_dsp_profiles():
+    """
+    API endpoint to list all available DSP profiles
+    
+    Returns a list of XML profile filenames from /usr/share/hifiberry/dspprofiles/
+    """
+    logging.info("=== DSP PROFILES ENDPOINT CALLED ===")
+    print("=== DSP PROFILES ENDPOINT CALLED ===")
+    try:
+        # Check if directory exists
+        if not os.path.exists(PROFILES_DIR):
+            logging.error(f"Profiles directory {PROFILES_DIR} does not exist")
+            print(f"ERROR: Profiles directory {PROFILES_DIR} does not exist")
+            return jsonify({"error": f"Profiles directory {PROFILES_DIR} does not exist"}), 404
+        
+        # Get all XML files in the directory
+        try:
+            files = os.listdir(PROFILES_DIR)
+            xml_files = [f for f in files if f.lower().endswith('.xml')]
+            xml_files.sort()  # Sort alphabetically
+            
+            return jsonify({
+                "profiles": xml_files,
+                "count": len(xml_files),
+                "directory": PROFILES_DIR
+            })
+            
+        except PermissionError:
+            return jsonify({"error": f"Permission denied accessing {PROFILES_DIR}"}), 403
+        except Exception as e:
+            return jsonify({"error": f"Error reading directory: {str(e)}"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error listing DSP profiles: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/profiles/metadata', methods=['GET'])
+def get_all_profiles_metadata():
+    """
+    API endpoint to get metadata for all available DSP profiles
+    
+    Returns a dictionary with filename as key and profile metadata as value
+    """
+    try:
+        # Check if directory exists
+        if not os.path.exists(PROFILES_DIR):
+            return jsonify({"error": f"Profiles directory {PROFILES_DIR} does not exist"}), 404
+        
+        # Get all XML files in the directory
+        try:
+            files = os.listdir(PROFILES_DIR)
+            xml_files = [f for f in files if f.lower().endswith('.xml')]
+            
+            profiles_metadata = {}
+            
+            for filename in xml_files:
+                filepath = os.path.join(PROFILES_DIR, filename)
+                try:
+                    # Load the XML profile
+                    xml_profile = XmlProfile(filepath)
+                    
+                    # Extract metadata
+                    metadata = {}
+                    for key in xml_profile.get_meta_keys():
+                        metadata[key] = xml_profile.get_meta(key)
+                    
+                    # Add system metadata
+                    metadata["_system"] = {
+                        "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
+                        "profileVersion": xml_profile.get_meta("profileVersion") or "Unknown Version",
+                        "sampleRate": xml_profile.samplerate(),
+                        "filename": filename,
+                        "filepath": filepath
+                    }
+                    
+                    profiles_metadata[filename] = metadata
+                    
+                except Exception as e:
+                    # If we can't parse a profile, include error info
+                    logging.warning(f"Error parsing profile {filename}: {str(e)}")
+                    profiles_metadata[filename] = {
+                        "error": f"Failed to parse profile: {str(e)}",
+                        "_system": {
+                            "filename": filename,
+                            "filepath": filepath
+                        }
+                    }
+            
+            return jsonify({
+                "profiles": profiles_metadata,
+                "count": len(xml_files),
+                "directory": PROFILES_DIR
+            })
+            
+        except PermissionError:
+            return jsonify({"error": f"Permission denied accessing {PROFILES_DIR}"}), 403
+        except Exception as e:
+            return jsonify({"error": f"Error reading directory: {str(e)}"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error getting profiles metadata: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/metadata', methods=['GET'])
@@ -476,6 +611,8 @@ def register_write():
 @app.route('/checksum', methods=['GET'])
 def get_program_checksum():
     """API endpoint to get the checksum of the current DSP program"""
+    logging.info("=== CHECKSUM ENDPOINT CALLED ===")
+    print("=== CHECKSUM ENDPOINT CALLED ===")
     try:
         # Use Adau145x directly for checksum calculation
         checksum_bytes = Adau145x.calculate_program_checksum(cached=False)
@@ -483,11 +620,15 @@ def get_program_checksum():
         if checksum_bytes:
             # Convert bytes to hex representation
             checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8')
+            logging.info(f"Current DSP checksum: {checksum_hex}")
+            print(f"Current DSP checksum: {checksum_hex}")
             return jsonify({
                 "checksum": checksum_hex,
                 "format": "md5"
             })
         else:
+            logging.error("Failed to retrieve checksum")
+            print("ERROR: Failed to retrieve checksum")
             return jsonify({"error": "Failed to retrieve checksum"}), 500
             
     except Exception as e:

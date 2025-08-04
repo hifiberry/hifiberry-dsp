@@ -1,0 +1,34 @@
+hifiberry-dsp (1.0.3) stable; urgency=low
+
+  * Changed distribution from unstable to stable
+  * Improved package stability and compatibility
+
+ -- HiFiBerry <info@hifiberry.com>  Mon, 30 Jun 2025 15:30:00 +0000
+
+hifiberry-dsp (1.0.2) stable; urgency=low
+
+  * Package renamed from python3-hifiberry-dsp to hifiberry-dsp
+
+ -- HiFiBerry <info@hifiberry.com>  Mon, 30 Jun 2025 12:00:00 +0000
+
+hifiberry-dsp (1.0.1) stable; urgency=low
+
+  * Changed packaging to debian sbuild
+
+ -- HiFiBerry <info@hifiberry.com>  Thu, 26 Jun 2025 12:00:00 +0000
+
+hifiberry-dsp (1.0) stable; urgency=low
+
+  * Initial Debian package release
+  * Collection of tools to configure HiFiBerry DSP boards
+  * Program DSP boards from SigmaStudio
+  * Support for SigmaTCP server
+  * ALSA volume control integration
+  * REW filter support
+  * DSP profile management
+  * EEPROM programming capabilities
+  * Zeroconf network discovery
+  * Web interface support
+  * Command line utilities for DSP configuration
+
+ -- HiFiBerry <info@hifiberry.com>  Thu, 24 Jun 2025 12:00:00 +0000
