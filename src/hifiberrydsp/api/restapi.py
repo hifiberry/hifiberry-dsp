@@ -53,6 +53,12 @@ _xml_profile_cache = {
     "valid": None
 }
 
+# Cache for current DSP program checksum
+_checksum_cache = {
+    "checksum": None,
+    "valid": False
+}
+
 
 def isBiquad(value):
     """
@@ -214,12 +220,15 @@ def get_profile_metadata():
 
 def invalidate_cache():
     """
-    Invalidate the XML profile cache
+    Invalidate the XML profile cache and checksum cache
     """
-    global _xml_profile_cache
+    global _xml_profile_cache, _checksum_cache
     _xml_profile_cache["profile"] = None
     _xml_profile_cache["metadata"] = None
     _xml_profile_cache["valid"] = None
+    
+    # Also clear the checksum cache when invalidating
+    clear_checksum_cache()
 
 
 def get_or_guess_samplerate():
@@ -270,19 +279,44 @@ def get_current_profile_name():
     return "default"
 
 
+def clear_checksum_cache():
+    """
+    Clear the cached checksum. This should be called when a new DSP program is installed.
+    """
+    global _checksum_cache
+    _checksum_cache["checksum"] = None
+    _checksum_cache["valid"] = False
+    logging.debug("Checksum cache cleared")
+
+
 def get_current_profile_checksum():
     """
-    Get the checksum of the currently active DSP profile
+    Get the checksum of the currently active DSP profile (cached)
     
     Returns:
         str: Profile checksum or None if not found
     """
+    global _checksum_cache
+    
+    # Return cached checksum if valid
+    if _checksum_cache["valid"] and _checksum_cache["checksum"]:
+        return _checksum_cache["checksum"]
+    
     try:
-        metadata = get_profile_metadata()
-        if metadata and "checksum" in metadata:
-            return metadata["checksum"]
+        # Calculate checksum from DSP memory
+        checksum_bytes = Adau145x.calculate_program_checksum(cached=False)
+        if checksum_bytes:
+            checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
+            
+            # Cache the result
+            _checksum_cache["checksum"] = checksum_hex
+            _checksum_cache["valid"] = True
+            
+            logging.debug(f"Checksum calculated and cached: {checksum_hex}")
+            return checksum_hex
+            
     except Exception as e:
-        logging.warning(f"Error getting profile checksum: {str(e)}")
+        logging.warning(f"Error calculating profile checksum: {str(e)}")
     
     return None
 
@@ -750,7 +784,7 @@ def clear_cache():
 def get_cache_status():
     """API endpoint to get information about the current cache status"""
     try:
-        global _xml_profile_cache
+        global _xml_profile_cache, _checksum_cache
         
         # Create response with cache information
         cache_info = {
@@ -761,6 +795,10 @@ def get_cache_status():
             },
             "metadata": {
                 "cached": _xml_profile_cache["metadata"] is not None
+            },
+            "checksum": {
+                "cached": _checksum_cache["valid"],
+                "value": _checksum_cache["checksum"] if _checksum_cache["valid"] else None
             }
         }
         
