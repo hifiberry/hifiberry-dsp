@@ -118,6 +118,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     xml = None
     checksum_error = False
     autoload_filters = True  # Default to True, can be disabled via command line
+    debug_memory_writes = False  # Debug logging for memory writes
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
@@ -423,6 +424,17 @@ class SigmaTCPHandler(BaseRequestHandler):
             SigmaTCPHandler.prepare_update()
 
         logging.debug("writing {} bytes to {}".format(length, addr))
+        
+        # Debug logging for memory writes if enabled
+        if SigmaTCPHandler.debug_memory_writes:
+            logging.info(f"DEBUG: Memory write to address 0x{addr:04X} ({addr}), length: {length} bytes")
+            if length <= 20:  # Log data for small writes
+                hex_data = ' '.join(f'{b:02X}' for b in memdata[:20])
+                logging.info(f"DEBUG: Write data: {hex_data}")
+            else:
+                hex_data = ' '.join(f'{b:02X}' for b in memdata[:16])
+                logging.info(f"DEBUG: Write data (first 16 bytes): {hex_data}...")
+        
         memdata = data[14:]
         res = adau145x.Adau145x.write_memory(addr, memdata)
 
@@ -917,6 +929,11 @@ class SigmaTCPServerMain():
 
         # Set the autoload filters flag
         SigmaTCPHandler.autoload_filters = not params.get("no_autoload_filters", False)
+        
+        # Set the debug memory writes flag
+        SigmaTCPHandler.debug_memory_writes = params.get("debug", False)
+        if SigmaTCPHandler.debug_memory_writes:
+            logging.info("Debug mode enabled: will log all DSP memory writes")
 
         self.params = params
         
@@ -939,6 +956,7 @@ class SigmaTCPServerMain():
         parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
         parser.add_argument("--bind-address", type=str, default=None, help="Specify IP address to bind to")
         parser.add_argument("--no-autoload-filters", action="store_true", help="Disable automatic loading of stored filters on startup")
+        parser.add_argument("--debug", action="store_true", help="Enable debug logging for all DSP memory writes")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
         args = parser.parse_args()
 
@@ -952,6 +970,7 @@ class SigmaTCPServerMain():
         params["localhost"] = args.localhost
         params["bind_address"] = args.bind_address
         params["no_autoload_filters"] = args.no_autoload_filters
+        params["debug"] = args.debug
 
         try:
             this.command_after_startup = config.get("server", "command_after_startup")
