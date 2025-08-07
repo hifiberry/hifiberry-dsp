@@ -58,6 +58,9 @@ from hifiberrydsp.server.constants import \
     HEADER_SIZE, \
     DEFAULT_PORT
 from hifiberrydsp.api.restapi import run_api  # Import the REST API server
+from hifiberrydsp.api.filter_store import FilterStore
+from hifiberrydsp.filtering.biquad import Biquad
+import binascii
 # import hifiberrydsp
 
 # URL to notify on DSP program updates
@@ -114,6 +117,7 @@ class SigmaTCPHandler(BaseRequestHandler):
     updating = False
     xml = None
     checksum_error = False
+    autoload_filters = True  # Default to True, can be disabled via command line
 
     def __init__(self, request, client_address, server):
         logging.debug("__init__")
@@ -613,6 +617,184 @@ class SigmaTCPHandler(BaseRequestHandler):
         spdifr = datatools.parse_int(spdifreg)
         SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr)
 
+    @staticmethod
+    def load_and_apply_filters():
+        """
+        Automatically load and apply stored filters for the current DSP profile checksum
+        """
+        try:
+            # Get the current program checksum
+            checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=True)
+            if not checksum_bytes:
+                logging.warning("Could not get DSP program checksum for filter autoloading")
+                return False
+                
+            checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
+            logging.info(f"Autoloading filters for DSP profile checksum: {checksum_hex}")
+            
+            # Initialize filter store
+            filter_store = FilterStore()
+            
+            # Get stored filters for this checksum
+            filters = filter_store.get_filters(checksum_hex)
+            
+            if not filters:
+                logging.info(f"No stored filters found for checksum {checksum_hex}")
+                return True
+                
+            logging.info(f"Found {len(filters)} stored filters for current profile")
+            
+            # Get the XML profile to resolve metadata keys if needed
+            xml_profile = SigmaTCPHandler.get_checked_xml()
+            
+            filters_applied = 0
+            
+            # Apply each stored filter
+            for filter_key, filter_data in filters.items():
+                try:
+                    address = filter_data.get("address")
+                    offset = filter_data.get("offset", 0)
+                    filter_spec = filter_data.get("filter", {})
+                    
+                    if not address or not filter_spec:
+                        logging.warning(f"Skipping invalid filter {filter_key}: missing address or filter data")
+                        continue
+                    
+                    # Resolve address from metadata if it's a string key
+                    base_address = None
+                    if isinstance(address, str) and not address.startswith('0x') and not address.isdigit():
+                        # Try to resolve from metadata
+                        if xml_profile:
+                            metadata_value = xml_profile.get_meta(address)
+                            if metadata_value and '/' in str(metadata_value):
+                                # Parse biquad format like "addr/offset"
+                                parts = str(metadata_value).split('/')
+                                try:
+                                    base_address = int(parts[0])
+                                except ValueError:
+                                    logging.warning(f"Could not parse address from metadata key {address}: {metadata_value}")
+                                    continue
+                            else:
+                                logging.warning(f"Could not resolve address from metadata key {address}")
+                                continue
+                        else:
+                            logging.warning(f"No XML profile available to resolve metadata key {address}")
+                            continue
+                    else:
+                        # Direct address
+                        try:
+                            base_address = int(address, 0)  # Supports hex and decimal
+                        except ValueError:
+                            logging.warning(f"Could not parse direct address {address}")
+                            continue
+                    
+                    # Calculate actual address with offset
+                    actual_address = base_address + (offset * 5)
+                    
+                    # Check if address is valid
+                    if not adau145x.Adau145x.is_valid_memory_address(actual_address) or \
+                       not adau145x.Adau145x.is_valid_memory_address(actual_address + 4):
+                        logging.warning(f"Skipping filter {filter_key}: invalid memory address range {hex(actual_address)}")
+                        continue
+                    
+                    # Apply the filter
+                    success = SigmaTCPHandler._apply_filter(actual_address, filter_spec)
+                    
+                    if success:
+                        filters_applied += 1
+                        logging.debug(f"Applied filter {filter_key} at address {hex(actual_address)}")
+                    else:
+                        logging.warning(f"Failed to apply filter {filter_key} at address {hex(actual_address)}")
+                        
+                except Exception as e:
+                    logging.error(f"Error applying filter {filter_key}: {str(e)}")
+                    continue
+            
+            logging.info(f"Successfully applied {filters_applied} out of {len(filters)} stored filters")
+            return filters_applied > 0
+            
+        except Exception as e:
+            logging.error(f"Error during filter autoloading: {str(e)}")
+            return False
+    
+    @staticmethod
+    def _apply_filter(address, filter_spec):
+        """
+        Apply a single filter at the specified address
+        
+        Args:
+            address (int): Memory address to write the filter to
+            filter_spec (dict): Filter specification
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Check if this is direct coefficients or a filter specification
+            if all(k in filter_spec for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
+                # Direct coefficients
+                a0 = float(filter_spec['a0'])
+                a1 = float(filter_spec['a1']) 
+                a2 = float(filter_spec['a2'])
+                b0 = float(filter_spec['b0'])
+                b1 = float(filter_spec['b1'])
+                b2 = float(filter_spec['b2'])
+                
+                # Create and write biquad
+                bq = Biquad(a0, a1, a2, b0, b1, b2, "Autoloaded filter")
+                adau145x.Adau145x.write_biquad(address, bq)
+                return True
+                
+            elif 'type' in filter_spec:
+                # Filter specification - need to calculate coefficients
+                # This requires importing Filter class and sample rate
+                try:
+                    from hifiberrydsp.api.filters import Filter
+                    import json
+                    
+                    # Get sample rate from profile or guess it
+                    sample_rate = 48000  # Default fallback
+                    try:
+                        xml_profile = SigmaTCPHandler.get_checked_xml()
+                        if xml_profile:
+                            sample_rate = xml_profile.samplerate() or 48000
+                    except:
+                        # Try to guess from DSP
+                        try:
+                            sample_rate = adau145x.Adau145x.guess_samplerate() or 48000
+                        except:
+                            pass
+                    
+                    # Create filter object
+                    filter_json = json.dumps(filter_spec)
+                    filter_obj = Filter.fromJSON(filter_json)
+                    
+                    # Calculate coefficients
+                    coeffs = filter_obj.biquadCoefficients(sample_rate)
+                    if not coeffs or len(coeffs) != 6:
+                        logging.error("Invalid coefficients returned from filter")
+                        return False
+                    
+                    # Extract coefficients (Filter returns b0,b1,b2,a0,a1,a2)
+                    b0, b1, b2, a0, a1, a2 = coeffs
+                    
+                    # Create and write biquad
+                    description = f"{filter_spec.get('type', 'Filter')} at {filter_spec.get('f', '')}Hz"
+                    bq = Biquad(a0, a1, a2, b0, b1, b2, description)
+                    adau145x.Adau145x.write_biquad(address, bq)
+                    return True
+                    
+                except Exception as e:
+                    logging.error(f"Error processing filter specification: {str(e)}")
+                    return False
+            else:
+                logging.error("Invalid filter format: expected direct coefficients or filter specification")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error applying filter at address {hex(address)}: {str(e)}")
+            return False
+
 
 class ProgramRefresher(Thread):
 
@@ -625,6 +807,17 @@ class ProgramRefresher(Thread):
         # update volume register for ALSA control
         SigmaTCPHandler.update_alsasync()
         SigmaTCPHandler.update_lgsoundsync()
+        
+        # Autoload filters for the new profile if enabled
+        if SigmaTCPHandler.autoload_filters:
+            try:
+                logging.info("Reloading stored filters after DSP program update")
+                SigmaTCPHandler.load_and_apply_filters()
+            except Exception as e:
+                logging.error(f"Error reloading filters after update: {str(e)}")
+        else:
+            logging.debug("Filter autoloading disabled")
+        
         SigmaTCPHandler.updating = False
         if this.notify_on_updates is not None:
             r = requests.post(this.notify_on_updates)
@@ -704,6 +897,9 @@ class SigmaTCPServerMain():
         if params["restore"]:
             self.restore = True
 
+        # Set the autoload filters flag
+        SigmaTCPHandler.autoload_filters = not params.get("no_autoload_filters", False)
+
         self.params = params
         
     def parse_config(self):
@@ -724,6 +920,7 @@ class SigmaTCPServerMain():
         parser.add_argument("--restore", action="store_true", help="Restore saved data memory")
         parser.add_argument("--localhost", action="store_true", help="Bind to localhost only")
         parser.add_argument("--bind-address", type=str, default=None, help="Specify IP address to bind to")
+        parser.add_argument("--no-autoload-filters", action="store_true", help="Disable automatic loading of stored filters on startup")
         parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
         args = parser.parse_args()
 
@@ -736,6 +933,7 @@ class SigmaTCPServerMain():
         params["verbose"] = args.verbose
         params["localhost"] = args.localhost
         params["bind_address"] = args.bind_address
+        params["no_autoload_filters"] = args.no_autoload_filters
 
         try:
             this.command_after_startup = config.get("server", "command_after_startup")
@@ -771,6 +969,16 @@ class SigmaTCPServerMain():
                 SigmaTCPHandler.finish_update()
             except IOError:
                 logging.info("no saved data found")
+
+        # Autoload filters for the current profile unless disabled
+        if not self.params.get("no_autoload_filters", False):
+            logging.info("Autoloading stored filters for current DSP profile")
+            try:
+                SigmaTCPHandler.load_and_apply_filters()
+            except Exception as e:
+                logging.error(f"Error during filter autoloading: {str(e)}")
+        else:
+            logging.info("Filter autoloading disabled by --no-autoload-filters option")
 
         logging.debug("done")
         
