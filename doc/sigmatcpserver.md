@@ -27,7 +27,10 @@ sigmatcpserver [OPTIONS]
 | `--alsa` | Enable ALSA volume control synchronization |
 | `--lgsoundsync` | Enable LG Sound Sync functionality |
 | `--restore` | Restore saved DSP parameters on startup |
+| `--store` | Store DSP data memory to a file on exit |
 | `--localhost` | Bind services to localhost only (more secure) |
+| `--bind-address ADDRESS` | Specify IP address to bind to |
+| `--no-autoload-filters` | Disable automatic loading of stored filters on startup |
 | `-v, --verbose` | Enable verbose logging |
 
 ## Configuration
@@ -96,6 +99,47 @@ Enable all available features:
 ```bash
 sigmatcpserver --enable-rest --alsa --lgsoundsync --restore
 ```
+
+## Filter Autoloading
+
+The SigmaTCP server automatically loads and applies stored filters from the filter store when starting up or after a DSP program update. This ensures that your custom filter settings persist across reboots and program changes.
+
+### How It Works
+
+1. **On Startup**: The server calculates the checksum of the current DSP program and looks up any stored filters for that checksum in the filter store.
+
+2. **After Updates**: When a new DSP program is loaded (e.g., via SigmaStudio or the REST API), the server automatically reloads filters for the new program checksum.
+
+3. **Automatic Application**: Found filters are automatically applied to their respective memory addresses using the same logic as the `/biquad` REST API endpoint.
+
+### Disabling Autoloading
+
+If you want to disable automatic filter loading, use the `--no-autoload-filters` option:
+
+```bash
+sigmatcpserver --no-autoload-filters
+```
+
+This can be useful for:
+- Debugging filter issues
+- Starting with a clean slate
+- Performance testing without filters
+- Development scenarios where you want manual control
+
+### Filter Resolution
+
+The autoloader supports both direct memory addresses and metadata key resolution:
+
+- **Direct addresses**: Filters stored with hex addresses (e.g., `0x1000`) are applied directly
+- **Metadata keys**: Filters stored with metadata keys (e.g., `eq1_band1`) are resolved using the current DSP profile's metadata
+
+### Error Handling
+
+The autoloader is designed to be robust:
+- Invalid filters are skipped with warnings
+- Missing metadata keys don't prevent other filters from loading
+- Address validation ensures memory safety
+- Errors are logged but don't prevent server startup
 
 ## Systemd Integration
 
