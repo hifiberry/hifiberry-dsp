@@ -236,7 +236,7 @@ curl -X GET http://localhost:13141/checksum
 - `format`: Always "md5" indicating the checksum algorithm used
 
 **Notes:**
-- The checksum is calculated directly from DSP memory (not cached) to ensure it reflects the current state
+- The checksum is calculated from DSP memory and cached for performance. The cache is automatically cleared when a new DSP program is installed
 - This can be compared with profile checksums to verify the correct program is loaded
 - Useful for debugging profile loading issues and ensuring program integrity
 
@@ -789,7 +789,7 @@ curl -X DELETE "http://localhost:13141/filters?all=true"
 
 **Notes:**
 
-1. The filter store is saved as `filters.json` in the same directory as DSP profiles (`/usr/share/hifiberry/dspprofiles`).
+1. The filter store is saved as `filters.json` at `/var/lib/hifiberry/filters.json`.
 2. Filters are automatically stored when set via the `/biquad` endpoint using the current profile checksum.
 3. Filter keys are generated as `{address}_{offset}` or just `{address}` if offset is 0.
 4. Each stored filter includes a timestamp indicating when it was last modified.
@@ -943,7 +943,7 @@ If `frequencies` is not provided, the response will be calculated using a logari
 
 #### Get Cache Status
 
-Get information about the current cache status, including whether the XML profile and metadata are cached.
+Get information about the current cache status, including whether the XML profile, metadata, and program checksum are cached.
 
 ```
 GET /cache
@@ -969,13 +969,18 @@ curl -X GET http://localhost:13141/cache
       "profileVersion": "1.0",
       "sampleRate": 48000
     }
+  },
+  "checksum": {
+    "cached": true,
+    "value": "8B924F2C2210B903CB4226C12C56EE44"
   }
+}
 }
 ```
 
 #### Clear Cache
 
-Clear the internal XML profile cache. This is useful if the DSP profile file has been updated externally.
+Clear the internal XML profile cache and program checksum cache. This is useful if the DSP profile file has been updated externally. Note that the checksum cache is automatically cleared when a new DSP program is installed via the API.
 
 ```
 POST /cache/clear
@@ -1225,6 +1230,23 @@ Used for controlling overall volume.
 
 **Parameters:**
 - `db`: Volume level in decibels
+
+##### Bypass Filter
+
+Used for creating a pass-through filter that does not modify the audio signal. This is useful for temporarily disabling a filter slot without removing the filter configuration, or for creating placeholder filters.
+
+```json
+{
+  "type": "Bypass"
+}
+```
+
+**Parameters:**
+- No parameters required
+
+**Alternative name:** You can also use `"type": "PassThrough"` which is equivalent to `"type": "Bypass"`.
+
+**Technical details:** The Bypass filter creates a unity biquad filter with coefficients b0=1, b1=0, b2=0, a0=1, a1=0, a2=0, resulting in a transfer function H(z) = 1 (unity gain, no filtering).
 
 ### Frequency Response Calculation
 
