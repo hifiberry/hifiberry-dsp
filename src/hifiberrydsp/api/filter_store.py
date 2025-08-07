@@ -82,7 +82,7 @@ class FilterStore:
             logging.error(f"Error saving filter store: {str(e)}")
             return False
     
-    def store_filter(self, checksum, address, offset, filter_data):
+    def store_filter(self, checksum, address, offset, filter_data, bypassed=False):
         """
         Store a filter in the filter store organized by profile checksum
         
@@ -91,6 +91,7 @@ class FilterStore:
             address (str): Memory address or metadata key 
             offset (int): Offset value
             filter_data (dict): The filter data
+            bypassed (bool): Whether the filter is currently bypassed
             
         Returns:
             bool: True if successful, False otherwise
@@ -106,13 +107,22 @@ class FilterStore:
             # Always include offset suffix for consistency
             filter_key = f"{address}_{offset}"
             
-            # Store the filter with timestamp
-            store[checksum][filter_key] = {
+            # Store the filter with timestamp and bypass state
+            filter_entry = {
                 "address": address,
                 "offset": offset,
                 "filter": filter_data,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "bypassed": bypassed
             }
+            
+            # If this filter already exists, preserve bypass state unless explicitly overridden
+            if filter_key in store[checksum] and "bypassed" in store[checksum][filter_key]:
+                # Preserve existing bypass state if not explicitly set
+                existing_bypass = store[checksum][filter_key].get("bypassed", False)
+                filter_entry["bypassed"] = existing_bypass
+            
+            store[checksum][filter_key] = filter_entry
             
             return self.save(store)
         except Exception as e:
@@ -309,3 +319,97 @@ class FilterStore:
         except Exception as e:
             logging.error(f"Error clearing empty profiles: {str(e)}")
             return False, 0
+    
+    def set_filter_bypass(self, checksum, address, offset, bypassed):
+        """
+        Set the bypass state of a specific filter
+        
+        Args:
+            checksum (str): DSP profile checksum
+            address (str): Memory address or metadata key
+            offset (int): Offset value
+            bypassed (bool): True to bypass, False to enable
+            
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            store = self.load()
+            
+            if checksum not in store:
+                return False, f"No filters found for profile checksum '{checksum}'"
+            
+            filter_key = f"{address}_{offset}"
+            
+            if filter_key not in store[checksum]:
+                return False, f"No filter found at address '{address}' with offset {offset}"
+            
+            # Update bypass state
+            store[checksum][filter_key]["bypassed"] = bypassed
+            store[checksum][filter_key]["timestamp"] = time.time()
+            
+            if self.save(store):
+                state = "bypassed" if bypassed else "enabled"
+                return True, f"Filter at {address}+{offset} {state}"
+            else:
+                return False, "Failed to save bypass state"
+                
+        except Exception as e:
+            logging.error(f"Error setting filter bypass: {str(e)}")
+            return False, str(e)
+    
+    def get_filter_bypass_state(self, checksum, address, offset):
+        """
+        Get the bypass state of a specific filter
+        
+        Args:
+            checksum (str): DSP profile checksum
+            address (str): Memory address or metadata key
+            offset (int): Offset value
+            
+        Returns:
+            bool: True if bypassed, False if enabled, None if not found
+        """
+        try:
+            store = self.load()
+            
+            if checksum not in store:
+                return None
+            
+            filter_key = f"{address}_{offset}"
+            
+            if filter_key not in store[checksum]:
+                return None
+            
+            return store[checksum][filter_key].get("bypassed", False)
+            
+        except Exception as e:
+            logging.error(f"Error getting filter bypass state: {str(e)}")
+            return None
+    
+    def toggle_filter_bypass(self, checksum, address, offset):
+        """
+        Toggle the bypass state of a specific filter
+        
+        Args:
+            checksum (str): DSP profile checksum
+            address (str): Memory address or metadata key
+            offset (int): Offset value
+            
+        Returns:
+            tuple: (success: bool, new_state: bool, message: str)
+        """
+        try:
+            current_state = self.get_filter_bypass_state(checksum, address, offset)
+            
+            if current_state is None:
+                return False, False, f"Filter not found at {address}+{offset}"
+            
+            new_state = not current_state
+            success, message = self.set_filter_bypass(checksum, address, offset, new_state)
+            
+            return success, new_state, message
+            
+        except Exception as e:
+            logging.error(f"Error toggling filter bypass: {str(e)}")
+            return False, False, str(e)

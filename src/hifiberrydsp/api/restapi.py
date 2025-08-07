@@ -1257,6 +1257,293 @@ def delete_filters():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/filters/bypass', methods=['GET'])
+def get_filter_bypass():
+    """
+    API endpoint to get bypass state of a filter
+    
+    Query Parameters:
+        checksum (str): Profile checksum (optional, will use current if not provided)
+        address (str): Memory address or metadata key
+        offset (int): Offset value (default: 0)
+    """
+    try:
+        checksum = request.args.get('checksum')
+        address = request.args.get('address')
+        offset = int(request.args.get('offset', 0))
+        
+        if not address:
+            return jsonify({"error": "Address parameter is required"}), 400
+        
+        if not checksum:
+            checksum = get_current_profile_checksum()
+            if not checksum:
+                return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
+        
+        bypass_state = filter_store.get_filter_bypass_state(checksum, address, offset)
+        
+        if bypass_state is None:
+            return jsonify({"error": f"Filter not found at address '{address}' with offset {offset}"}), 404
+        
+        return jsonify({
+            "checksum": checksum,
+            "address": address,
+            "offset": offset,
+            "bypassed": bypass_state
+        })
+        
+    except ValueError:
+        return jsonify({"error": "Offset must be a valid integer"}), 400
+    except Exception as e:
+        logging.error(f"Error getting filter bypass state: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/filters/bypass', methods=['POST'])
+def set_filter_bypass():
+    """
+    API endpoint to set bypass state of a filter and apply it to the DSP
+    
+    Request body:
+    {
+        "checksum": "profile_checksum",  // Optional, uses current if not provided
+        "address": "eq1_band1",         // Memory address or metadata key
+        "offset": 0,                    // Optional, default 0
+        "bypassed": true                // true to bypass, false to enable
+    }
+    """
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "JSON body required"}), 400
+        
+        address = data.get('address')
+        offset = data.get('offset', 0)
+        bypassed = data.get('bypassed')
+        checksum = data.get('checksum')
+        
+        if not address:
+            return jsonify({"error": "Address is required"}), 400
+        
+        if bypassed is None:
+            return jsonify({"error": "Bypassed state (true/false) is required"}), 400
+        
+        if not isinstance(bypassed, bool):
+            return jsonify({"error": "Bypassed must be true or false"}), 400
+        
+        if not checksum:
+            checksum = get_current_profile_checksum()
+            if not checksum:
+                return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
+        
+        # Update bypass state in store
+        success, message = filter_store.set_filter_bypass(checksum, address, offset, bypassed)
+        
+        if not success:
+            return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+        
+        # Apply the change to the DSP
+        try:
+            success = apply_filter_bypass_to_dsp(checksum, address, offset, bypassed)
+            if not success:
+                return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
+        except Exception as e:
+            logging.error(f"Error applying bypass to DSP: {str(e)}")
+            return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
+        
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "checksum": checksum,
+            "address": address,
+            "offset": offset,
+            "bypassed": bypassed
+        })
+        
+    except Exception as e:
+        logging.error(f"Error setting filter bypass: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/filters/bypass', methods=['PUT'])
+def toggle_filter_bypass():
+    """
+    API endpoint to toggle bypass state of a filter
+    
+    Request body:
+    {
+        "checksum": "profile_checksum",  // Optional, uses current if not provided
+        "address": "eq1_band1",         // Memory address or metadata key
+        "offset": 0                     // Optional, default 0
+    }
+    """
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "JSON body required"}), 400
+        
+        address = data.get('address')
+        offset = data.get('offset', 0)
+        checksum = data.get('checksum')
+        
+        if not address:
+            return jsonify({"error": "Address is required"}), 400
+        
+        if not checksum:
+            checksum = get_current_profile_checksum()
+            if not checksum:
+                return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
+        
+        # Toggle bypass state
+        success, new_state, message = filter_store.toggle_filter_bypass(checksum, address, offset)
+        
+        if not success:
+            return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+        
+        # Apply the change to the DSP
+        try:
+            success = apply_filter_bypass_to_dsp(checksum, address, offset, new_state)
+            if not success:
+                return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
+        except Exception as e:
+            logging.error(f"Error applying bypass to DSP: {str(e)}")
+            return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
+        
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "checksum": checksum,
+            "address": address,
+            "offset": offset,
+            "bypassed": new_state
+        })
+        
+    except Exception as e:
+        logging.error(f"Error toggling filter bypass: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):
+    """
+    Apply filter bypass state to the DSP hardware
+    
+    Args:
+        checksum (str): Profile checksum
+        address (str): Memory address or metadata key
+        offset (int): Offset value
+        bypassed (bool): True to write bypass filter, False to write original filter
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Get the stored filter data
+        filters = filter_store.get_filters(checksum)
+        filter_key = f"{address}_{offset}"
+        
+        if filter_key not in filters:
+            logging.error(f"Filter {filter_key} not found in store")
+            return False
+        
+        filter_data = filters[filter_key]
+        
+        # Resolve the actual memory address
+        base_address = None
+        if isinstance(address, str) and not address.startswith('0x') and not address.isdigit():
+            # Try to resolve from metadata
+            metadata = get_metadata()
+            metadata_value = metadata.get(address)
+            if metadata_value and '/' in str(metadata_value):
+                # Parse biquad format like "addr/offset"
+                parts = str(metadata_value).split('/')
+                try:
+                    base_address = int(parts[0])
+                except ValueError:
+                    logging.error(f"Could not parse address from metadata key {address}: {metadata_value}")
+                    return False
+            else:
+                logging.error(f"Could not resolve address from metadata key {address}")
+                return False
+        else:
+            # Direct address
+            try:
+                base_address = int(address, 0)  # Supports hex and decimal
+            except ValueError:
+                logging.error(f"Could not parse direct address {address}")
+                return False
+        
+        # Calculate actual address with offset
+        actual_address = base_address + (offset * 5)
+        
+        # Check if address is valid
+        if not Adau145x.is_valid_memory_address(actual_address) or \
+           not Adau145x.is_valid_memory_address(actual_address + 4):
+            logging.error(f"Invalid memory address range {hex(actual_address)}")
+            return False
+        
+        if bypassed:
+            # Write bypass filter (unity coefficients)
+            from hifiberrydsp.api.filters import Bypass
+            bypass_filter = Bypass()
+            coeffs = bypass_filter.biquadCoefficients(48000)  # Sample rate doesn't matter for bypass
+            b0, b1, b2, a0, a1, a2 = coeffs
+            
+            # Create bypass biquad and write to DSP
+            bq = Biquad(a0, a1, a2, b0, b1, b2, "Bypass filter")
+            Adau145x.write_biquad(actual_address, bq)
+            
+            logging.info(f"Applied bypass filter at address {hex(actual_address)}")
+        else:
+            # Write original filter
+            filter_spec = filter_data.get("filter", {})
+            
+            if all(k in filter_spec for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
+                # Direct coefficients
+                a0 = float(filter_spec['a0'])
+                a1 = float(filter_spec['a1']) 
+                a2 = float(filter_spec['a2'])
+                b0 = float(filter_spec['b0'])
+                b1 = float(filter_spec['b1'])
+                b2 = float(filter_spec['b2'])
+                
+                # Create and write biquad
+                bq = Biquad(a0, a1, a2, b0, b1, b2, "Restored filter")
+                Adau145x.write_biquad(actual_address, bq)
+            
+            elif 'type' in filter_spec:
+                # Filter specification - calculate coefficients
+                sample_rate = get_or_guess_samplerate()
+                
+                # Create filter object
+                filter_json = json.dumps(filter_spec)
+                filter_obj = Filter.fromJSON(filter_json)
+                
+                # Calculate coefficients
+                coeffs = filter_obj.biquadCoefficients(sample_rate)
+                if not coeffs or len(coeffs) != 6:
+                    logging.error("Invalid coefficients returned from filter")
+                    return False
+                
+                # Extract coefficients (Filter returns b0,b1,b2,a0,a1,a2)
+                b0, b1, b2, a0, a1, a2 = coeffs
+                
+                # Create and write biquad
+                description = f"{filter_spec.get('type', 'Filter')} at {filter_spec.get('f', '')}Hz"
+                bq = Biquad(a0, a1, a2, b0, b1, b2, description)
+                Adau145x.write_biquad(actual_address, bq)
+            else:
+                logging.error("Invalid filter format in stored data")
+                return False
+            
+            logging.info(f"Restored original filter at address {hex(actual_address)}")
+        
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error applying filter bypass to DSP: {str(e)}")
+        return False
+
+
 def run_api(host=DEFAULT_HOST, port=DEFAULT_PORT):
     """
     Run the metadata API server

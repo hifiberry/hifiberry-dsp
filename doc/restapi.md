@@ -797,6 +797,157 @@ curl -X DELETE "http://localhost:13141/filters?all=true"
 6. Profiles are organized by their MD5 checksum for better reliability and uniqueness.
 7. Profile names are stored for display purposes but checksums are used as the primary identifier.
 8. Legacy support is provided for accessing filters by profile name, but checksum-based access is recommended.
+9. Each filter can be individually bypassed without losing its configuration using the bypass API endpoints.
+
+### Filter Bypass API
+
+The filter bypass API allows you to temporarily disable filters without losing their configuration. When a filter is bypassed, its original coefficients are preserved in the filter store, but a bypass filter (unity coefficients) is written to the DSP instead.
+
+#### Get Filter Bypass State
+
+Retrieve the bypass state of a specific filter.
+
+```
+GET /filters/bypass?address={address}&offset={offset}&checksum={checksum}
+```
+
+**Query Parameters:**
+
+- `address` (required): Memory address or metadata key
+- `offset` (optional, default: 0): Offset value
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile.
+
+**Example Requests:**
+
+Get bypass state for a filter:
+```bash
+curl -X GET "http://localhost:13141/filters/bypass?address=eq1_band1&offset=0"
+```
+
+**Example Response:**
+```json
+{
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "address": "eq1_band1",
+  "offset": 0,
+  "bypassed": false
+}
+```
+
+#### Set Filter Bypass State
+
+Set the bypass state of a filter and apply the change to the DSP immediately.
+
+```
+POST /filters/bypass
+```
+
+**Request Body:**
+```json
+{
+  "address": "eq1_band1",
+  "offset": 0,
+  "bypassed": true,
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44"
+}
+```
+
+**Parameters:**
+
+- `address` (required): Memory address or metadata key
+- `bypassed` (required): `true` to bypass the filter, `false` to enable it
+- `offset` (optional, default: 0): Offset value
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile.
+
+**Example Requests:**
+
+Bypass a filter:
+```bash
+curl -X POST http://localhost:13141/filters/bypass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "eq1_band1",
+    "offset": 0,
+    "bypassed": true
+  }'
+```
+
+Enable a bypassed filter:
+```bash
+curl -X POST http://localhost:13141/filters/bypass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "eq1_band1", 
+    "offset": 0,
+    "bypassed": false
+  }'
+```
+
+**Example Response:**
+```json
+{
+  "status": "success",
+  "message": "Filter at eq1_band1+0 bypassed",
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "address": "eq1_band1",
+  "offset": 0,
+  "bypassed": true
+}
+```
+
+#### Toggle Filter Bypass State
+
+Toggle the bypass state of a filter between enabled and bypassed.
+
+```
+PUT /filters/bypass
+```
+
+**Request Body:**
+```json
+{
+  "address": "eq1_band1",
+  "offset": 0,
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44"
+}
+```
+
+**Parameters:**
+
+- `address` (required): Memory address or metadata key
+- `offset` (optional, default: 0): Offset value  
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile.
+
+**Example Request:**
+```bash
+curl -X PUT http://localhost:13141/filters/bypass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "eq1_band1",
+    "offset": 0
+  }'
+```
+
+**Example Response:**
+```json
+{
+  "status": "success", 
+  "message": "Filter at eq1_band1+0 enabled",
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "address": "eq1_band1",
+  "offset": 0,
+  "bypassed": false
+}
+```
+
+**Bypass API Notes:**
+
+1. **Immediate DSP Application**: All bypass operations immediately update the DSP hardware
+2. **Coefficient Preservation**: Original filter coefficients are always preserved in the filter store
+3. **Bypass Implementation**: Bypassed filters use unity coefficients (b0=1, b1=0, b2=0, a0=1, a1=0, a2=0)
+4. **Automatic Loading**: Bypass states are preserved and restored during DSP profile changes
+5. **Address Resolution**: Both direct memory addresses and metadata keys are supported
+6. **Error Handling**: Invalid addresses or missing filters return appropriate error responses
 
 ### Register Access API
 
