@@ -1085,11 +1085,26 @@ def get_filters():
     
     Query Parameters:
         checksum (str): Optional profile checksum to filter by
+        current (bool): Set to 'true' to get filters for the currently active profile
     """
     try:
         checksum = request.args.get('checksum')
+        current = request.args.get('current', '').lower() in ('true', '1', 'yes')
         
-        if checksum:
+        if current:
+            # Get filters for the currently active profile
+            current_checksum = get_current_profile_checksum()
+            if not current_checksum:
+                return jsonify({"error": "No active DSP profile found"}), 404
+            
+            filters = filter_store.get_filters(current_checksum)
+            
+            return jsonify({
+                "checksum": current_checksum,
+                "filters": filters,
+                "current": True
+            })
+        elif checksum:
             # Use checksum to get filters
             filters = filter_store.get_filters(checksum)
             

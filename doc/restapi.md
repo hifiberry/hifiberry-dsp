@@ -589,6 +589,7 @@ GET /filters
 **Query Parameters:**
 
 - `checksum` (optional): DSP profile checksum to get filters for. If not specified, returns filters for all profiles.
+- `current` (optional): Set to `true` to get filters for the currently active DSP profile. This automatically determines the current checksum and returns filters for that profile.
 
 **Example Requests:**
 
@@ -600,6 +601,11 @@ curl -X GET http://localhost:13141/filters
 Get filters for a specific profile by checksum:
 ```bash
 curl -X GET "http://localhost:13141/filters?checksum=8B924F2C2210B903CB4226C12C56EE44"
+```
+
+Get filters for the currently active profile:
+```bash
+curl -X GET "http://localhost:13141/filters?current=true"
 ```
 
 **Example Response (All Profiles):**
@@ -655,6 +661,29 @@ curl -X GET "http://localhost:13141/filters?checksum=8B924F2C2210B903CB4226C12C5
       },
       "timestamp": 1699564123.456
     }
+  }
+}
+```
+
+**Example Response (Current Profile):**
+```json
+{
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "current": true,
+  "filters": {
+    "customFilterRegisterBankLeft": {
+      "address": "customFilterRegisterBankLeft",
+      "offset": 0,
+      "filter": {
+        "type": "PeakingEq",
+        "f": 1000,
+        "db": 10.0,
+        "q": 1.0
+      },
+      "timestamp": 1699564789.123
+    }
+  }
+}
   }
 }
 ```
