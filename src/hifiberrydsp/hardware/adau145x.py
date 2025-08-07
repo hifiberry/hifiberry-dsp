@@ -245,6 +245,23 @@ class Adau145x():
         Returns:
             int: Result code (0 = success)
         '''
+        # Debug logging for memory writes if enabled
+        # Check if debug mode is enabled in SigmaTCPHandler
+        try:
+            from hifiberrydsp.server.sigmatcp import SigmaTCPHandler
+            if hasattr(SigmaTCPHandler, 'debug_memory_writes') and SigmaTCPHandler.debug_memory_writes:
+                length = len(data)
+                logging.info(f"DEBUG: Memory write to address 0x{addr:04X} ({addr}), length: {length} bytes")
+                if length <= 32:  # Log full data for small writes
+                    hex_data = ' '.join(f"{b:02X}" for b in data)
+                    logging.info(f"DEBUG: Write data: {hex_data}")
+                else:  # Log first 16 bytes for large writes
+                    hex_data = ' '.join(f"{b:02X}" for b in data[:16])
+                    logging.info(f"DEBUG: Write data (first 16 bytes): {hex_data}...")
+        except ImportError:
+            # SigmaTCPHandler not available, skip debug logging
+            pass
+        
         spi = SpiHandler()
         return spi.write(addr, data)
     
@@ -400,7 +417,7 @@ class Adau145x():
         
         # Write params to registers starting from highest address
         reg = start_addr + 4
-        for param in bq_params:
+        for i, param in enumerate(bq_params):
             data = Adau145x.int_data(Adau145x.decimal_repr(param), Adau145x.DECIMAL_LEN)
             Adau145x.write_memory(reg, data)
             reg = reg - 1
