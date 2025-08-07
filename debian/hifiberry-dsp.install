@@ -1,2 +1,2 @@
 systemd/sigmatcpserver.service lib/systemd/system/
-systemd/sigmatcpserver.default etc/default/sigmatcpserver
+systemd/sigmatcpserver etc/default/
