@@ -25,6 +25,7 @@ import os
 import json
 import binascii
 import time
+import requests
 from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
@@ -1260,17 +1261,19 @@ def delete_filters():
 @app.route('/filters/bypass', methods=['GET'])
 def get_filter_bypass():
     """
-    API endpoint to get bypass state of a filter
+    API endpoint to get bypass state of filters
     
     Query Parameters:
         checksum (str): Profile checksum (optional, will use current if not provided)
         address (str): Memory address or metadata key
-        offset (int): Offset value (default: 0)
+        offset (int): Offset value (default: 0, or omit for entire bank)
+        bank (bool): Set to 'true' to get bypass state of entire filter bank
     """
     try:
         checksum = request.args.get('checksum')
         address = request.args.get('address')
-        offset = int(request.args.get('offset', 0))
+        offset_param = request.args.get('offset')
+        bank_mode = request.args.get('bank', '').lower() in ('true', '1', 'yes')
         
         if not address:
             return jsonify({"error": "Address parameter is required"}), 400
@@ -1280,20 +1283,52 @@ def get_filter_bypass():
             if not checksum:
                 return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
         
-        bypass_state = filter_store.get_filter_bypass_state(checksum, address, offset)
+        if bank_mode or offset_param is None:
+            # Get bypass state for entire filter bank
+            filters = filter_store.get_filters(checksum)
+            bank_filters = []
+            
+            for filter_key, filter_data in filters.items():
+                if filter_data.get("address") == address:
+                    bank_filters.append({
+                        "offset": filter_data.get("offset", 0),
+                        "bypassed": filter_data.get("bypassed", False),
+                        "filter_key": filter_key
+                    })
+            
+            if not bank_filters:
+                return jsonify({"error": f"No filters found for address '{address}'"}), 404
+            
+            # Sort by offset
+            bank_filters.sort(key=lambda x: x["offset"])
+            
+            return jsonify({
+                "checksum": checksum,
+                "address": address,
+                "bank_mode": True,
+                "filters": bank_filters,
+                "total_filters": len(bank_filters)
+            })
+        else:
+            # Get bypass state for single filter
+            try:
+                offset = int(offset_param)
+            except ValueError:
+                return jsonify({"error": "Offset must be a valid integer"}), 400
+            
+            bypass_state = filter_store.get_filter_bypass_state(checksum, address, offset)
+            
+            if bypass_state is None:
+                return jsonify({"error": f"Filter not found at address '{address}' with offset {offset}"}), 404
+            
+            return jsonify({
+                "checksum": checksum,
+                "address": address,
+                "offset": offset,
+                "bank_mode": False,
+                "bypassed": bypass_state
+            })
         
-        if bypass_state is None:
-            return jsonify({"error": f"Filter not found at address '{address}' with offset {offset}"}), 404
-        
-        return jsonify({
-            "checksum": checksum,
-            "address": address,
-            "offset": offset,
-            "bypassed": bypass_state
-        })
-        
-    except ValueError:
-        return jsonify({"error": "Offset must be a valid integer"}), 400
     except Exception as e:
         logging.error(f"Error getting filter bypass state: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -1302,14 +1337,22 @@ def get_filter_bypass():
 @app.route('/filters/bypass', methods=['POST'])
 def set_filter_bypass():
     """
-    API endpoint to set bypass state of a filter and apply it to the DSP
+    API endpoint to set bypass state of filters and apply to the DSP
     
-    Request body:
+    Request body for single filter:
     {
         "checksum": "profile_checksum",  // Optional, uses current if not provided
         "address": "eq1_band1",         // Memory address or metadata key
         "offset": 0,                    // Optional, default 0
         "bypassed": true                // true to bypass, false to enable
+    }
+    
+    Request body for entire filter bank:
+    {
+        "checksum": "profile_checksum",  // Optional, uses current if not provided
+        "address": "eq1_band1",         // Memory address or metadata key
+        "bank": true,                   // Set to true to bypass entire bank
+        "bypassed": true                // true to bypass, false to enable all filters in bank
     }
     """
     try:
@@ -1321,6 +1364,7 @@ def set_filter_bypass():
         offset = data.get('offset', 0)
         bypassed = data.get('bypassed')
         checksum = data.get('checksum')
+        bank_mode = data.get('bank', False)
         
         if not address:
             return jsonify({"error": "Address is required"}), 400
@@ -1336,29 +1380,91 @@ def set_filter_bypass():
             if not checksum:
                 return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
         
-        # Update bypass state in store
-        success, message = filter_store.set_filter_bypass(checksum, address, offset, bypassed)
+        if bank_mode:
+            # Set bypass state for entire filter bank
+            filters = filter_store.get_filters(checksum)
+            bank_filters = []
+            
+            # Find all filters with the same address
+            for filter_key, filter_data in filters.items():
+                if filter_data.get("address") == address:
+                    bank_filters.append({
+                        "offset": filter_data.get("offset", 0),
+                        "filter_key": filter_key
+                    })
+            
+            if not bank_filters:
+                return jsonify({"error": f"No filters found for address '{address}'"}), 404
+            
+            # Apply bypass state to all filters in the bank
+            success_count = 0
+            failed_filters = []
+            
+            for filter_info in bank_filters:
+                filter_offset = filter_info["offset"]
+                
+                # Update bypass state in store
+                success, message = filter_store.set_filter_bypass(checksum, address, filter_offset, bypassed)
+                
+                if success:
+                    # Apply the change to the DSP
+                    try:
+                        dsp_success = apply_filter_bypass_to_dsp(checksum, address, filter_offset, bypassed)
+                        if dsp_success:
+                            success_count += 1
+                        else:
+                            failed_filters.append(f"offset {filter_offset} (DSP write failed)")
+                    except Exception as e:
+                        logging.error(f"Error applying bypass to DSP for offset {filter_offset}: {str(e)}")
+                        failed_filters.append(f"offset {filter_offset} ({str(e)})")
+                else:
+                    failed_filters.append(f"offset {filter_offset} (store update failed)")
+            
+            result = {
+                "status": "success" if success_count > 0 else "error",
+                "checksum": checksum,
+                "address": address,
+                "bank_mode": True,
+                "bypassed": bypassed,
+                "total_filters": len(bank_filters),
+                "successful": success_count
+            }
+            
+            if failed_filters:
+                result["failed_filters"] = failed_filters
+                result["message"] = f"Successfully updated {success_count}/{len(bank_filters)} filters"
+            else:
+                state = "bypassed" if bypassed else "enabled"
+                result["message"] = f"All {success_count} filters in bank {state}"
+            
+            return jsonify(result)
         
-        if not success:
-            return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
-        
-        # Apply the change to the DSP
-        try:
-            success = apply_filter_bypass_to_dsp(checksum, address, offset, bypassed)
+        else:
+            # Set bypass state for single filter
+            # Update bypass state in store
+            success, message = filter_store.set_filter_bypass(checksum, address, offset, bypassed)
+            
             if not success:
-                return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
-        except Exception as e:
-            logging.error(f"Error applying bypass to DSP: {str(e)}")
-            return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
-        
-        return jsonify({
-            "status": "success",
-            "message": message,
-            "checksum": checksum,
-            "address": address,
-            "offset": offset,
-            "bypassed": bypassed
-        })
+                return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+            
+            # Apply the change to the DSP
+            try:
+                success = apply_filter_bypass_to_dsp(checksum, address, offset, bypassed)
+                if not success:
+                    return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
+            except Exception as e:
+                logging.error(f"Error applying bypass to DSP: {str(e)}")
+                return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
+            
+            return jsonify({
+                "status": "success",
+                "message": message,
+                "checksum": checksum,
+                "address": address,
+                "offset": offset,
+                "bank_mode": False,
+                "bypassed": bypassed
+            })
         
     except Exception as e:
         logging.error(f"Error setting filter bypass: {str(e)}")
@@ -1368,13 +1474,20 @@ def set_filter_bypass():
 @app.route('/filters/bypass', methods=['PUT'])
 def toggle_filter_bypass():
     """
-    API endpoint to toggle bypass state of a filter
+    API endpoint to toggle bypass state of filters
     
-    Request body:
+    Request body for single filter:
     {
         "checksum": "profile_checksum",  // Optional, uses current if not provided
         "address": "eq1_band1",         // Memory address or metadata key
         "offset": 0                     // Optional, default 0
+    }
+    
+    Request body for entire filter bank:
+    {
+        "checksum": "profile_checksum",  // Optional, uses current if not provided
+        "address": "eq1_band1",         // Memory address or metadata key
+        "bank": true                    // Set to true to toggle entire bank
     }
     """
     try:
@@ -1385,6 +1498,7 @@ def toggle_filter_bypass():
         address = data.get('address')
         offset = data.get('offset', 0)
         checksum = data.get('checksum')
+        bank_mode = data.get('bank', False)
         
         if not address:
             return jsonify({"error": "Address is required"}), 400
@@ -1394,29 +1508,95 @@ def toggle_filter_bypass():
             if not checksum:
                 return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
         
-        # Toggle bypass state
-        success, new_state, message = filter_store.toggle_filter_bypass(checksum, address, offset)
+        if bank_mode:
+            # Toggle bypass state for entire filter bank
+            filters = filter_store.get_filters(checksum)
+            bank_filters = []
+            
+            # Find all filters with the same address
+            for filter_key, filter_data in filters.items():
+                if filter_data.get("address") == address:
+                    bank_filters.append({
+                        "offset": filter_data.get("offset", 0),
+                        "current_bypass": filter_data.get("bypassed", False),
+                        "filter_key": filter_key
+                    })
+            
+            if not bank_filters:
+                return jsonify({"error": f"No filters found for address '{address}'"}), 404
+            
+            # Determine new state - if any filter is not bypassed, bypass all; otherwise enable all
+            any_enabled = any(not f["current_bypass"] for f in bank_filters)
+            new_state = any_enabled  # If any are enabled, bypass all; if all are bypassed, enable all
+            
+            # Apply new bypass state to all filters in the bank
+            success_count = 0
+            failed_filters = []
+            
+            for filter_info in bank_filters:
+                filter_offset = filter_info["offset"]
+                
+                # Update bypass state in store
+                success, message = filter_store.set_filter_bypass(checksum, address, filter_offset, new_state)
+                
+                if success:
+                    # Apply the change to the DSP
+                    try:
+                        dsp_success = apply_filter_bypass_to_dsp(checksum, address, filter_offset, new_state)
+                        if dsp_success:
+                            success_count += 1
+                        else:
+                            failed_filters.append(f"offset {filter_offset} (DSP write failed)")
+                    except Exception as e:
+                        logging.error(f"Error applying bypass to DSP for offset {filter_offset}: {str(e)}")
+                        failed_filters.append(f"offset {filter_offset} ({str(e)})")
+                else:
+                    failed_filters.append(f"offset {filter_offset} (store update failed)")
+            
+            result = {
+                "status": "success" if success_count > 0 else "error",
+                "checksum": checksum,
+                "address": address,
+                "bank_mode": True,
+                "bypassed": new_state,
+                "total_filters": len(bank_filters),
+                "successful": success_count
+            }
+            
+            if failed_filters:
+                result["failed_filters"] = failed_filters
+                result["message"] = f"Successfully toggled {success_count}/{len(bank_filters)} filters to {'bypassed' if new_state else 'enabled'}"
+            else:
+                state = "bypassed" if new_state else "enabled"
+                result["message"] = f"All {success_count} filters in bank toggled to {state}"
+            
+            return jsonify(result)
         
-        if not success:
-            return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
-        
-        # Apply the change to the DSP
-        try:
-            success = apply_filter_bypass_to_dsp(checksum, address, offset, new_state)
+        else:
+            # Toggle bypass state for single filter
+            success, new_state, message = filter_store.toggle_filter_bypass(checksum, address, offset)
+            
             if not success:
-                return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
-        except Exception as e:
-            logging.error(f"Error applying bypass to DSP: {str(e)}")
-            return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
-        
-        return jsonify({
-            "status": "success",
-            "message": message,
-            "checksum": checksum,
-            "address": address,
-            "offset": offset,
-            "bypassed": new_state
-        })
+                return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+            
+            # Apply the change to the DSP
+            try:
+                success = apply_filter_bypass_to_dsp(checksum, address, offset, new_state)
+                if not success:
+                    return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
+            except Exception as e:
+                logging.error(f"Error applying bypass to DSP: {str(e)}")
+                return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
+            
+            return jsonify({
+                "status": "success",
+                "message": message,
+                "checksum": checksum,
+                "address": address,
+                "offset": offset,
+                "bank_mode": False,
+                "bypassed": new_state
+            })
         
     except Exception as e:
         logging.error(f"Error toggling filter bypass: {str(e)}")
@@ -1451,7 +1631,7 @@ def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):
         base_address = None
         if isinstance(address, str) and not address.startswith('0x') and not address.isdigit():
             # Try to resolve from metadata
-            metadata = get_metadata()
+            metadata = get_profile_metadata()  # Use get_profile_metadata() instead of get_metadata()
             metadata_value = metadata.get(address)
             if metadata_value and '/' in str(metadata_value):
                 # Parse biquad format like "addr/offset"

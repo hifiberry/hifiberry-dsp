@@ -803,46 +803,77 @@ curl -X DELETE "http://localhost:13141/filters?all=true"
 
 The filter bypass API allows you to temporarily disable filters without losing their configuration. When a filter is bypassed, its original coefficients are preserved in the filter store, but a bypass filter (unity coefficients) is written to the DSP instead.
 
+The bypass API supports both **individual filter** operations and **filter bank** operations (all filters sharing the same base address).
+
 #### Get Filter Bypass State
 
-Retrieve the bypass state of a specific filter.
+Retrieve the bypass state of a specific filter or entire filter bank.
 
 ```
-GET /filters/bypass?address={address}&offset={offset}&checksum={checksum}
+GET /filters/bypass?address={address}&offset={offset}&checksum={checksum}&bank={bank}
 ```
 
 **Query Parameters:**
 
 - `address` (required): Memory address or metadata key
-- `offset` (optional, default: 0): Offset value
-- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile.
+- `offset` (optional): Offset value. Omit or set `bank=true` for entire bank operations
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile
+- `bank` (optional): Set to `true` to get bypass state of entire filter bank
 
 **Example Requests:**
 
-Get bypass state for a filter:
+Get bypass state for a single filter:
 ```bash
 curl -X GET "http://localhost:13141/filters/bypass?address=eq1_band1&offset=0"
 ```
 
-**Example Response:**
+Get bypass state for entire filter bank:
+```bash
+curl -X GET "http://localhost:13141/filters/bypass?address=eq1_band1&bank=true"
+```
+
+**Example Response (Single Filter):**
 ```json
 {
   "checksum": "8B924F2C2210B903CB4226C12C56EE44",
   "address": "eq1_band1",
   "offset": 0,
+  "bank_mode": false,
   "bypassed": false
+}
+```
+
+**Example Response (Filter Bank):**
+```json
+{
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "address": "eq1_band1",
+  "bank_mode": true,
+  "total_filters": 5,
+  "filters": [
+    {
+      "offset": 0,
+      "bypassed": false,
+      "filter_key": "eq1_band1_0"
+    },
+    {
+      "offset": 1,
+      "bypassed": true,
+      "filter_key": "eq1_band1_1"
+    }
+  ]
 }
 ```
 
 #### Set Filter Bypass State
 
-Set the bypass state of a filter and apply the change to the DSP immediately.
+Set the bypass state of a filter or entire filter bank and apply the change to the DSP immediately.
 
 ```
 POST /filters/bypass
 ```
 
-**Request Body:**
+**Request Body (Single Filter):**
 ```json
 {
   "address": "eq1_band1",
@@ -852,16 +883,27 @@ POST /filters/bypass
 }
 ```
 
+**Request Body (Filter Bank):**
+```json
+{
+  "address": "eq1_band1",
+  "bank": true,
+  "bypassed": true,
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44"
+}
+```
+
 **Parameters:**
 
 - `address` (required): Memory address or metadata key
-- `bypassed` (required): `true` to bypass the filter, `false` to enable it
-- `offset` (optional, default: 0): Offset value
-- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile.
+- `bypassed` (required): `true` to bypass the filter(s), `false` to enable them
+- `offset` (optional, default: 0): Offset value for single filter operations
+- `bank` (optional, default: false): Set to `true` to operate on entire filter bank
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile
 
 **Example Requests:**
 
-Bypass a filter:
+Bypass a single filter:
 ```bash
 curl -X POST http://localhost:13141/filters/bypass \
   -H "Content-Type: application/json" \
@@ -872,18 +914,29 @@ curl -X POST http://localhost:13141/filters/bypass \
   }'
 ```
 
-Enable a bypassed filter:
+Bypass entire filter bank:
 ```bash
 curl -X POST http://localhost:13141/filters/bypass \
   -H "Content-Type: application/json" \
   -d '{
-    "address": "eq1_band1", 
-    "offset": 0,
+    "address": "eq1_band1",
+    "bank": true,
+    "bypassed": true
+  }'
+```
+
+Enable entire filter bank:
+```bash
+curl -X POST http://localhost:13141/filters/bypass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "eq1_band1",
+    "bank": true,
     "bypassed": false
   }'
 ```
 
-**Example Response:**
+**Example Response (Single Filter):**
 ```json
 {
   "status": "success",
@@ -891,19 +944,34 @@ curl -X POST http://localhost:13141/filters/bypass \
   "checksum": "8B924F2C2210B903CB4226C12C56EE44",
   "address": "eq1_band1",
   "offset": 0,
+  "bank_mode": false,
   "bypassed": true
+}
+```
+
+**Example Response (Filter Bank):**
+```json
+{
+  "status": "success",
+  "message": "All 5 filters in bank bypassed",
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "address": "eq1_band1",
+  "bank_mode": true,
+  "bypassed": true,
+  "total_filters": 5,
+  "successful": 5
 }
 ```
 
 #### Toggle Filter Bypass State
 
-Toggle the bypass state of a filter between enabled and bypassed.
+Toggle the bypass state of a filter or entire filter bank between enabled and bypassed.
 
 ```
 PUT /filters/bypass
 ```
 
-**Request Body:**
+**Request Body (Single Filter):**
 ```json
 {
   "address": "eq1_band1",
@@ -912,13 +980,30 @@ PUT /filters/bypass
 }
 ```
 
+**Request Body (Filter Bank):**
+```json
+{
+  "address": "eq1_band1",
+  "bank": true,
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44"
+}
+```
+
 **Parameters:**
 
 - `address` (required): Memory address or metadata key
-- `offset` (optional, default: 0): Offset value  
-- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile.
+- `offset` (optional, default: 0): Offset value for single filter operations
+- `bank` (optional, default: false): Set to `true` to toggle entire filter bank
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile
 
-**Example Request:**
+**Toggle Logic:**
+
+- **Single Filter**: Toggles the current bypass state (enabled ↔ bypassed)
+- **Filter Bank**: If any filter in the bank is enabled, all filters are bypassed. If all filters are bypassed, all filters are enabled.
+
+**Example Requests:**
+
+Toggle single filter:
 ```bash
 curl -X PUT http://localhost:13141/filters/bypass \
   -H "Content-Type: application/json" \
@@ -928,7 +1013,17 @@ curl -X PUT http://localhost:13141/filters/bypass \
   }'
 ```
 
-**Example Response:**
+Toggle entire filter bank:
+```bash
+curl -X PUT http://localhost:13141/filters/bypass \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "eq1_band1",
+    "bank": true
+  }'
+```
+
+**Example Response (Single Filter):**
 ```json
 {
   "status": "success", 
@@ -936,7 +1031,22 @@ curl -X PUT http://localhost:13141/filters/bypass \
   "checksum": "8B924F2C2210B903CB4226C12C56EE44",
   "address": "eq1_band1",
   "offset": 0,
+  "bank_mode": false,
   "bypassed": false
+}
+```
+
+**Example Response (Filter Bank):**
+```json
+{
+  "status": "success",
+  "message": "All 5 filters in bank toggled to enabled",
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "address": "eq1_band1",
+  "bank_mode": true,
+  "bypassed": false,
+  "total_filters": 5,
+  "successful": 5
 }
 ```
 
@@ -948,6 +1058,10 @@ curl -X PUT http://localhost:13141/filters/bypass \
 4. **Automatic Loading**: Bypass states are preserved and restored during DSP profile changes
 5. **Address Resolution**: Both direct memory addresses and metadata keys are supported
 6. **Error Handling**: Invalid addresses or missing filters return appropriate error responses
+7. **Filter Bank Operations**: Operate on all filters sharing the same base address
+8. **Partial Failures**: For bank operations, individual filter failures are reported in the response
+9. **Smart Toggle Logic**: Bank toggle considers the state of all filters to determine the new state
+10. **Performance**: Bank operations are atomic and efficient for managing multiple related filters
 
 ### Register Access API
 
