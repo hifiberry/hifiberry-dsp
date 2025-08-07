@@ -425,6 +425,9 @@ class SigmaTCPHandler(BaseRequestHandler):
 
         logging.debug("writing {} bytes to {}".format(length, addr))
         
+        # Extract memory data first
+        memdata = data[14:]
+        
         # Debug logging for memory writes if enabled
         if SigmaTCPHandler.debug_memory_writes:
             logging.info(f"DEBUG: Memory write to address 0x{addr:04X} ({addr}), length: {length} bytes")
@@ -435,7 +438,6 @@ class SigmaTCPHandler(BaseRequestHandler):
                 hex_data = ' '.join(f'{b:02X}' for b in memdata[:16])
                 logging.info(f"DEBUG: Write data (first 16 bytes): {hex_data}...")
         
-        memdata = data[14:]
         res = adau145x.Adau145x.write_memory(addr, memdata)
 
         if addr == SigmaTCPHandler.dsp.HIBERNATE_REGISTER and \
