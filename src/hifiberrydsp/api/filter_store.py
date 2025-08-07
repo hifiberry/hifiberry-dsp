@@ -31,7 +31,7 @@ class FilterStore:
     Manages the filter store for DSP profiles.
     
     The filter store saves and retrieves filter configurations organized by DSP profile.
-    Filters are stored in a JSON file in the same directory as DSP profiles.
+    Filters are stored in a JSON file at /var/lib/hifiberry/filters.json.
     """
     
     def __init__(self, profiles_dir="/usr/share/hifiberry/dspprofiles"):
@@ -39,10 +39,10 @@ class FilterStore:
         Initialize the FilterStore
         
         Args:
-            profiles_dir (str): Directory where DSP profiles are stored
+            profiles_dir (str): Directory where DSP profiles are stored (kept for compatibility)
         """
         self.profiles_dir = profiles_dir
-        self.store_file = os.path.join(profiles_dir, "filters.json")
+        self.store_file = "/var/lib/hifiberry/filters.json"
     
     def load(self):
         """
