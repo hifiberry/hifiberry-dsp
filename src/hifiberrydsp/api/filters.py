@@ -194,6 +194,8 @@ class Filter:
             return Volume(**data)
         elif filter_type == "GenericBiquad":
             return GenericBiquad(**data)
+        elif filter_type == "Bypass" or filter_type == "PassThrough":
+            return Bypass(**data)
         else:
             raise ValueError(f"Unknown filter type: {filter_type}")
 
@@ -329,3 +331,17 @@ class GenericBiquad(Filter):
             b2=biquad.b2,
             fs=fs
         )
+
+class Bypass(Filter):
+    def __init__(self, **kwargs):
+        kwargs['type'] = 'Bypass'
+        super().__init__(**kwargs)
+        
+    def biquadCoefficients(self, fs):
+        """
+        Return unity/bypass coefficients that pass the signal through unchanged.
+        This creates a biquad with transfer function H(z) = 1 (unity gain, no filtering).
+        
+        Coefficients: b0=1, b1=0, b2=0, a0=1, a1=0, a2=0
+        """
+        return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
