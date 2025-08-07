@@ -51,8 +51,32 @@ cd ..
 
 # Step 5: Copy systemd service file
 echo "Copying systemd service file..."
+if [ ! -f systemd/sigmatcpserver.service ]; then
+    echo "ERROR: systemd/sigmatcpserver.service not found!"
+    exit 1
+fi
+
+# Ensure target directories exist
+mkdir -p debian/CONTENTS/python3-hifiberry-dsp/usr/share/hifiberry-dsp/systemd
+mkdir -p debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system
+
+# Copy the service file
 cp systemd/sigmatcpserver.service debian/CONTENTS/python3-hifiberry-dsp/usr/share/hifiberry-dsp/systemd/
 cp systemd/sigmatcpserver.service debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/
+
+# Set proper permissions for systemd service file
+chmod 644 debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/sigmatcpserver.service
+
+# Verify the service file was copied correctly
+if [ -f debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/sigmatcpserver.service ]; then
+    echo "✓ Systemd service file copied to package"
+    ls -la debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/sigmatcpserver.service
+    echo "Content check:"
+    head -5 debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/sigmatcpserver.service
+else
+    echo "ERROR: Failed to copy systemd service file to package!"
+    exit 1
+fi
 
 # Step 6: Copy Debian control files with proper formatting
 echo "Copying and preparing Debian control files..."
@@ -83,8 +107,17 @@ for script in postinst prerm; do
   if [ ! -x debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/$script ]; then
     echo "Warning: $script is not marked as executable!"
     ls -la debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/$script
+  else
+    echo "✓ $script is properly executable"
   fi
 done
+
+# Verify all required files are in place for systemd service installation
+echo "Verifying package contents for systemd service..."
+echo "Checking for systemd service file:"
+ls -la debian/CONTENTS/python3-hifiberry-dsp/lib/systemd/system/sigmatcpserver.service || echo "ERROR: systemd service file missing!"
+echo "Checking for postinst script:"
+ls -la debian/CONTENTS/python3-hifiberry-dsp/DEBIAN/postinst || echo "ERROR: postinst script missing!"
 
 # Step 7: Update version in control file
 VERSION=$(cd src && python3 -c 'from hifiberrydsp import __version__; print(__version__)')
@@ -96,6 +129,13 @@ sed -i "s/^Version:.*/Version: $VERSION/" debian/CONTENTS/python3-hifiberry-dsp/
 # Step 8: Build the Debian package
 echo "Building Debian package..."
 dpkg-deb --build debian/CONTENTS/python3-hifiberry-dsp .
+
+# Verify the package contains the systemd service file
+echo "Verifying package contents..."
+if command -v dpkg-deb >/dev/null 2>&1; then
+    echo "Checking if systemd service file is in the package:"
+    dpkg-deb -c python3-hifiberry-dsp_*.deb | grep sigmatcpserver.service || echo "WARNING: systemd service file not found in package!"
+fi
 
 echo "Done! The Debian package has been created."
 
