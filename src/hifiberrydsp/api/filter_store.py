@@ -24,6 +24,7 @@ import logging
 import os
 import json
 import time
+import fcntl
 
 
 class FilterStore:
@@ -60,7 +61,37 @@ class FilterStore:
                 if not content:
                     logging.warning("Filter store file is empty, creating new store")
                     return {}
-                return json.loads(content)
+                
+                # Check for and fix common corruption issues
+                content = self._fix_json_corruption(content)
+                
+                data = json.loads(content)
+                
+                # Normalize checksum keys to uppercase to prevent duplicates
+                normalized_data = {}
+                for checksum, filters in data.items():
+                    normalized_checksum = checksum.upper()
+                    if normalized_checksum in normalized_data:
+                        # Merge duplicate checksums (same checksum in different cases)
+                        logging.warning(f"Found duplicate checksum with different case: {checksum} -> {normalized_checksum}")
+                        for filter_key, filter_data in filters.items():
+                            if filter_key not in normalized_data[normalized_checksum]:
+                                normalized_data[normalized_checksum][filter_key] = filter_data
+                            else:
+                                # Keep the newer one based on timestamp
+                                existing_timestamp = normalized_data[normalized_checksum][filter_key].get("timestamp", 0)
+                                new_timestamp = filter_data.get("timestamp", 0)
+                                if new_timestamp > existing_timestamp:
+                                    normalized_data[normalized_checksum][filter_key] = filter_data
+                    else:
+                        normalized_data[normalized_checksum] = filters
+                
+                # Save normalized data if changes were made
+                if normalized_data != data:
+                    logging.info("Normalizing checksums and removing duplicates in filter store")
+                    self.save(normalized_data)
+                
+                return normalized_data
         except json.JSONDecodeError as e:
             logging.error(f"JSON decode error in filter store at line {e.lineno}, column {e.colno}: {e.msg}")
             # Try to recover by backing up the corrupted file and starting fresh
@@ -75,9 +106,43 @@ class FilterStore:
             logging.error(f"Error loading filter store: {str(e)}")
             return {}
     
+    def _fix_json_corruption(self, content):
+        """
+        Fix common JSON corruption issues
+        
+        Args:
+            content (str): Raw JSON content
+            
+        Returns:
+            str: Fixed JSON content
+        """
+        import re
+        
+        # Remove trailing extra braces (most common corruption)
+        # Count opening and closing braces
+        open_braces = content.count('{')
+        close_braces = content.count('}')
+        
+        if close_braces > open_braces:
+            # Remove extra closing braces from the end
+            extra_braces = close_braces - open_braces
+            logging.warning(f"Detected {extra_braces} extra closing braces in JSON, attempting to fix")
+            
+            # Remove trailing braces and whitespace
+            content = content.rstrip()
+            for _ in range(extra_braces):
+                if content.endswith('}'):
+                    content = content[:-1].rstrip()
+        
+        # Remove trailing commas before closing braces/brackets
+        content = re.sub(r',\s*}', '}', content)
+        content = re.sub(r',\s*]', ']', content)
+        
+        return content
+    
     def save(self, store_data):
         """
-        Save the filter store to disk atomically
+        Save the filter store to disk atomically with file locking
         
         Args:
             store_data (dict): The filter store data to save
@@ -91,8 +156,31 @@ class FilterStore:
             
             # Write to a temporary file first for atomic operation
             temp_file = self.store_file + '.tmp'
+            
+            # Use file locking to prevent concurrent writes
             with open(temp_file, 'w') as f:
-                json.dump(store_data, f, indent=2, ensure_ascii=False)
+                # Apply exclusive lock (blocks until available)
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                
+                try:
+                    # Validate JSON structure before writing
+                    json_content = json.dumps(store_data, indent=2, ensure_ascii=False)
+                    
+                    # Double-check for corruption patterns
+                    open_braces = json_content.count('{')
+                    close_braces = json_content.count('}')
+                    if close_braces != open_braces:
+                        logging.error(f"JSON brace mismatch detected: {open_braces} open vs {close_braces} close")
+                        return False
+                    
+                    # Write the content
+                    f.write(json_content)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure data is written to disk
+                    
+                finally:
+                    # Release lock (automatically released when file closes, but explicit is better)
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             
             # Atomically move the temp file to the final location
             os.rename(temp_file, self.store_file)
@@ -122,6 +210,9 @@ class FilterStore:
             bool: True if successful, False otherwise
         """
         try:
+            # Normalize checksum to uppercase to prevent duplicates
+            checksum = checksum.upper()
+            
             store = self.load()
             
             # Initialize checksum section if it doesn't exist
@@ -169,6 +260,8 @@ class FilterStore:
             store = self.load()
             
             if checksum:
+                # Normalize checksum to uppercase
+                checksum = checksum.upper()
                 filters = store.get(checksum, {})
                 
                 if group_by_bank:
@@ -242,6 +335,9 @@ class FilterStore:
                     return False, "Failed to delete filters"
             
             elif checksum:
+                # Normalize checksum to uppercase
+                checksum = checksum.upper()
+                
                 store = self.load()
                 
                 if checksum not in store:
@@ -284,6 +380,8 @@ class FilterStore:
             int: Number of filters stored for the profile
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
             filters = self.get_filters(checksum)
             return len(filters)
         except Exception as e:
@@ -315,6 +413,8 @@ class FilterStore:
             dict: Filters for the checksum
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
             store = self.load()
             return store.get(checksum, {})
         except Exception as e:
@@ -359,6 +459,9 @@ class FilterStore:
             tuple: (success: bool, message: str)
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
+            
             store = self.load()
             
             if checksum not in store:
@@ -396,6 +499,9 @@ class FilterStore:
             bool: True if bypassed, False if enabled, None if not found
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
+            
             store = self.load()
             
             if checksum not in store:
@@ -425,6 +531,9 @@ class FilterStore:
             tuple: (success: bool, new_state: bool, message: str)
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
+            
             current_state = self.get_filter_bypass_state(checksum, address, offset)
             
             if current_state is None:
@@ -452,6 +561,9 @@ class FilterStore:
             tuple: (success_count: int, total_count: int, message: str)
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
+            
             store = self.load()
             
             if checksum not in store:
@@ -495,6 +607,9 @@ class FilterStore:
             list: List of dictionaries with offset and bypass state, or empty list if not found
         """
         try:
+            # Normalize checksum to uppercase
+            checksum = checksum.upper()
+            
             store = self.load()
             
             if checksum not in store:
