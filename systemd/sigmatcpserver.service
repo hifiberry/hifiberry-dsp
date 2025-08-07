@@ -5,7 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=sigmatcpserver --localhost --enable-rest
+EnvironmentFile=-/etc/default/sigmatcpserver
+ExecStart=sigmatcpserver --localhost --enable-rest $DEBUG_OPTIONS $EXTRA_OPTIONS
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

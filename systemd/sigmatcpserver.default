@@ -1,0 +1,23 @@
+# HiFiBerry DSP SigmaTCP Server Configuration
+# This file is sourced by the systemd service unit
+#
+# To enable debug logging of all DSP memory writes, uncomment:
+# DEBUG_OPTIONS="--debug"
+#
+# Additional options can be added here:
+# EXTRA_OPTIONS="--verbose"
+#
+# Available options:
+#   --debug                 Enable debug logging for all DSP memory writes
+#   --verbose               Enable verbose logging
+#   --alsa                  Enable ALSA volume control
+#   --lgsoundsync          Enable LG Sound Sync
+#   --no-autoload-filters  Disable automatic loading of stored filters on startup
+#   --bind-address IP       Specify IP address to bind to
+#   --disable-tcp          Disable SigmaTCP server (only useful with --enable-rest)
+
+# Debug options (uncomment to enable)
+#DEBUG_OPTIONS="--debug"
+
+# Extra options
+#EXTRA_OPTIONS="--verbose"
