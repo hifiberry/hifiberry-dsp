@@ -1,3 +1,27 @@
+hifiberry-dsp (1.1) stable; urgency=medium
+
+  * Added comprehensive Filter Store API with JSON persistence
+  * Added filter storage organized by DSP profile checksum
+  * Added automatic filter loading and persistence via REST API
+  * Added sigmatcp server autoloading of stored filters on DSP updates
+  * Added REST API endpoints for filter management (/filters)
+  * Added DSP program checksum endpoint (/checksum)
+  * Added cache management and status endpoint (/cache)
+  * Added bulk profile metadata endpoint (/profiles/metadata)
+  * Added checksum caching for improved REST API performance
+  * Added debug mode with --debug flag for memory write logging
+  * Added systemd configuration support via /etc/default/sigmatcpserver
+  * Added Bypass/PassThrough filter type for signal pass-through
+  * Added comprehensive debug logging for all memory writes
+  * Enhanced REST API documentation with detailed examples
+  * Fixed memory write debug logging bug in sigmatcp server
+  * Enhanced filter store with offset-aware addressing
+  * Enhanced biquad filter support with coefficient calculation
+  * Moved filter storage to /var/lib/hifiberry/filters.json
+  * Improved error handling and validation throughout system
+
+ -- HiFiBerry <info@hifiberry.com>  Wed, 07 Aug 2025 14:00:00 +0000
+
 hifiberry-dsp (1.0.3) stable; urgency=low
 
   * Changed distribution from unstable to stable
