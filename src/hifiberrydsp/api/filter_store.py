@@ -56,14 +56,28 @@ class FilterStore:
         
         try:
             with open(self.store_file, 'r') as f:
-                return json.load(f)
+                content = f.read().strip()
+                if not content:
+                    logging.warning("Filter store file is empty, creating new store")
+                    return {}
+                return json.loads(content)
+        except json.JSONDecodeError as e:
+            logging.error(f"JSON decode error in filter store at line {e.lineno}, column {e.colno}: {e.msg}")
+            # Try to recover by backing up the corrupted file and starting fresh
+            try:
+                backup_file = self.store_file + f".corrupted.{int(time.time())}"
+                os.rename(self.store_file, backup_file)
+                logging.warning(f"Corrupted filter store backed up to {backup_file}, starting with empty store")
+            except Exception as backup_e:
+                logging.error(f"Could not backup corrupted filter store: {backup_e}")
+            return {}
         except Exception as e:
             logging.error(f"Error loading filter store: {str(e)}")
             return {}
     
     def save(self, store_data):
         """
-        Save the filter store to disk
+        Save the filter store to disk atomically
         
         Args:
             store_data (dict): The filter store data to save
@@ -75,11 +89,22 @@ class FilterStore:
             # Ensure the directory exists
             os.makedirs(os.path.dirname(self.store_file), exist_ok=True)
             
-            with open(self.store_file, 'w') as f:
-                json.dump(store_data, f, indent=2)
+            # Write to a temporary file first for atomic operation
+            temp_file = self.store_file + '.tmp'
+            with open(temp_file, 'w') as f:
+                json.dump(store_data, f, indent=2, ensure_ascii=False)
+            
+            # Atomically move the temp file to the final location
+            os.rename(temp_file, self.store_file)
             return True
         except Exception as e:
             logging.error(f"Error saving filter store: {str(e)}")
+            # Clean up temp file if it exists
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except:
+                pass
             return False
     
     def store_filter(self, checksum, address, offset, filter_data, bypassed=False):
@@ -413,3 +438,172 @@ class FilterStore:
         except Exception as e:
             logging.error(f"Error toggling filter bypass: {str(e)}")
             return False, False, str(e)
+    
+    def set_filter_bank_bypass(self, checksum, address, bypassed):
+        """
+        Set the bypass state of all filters in a filter bank (same address)
+        
+        Args:
+            checksum (str): DSP profile checksum
+            address (str): Memory address or metadata key
+            bypassed (bool): True to bypass, False to enable
+            
+        Returns:
+            tuple: (success_count: int, total_count: int, message: str)
+        """
+        try:
+            store = self.load()
+            
+            if checksum not in store:
+                return 0, 0, f"No filters found for profile checksum '{checksum}'"
+            
+            # Find all filters with the same address
+            bank_filters = []
+            for filter_key, filter_data in store[checksum].items():
+                if filter_data.get("address") == address:
+                    bank_filters.append(filter_key)
+            
+            if not bank_filters:
+                return 0, 0, f"No filters found for address '{address}'"
+            
+            # Update bypass state for all filters in the bank
+            success_count = 0
+            for filter_key in bank_filters:
+                store[checksum][filter_key]["bypassed"] = bypassed
+                store[checksum][filter_key]["timestamp"] = time.time()
+                success_count += 1
+            
+            if self.save(store):
+                state = "bypassed" if bypassed else "enabled"
+                return success_count, len(bank_filters), f"Filter bank at {address} {state} ({success_count} filters)"
+            else:
+                return 0, len(bank_filters), "Failed to save bypass state"
+                
+        except Exception as e:
+            logging.error(f"Error setting filter bank bypass: {str(e)}")
+            return 0, 0, str(e)
+    
+    def get_filter_bank_bypass_states(self, checksum, address):
+        """
+        Get the bypass states of all filters in a filter bank
+        
+        Args:
+            checksum (str): DSP profile checksum
+            address (str): Memory address or metadata key
+            
+        Returns:
+            list: List of dictionaries with offset and bypass state, or empty list if not found
+        """
+        try:
+            store = self.load()
+            
+            if checksum not in store:
+                return []
+            
+            bank_filters = []
+            for filter_key, filter_data in store[checksum].items():
+                if filter_data.get("address") == address:
+                    bank_filters.append({
+                        "offset": filter_data.get("offset", 0),
+                        "bypassed": filter_data.get("bypassed", False),
+                        "filter_key": filter_key,
+                        "timestamp": filter_data.get("timestamp", 0)
+                    })
+            
+            # Sort by offset
+            bank_filters.sort(key=lambda x: x["offset"])
+            return bank_filters
+            
+        except Exception as e:
+            logging.error(f"Error getting filter bank bypass states: {str(e)}")
+            return []
+    
+    def validate_and_repair(self):
+        """
+        Validate the filter store file and attempt to repair it if corrupted
+        
+        Returns:
+            tuple: (is_valid: bool, was_repaired: bool, message: str)
+        """
+        try:
+            if not os.path.exists(self.store_file):
+                return True, False, "Filter store file does not exist (will be created on first write)"
+            
+            # Try to load the file
+            try:
+                with open(self.store_file, 'r') as f:
+                    content = f.read().strip()
+                    if not content:
+                        return True, False, "Filter store file is empty"
+                    
+                    # Try to parse as JSON
+                    data = json.loads(content)
+                    
+                    # Validate structure
+                    if not isinstance(data, dict):
+                        return False, False, "Filter store root is not a dictionary"
+                    
+                    # Validate each profile section
+                    for checksum, filters in data.items():
+                        if not isinstance(filters, dict):
+                            logging.warning(f"Profile {checksum} filters section is not a dictionary")
+                            continue
+                        
+                        for filter_key, filter_data in filters.items():
+                            if not isinstance(filter_data, dict):
+                                logging.warning(f"Filter {filter_key} in profile {checksum} is not a dictionary")
+                                continue
+                            
+                            # Check for required fields
+                            required_fields = ['address', 'offset', 'filter']
+                            missing_fields = [field for field in required_fields if field not in filter_data]
+                            if missing_fields:
+                                logging.warning(f"Filter {filter_key} in profile {checksum} missing fields: {missing_fields}")
+                    
+                    return True, False, "Filter store is valid"
+                    
+            except json.JSONDecodeError as e:
+                # Try to repair the JSON
+                logging.warning(f"JSON decode error: {e.msg} at line {e.lineno}, column {e.colno}")
+                
+                # Read the file content
+                with open(self.store_file, 'r') as f:
+                    content = f.read()
+                
+                # Attempt simple repairs
+                repaired = False
+                original_content = content
+                
+                # Fix common JSON issues
+                # 1. Remove trailing commas
+                import re
+                content = re.sub(r',\s*}', '}', content)
+                content = re.sub(r',\s*]', ']', content)
+                
+                # 2. Fix missing quotes around keys (basic attempt)
+                content = re.sub(r'(\w+):', r'"\1":', content)
+                
+                # 3. Try to parse again
+                try:
+                    json.loads(content)
+                    # If successful, save the repaired version
+                    backup_file = self.store_file + f".original.{int(time.time())}"
+                    with open(backup_file, 'w') as f:
+                        f.write(original_content)
+                    
+                    with open(self.store_file, 'w') as f:
+                        f.write(content)
+                    
+                    logging.info(f"Successfully repaired filter store. Original backed up to {backup_file}")
+                    return True, True, f"Filter store repaired. Original backed up to {backup_file}"
+                    
+                except json.JSONDecodeError:
+                    # Repair failed, move corrupted file and start fresh
+                    backup_file = self.store_file + f".corrupted.{int(time.time())}"
+                    os.rename(self.store_file, backup_file)
+                    logging.warning(f"Could not repair filter store. Corrupted file moved to {backup_file}")
+                    return False, True, f"Could not repair filter store. Corrupted file moved to {backup_file}, will start with empty store"
+                    
+        except Exception as e:
+            logging.error(f"Error validating filter store: {str(e)}")
+            return False, False, f"Error during validation: {str(e)}"
