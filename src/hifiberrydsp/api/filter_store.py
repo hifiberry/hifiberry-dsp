@@ -103,7 +103,8 @@ class FilterStore:
                 store[checksum] = {}
             
             # Create a unique key for this filter location
-            filter_key = f"{address}_{offset}" if offset > 0 else str(address)
+            # Always include offset suffix for consistency
+            filter_key = f"{address}_{offset}"
             
             # Store the filter with timestamp
             store[checksum][filter_key] = {
@@ -118,12 +119,13 @@ class FilterStore:
             logging.error(f"Error storing filter: {str(e)}")
             return False
     
-    def get_filters(self, checksum=None):
+    def get_filters(self, checksum=None, group_by_bank=False):
         """
         Get stored filters, optionally filtered by checksum
         
         Args:
             checksum (str, optional): DSP profile checksum to filter by
+            group_by_bank (bool): If True, group filters by bank (same address)
             
         Returns:
             dict: The stored filters
@@ -132,12 +134,57 @@ class FilterStore:
             store = self.load()
             
             if checksum:
-                return store.get(checksum, {})
+                filters = store.get(checksum, {})
+                
+                if group_by_bank:
+                    return self._group_filters_by_bank(filters)
+                else:
+                    return filters
             else:
-                return store
+                if group_by_bank:
+                    # Group filters for all profiles
+                    grouped_store = {}
+                    for profile_checksum, filters in store.items():
+                        grouped_store[profile_checksum] = self._group_filters_by_bank(filters)
+                    return grouped_store
+                else:
+                    return store
         except Exception as e:
             logging.error(f"Error getting stored filters: {str(e)}")
             return {}
+    
+    def _group_filters_by_bank(self, filters):
+        """
+        Group filters by their base address (bank)
+        
+        Args:
+            filters (dict): Individual filters keyed by filter_key
+            
+        Returns:
+            dict: Filters grouped by bank address
+        """
+        banks = {}
+        
+        for filter_key, filter_data in filters.items():
+            address = filter_data.get("address", "")
+            offset = filter_data.get("offset", 0)
+            
+            # Use the base address as the bank key
+            if address not in banks:
+                banks[address] = []
+            
+            # Add filter to the bank array, sorted by offset
+            banks[address].append({
+                "offset": offset,
+                "filter": filter_data.get("filter", {}),
+                "timestamp": filter_data.get("timestamp", 0)
+            })
+        
+        # Sort filters within each bank by offset
+        for bank_address in banks:
+            banks[bank_address].sort(key=lambda f: f["offset"])
+        
+        return banks
     
     def delete_filters(self, checksum=None, address=None, all_profiles=False):
         """
