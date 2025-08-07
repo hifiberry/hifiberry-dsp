@@ -502,6 +502,12 @@ class Adau145x():
                             "found erase command, waiting 10 seconds to finish")
                         time.sleep(10)
 
+                    # Delay after Programn, DM0 data, DM1 data, HIBERNATE
+                    if ("Programn" in paramname) or ("DM0" in paramname) or ("DM1" in paramname) or ("HIBERNATE" in paramname):
+                        logging.debug(
+                            "found program write command, waiting 1 seconds to finish")
+                        time.sleep(1)
+
                     # Delay after a page write
                     if ("Page_" in paramname):
                         logging.debug(
