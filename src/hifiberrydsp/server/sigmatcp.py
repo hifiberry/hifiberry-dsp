@@ -687,6 +687,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                     address = filter_data.get("address")
                     offset = filter_data.get("offset", 0)
                     filter_spec = filter_data.get("filter", {})
+                    is_bypassed = filter_data.get("bypassed", False)
                     
                     if not address or not filter_spec:
                         logging.warning(f"Skipping invalid filter {filter_key}: missing address or filter data")
@@ -729,12 +730,19 @@ class SigmaTCPHandler(BaseRequestHandler):
                         logging.warning(f"Skipping filter {filter_key}: invalid memory address range {hex(actual_address)}")
                         continue
                     
-                    # Apply the filter
-                    success = SigmaTCPHandler._apply_filter(actual_address, filter_spec)
+                    # Apply the filter (original or bypass based on state)
+                    if is_bypassed:
+                        # Apply bypass filter
+                        success = SigmaTCPHandler._apply_bypass_filter(actual_address)
+                        filter_type = "bypassed"
+                    else:
+                        # Apply original filter
+                        success = SigmaTCPHandler._apply_filter(actual_address, filter_spec)
+                        filter_type = "active"
                     
                     if success:
                         filters_applied += 1
-                        logging.debug(f"Applied filter {filter_key} at address {hex(actual_address)}")
+                        logging.debug(f"Applied {filter_type} filter {filter_key} at address {hex(actual_address)}")
                     else:
                         logging.warning(f"Failed to apply filter {filter_key} at address {hex(actual_address)}")
                         
@@ -825,6 +833,35 @@ class SigmaTCPHandler(BaseRequestHandler):
                 
         except Exception as e:
             logging.error(f"Error applying filter at address {hex(address)}: {str(e)}")
+            return False
+    
+    @staticmethod
+    def _apply_bypass_filter(address):
+        """
+        Apply a bypass filter at the specified address
+        
+        Args:
+            address (int): Memory address to write the bypass filter to
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Create bypass filter (unity coefficients)
+            from hifiberrydsp.api.filters import Bypass
+            bypass_filter = Bypass()
+            coeffs = bypass_filter.biquadCoefficients(48000)  # Sample rate doesn't matter for bypass
+            
+            # Extract coefficients (Filter returns b0,b1,b2,a0,a1,a2)
+            b0, b1, b2, a0, a1, a2 = coeffs
+            
+            # Create and write bypass biquad
+            bq = Biquad(a0, a1, a2, b0, b1, b2, "Autoloaded bypass filter")
+            adau145x.Adau145x.write_biquad(address, bq)
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error applying bypass filter at address {hex(address)}: {str(e)}")
             return False
 
 
