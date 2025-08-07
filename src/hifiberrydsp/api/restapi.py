@@ -28,6 +28,7 @@ import time
 from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
+from hifiberrydsp.api.filter_store import FilterStore
 from waitress import serve
 import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -37,6 +38,9 @@ from hifiberrydsp.filtering.biquad import Biquad
 DEFAULT_PORT = 13141
 DEFAULT_HOST = "localhost"
 PROFILES_DIR = "/usr/share/hifiberry/dspprofiles"
+
+# Initialize filter store
+filter_store = FilterStore(PROFILES_DIR)
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
@@ -245,6 +249,42 @@ def get_or_guess_samplerate():
         sample_rate = 48000
         
     return sample_rate
+
+
+def get_current_profile_name():
+    """
+    Get the name of the currently active DSP profile
+    
+    Returns:
+        str: Profile name or "default" if not found
+    """
+    try:
+        metadata = get_profile_metadata()
+        if metadata and "_system" in metadata and "profileName" in metadata["_system"]:
+            profile_name = metadata["_system"]["profileName"]
+            if profile_name and profile_name != "Unknown Profile":
+                return profile_name
+    except Exception as e:
+        logging.warning(f"Error getting profile name: {str(e)}")
+    
+    return "default"
+
+
+def get_current_profile_checksum():
+    """
+    Get the checksum of the currently active DSP profile
+    
+    Returns:
+        str: Profile checksum or None if not found
+    """
+    try:
+        metadata = get_profile_metadata()
+        if metadata and "checksum" in metadata:
+            return metadata["checksum"]
+    except Exception as e:
+        logging.warning(f"Error getting profile checksum: {str(e)}")
+    
+    return None
 
 
 @app.route('/hardware/dsp', methods=['GET'])
@@ -975,6 +1015,11 @@ def set_biquad_filter():
                 bq = Biquad(a0, a1, a2, b0, b1, b2, "Custom biquad")
                 Adau145x.write_biquad(actual_address, bq)
                 
+                # Store the filter in the filter store using checksum
+                checksum = get_current_profile_checksum()
+                if checksum:
+                    filter_store.store_filter(checksum, raw_address, offset, filter_data)
+                
                 return jsonify({
                     "status": "success", 
                     "address": hex(actual_address),
@@ -1006,6 +1051,11 @@ def set_biquad_filter():
                 # Write the biquad to DSP memory
                 Adau145x.write_biquad(actual_address, bq)
                 
+                # Store the filter in the filter store using checksum
+                checksum = get_current_profile_checksum()
+                if checksum:
+                    filter_store.store_filter(checksum, raw_address, offset, filter_data)
+                
                 return jsonify({
                     "status": "success", 
                     "address": hex(actual_address),
@@ -1025,6 +1075,132 @@ def set_biquad_filter():
                 
     except Exception as e:
         logging.error(f"Error setting biquad filter: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/filters', methods=['GET'])
+def get_filters():
+    """
+    API endpoint to retrieve stored filters
+    
+    Query Parameters:
+        checksum (str): Optional profile checksum to filter by
+    """
+    try:
+        checksum = request.args.get('checksum')
+        
+        if checksum:
+            # Use checksum to get filters
+            filters = filter_store.get_filters(checksum)
+            
+            return jsonify({
+                "checksum": checksum,
+                "filters": filters
+            })
+        else:
+            # Return all profiles organized by checksum
+            all_filters = filter_store.get_filters()
+            return jsonify({
+                "profiles": all_filters
+            })
+            
+    except Exception as e:
+        logging.error(f"Error getting stored filters: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/filters', methods=['POST'])
+def set_filters():
+    """
+    API endpoint to manually store filters in the filter store
+    
+    The request body should contain:
+    - checksum: DSP profile checksum (optional, will use current checksum if not provided)
+    - filters: Array of filter objects with address, offset, and filter data
+    """
+    try:
+        data = request.json
+        if not data or 'filters' not in data:
+            return jsonify({"error": "Filters array is required in the request body"}), 400
+        
+        # Get checksum
+        checksum = data.get('checksum', get_current_profile_checksum())
+        
+        # If no checksum provided and we can't get current, return error
+        if not checksum:
+            return jsonify({"error": "Profile checksum is required (no active profile found)"}), 400
+        
+        filters_data = data['filters']
+        
+        if not isinstance(filters_data, list):
+            return jsonify({"error": "Filters must be an array"}), 400
+        
+        success_count = 0
+        errors = []
+        
+        for i, filter_entry in enumerate(filters_data):
+            if not isinstance(filter_entry, dict):
+                errors.append(f"Filter {i}: Must be an object")
+                continue
+                
+            if 'address' not in filter_entry or 'filter' not in filter_entry:
+                errors.append(f"Filter {i}: Address and filter are required")
+                continue
+            
+            address = filter_entry['address']
+            offset = filter_entry.get('offset', 0)
+            filter_data = filter_entry['filter']
+            
+            if filter_store.store_filter(checksum, address, offset, filter_data):
+                success_count += 1
+            else:
+                errors.append(f"Filter {i}: Failed to store filter at {address}")
+        
+        response = {
+            "status": "success" if success_count > 0 else "error",
+            "checksum": checksum,
+            "stored": success_count,
+            "total": len(filters_data)
+        }
+        
+        if errors:
+            response["errors"] = errors
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logging.error(f"Error storing filters: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/filters', methods=['DELETE'])
+def delete_filters():
+    """
+    API endpoint to delete stored filters
+    
+    Query Parameters:
+        checksum (str): Profile checksum to delete filters for
+        address (str): Optional specific address to delete
+        all (bool): Delete all filters for all profiles
+    """
+    try:
+        checksum = request.args.get('checksum')
+        address = request.args.get('address')
+        delete_all = request.args.get('all', '').lower() in ('true', '1', 'yes')
+        
+        success, message = filter_store.delete_filters(
+            checksum=checksum,
+            address=address,
+            all_profiles=delete_all
+        )
+        
+        if success:
+            return jsonify({"status": "success", "message": message})
+        else:
+            return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+            
+    except Exception as e:
+        logging.error(f"Error deleting filters: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 

@@ -572,6 +572,202 @@ curl -X POST http://localhost:13141/biquad \
 2. The offset parameter is useful when you have multiple filters starting at a base address. For example, with offset=1, the filter will be written 5 memory cells after the base address.
 3. Filter coefficients are automatically normalized to ensure a0 = 1.0 before being written to the DSP.
 4. The sample rate is important for calculating the correct filter coefficients. Specify it explicitly when you know your system is running at a non-standard rate.
+5. Filters set via the `/biquad` endpoint are automatically stored in the filter store using the current DSP profile checksum.
+
+### Filter Store API
+
+The filter store allows you to save and retrieve filter configurations for different DSP profiles. Filters are automatically stored when set via the `/biquad` endpoint and are organized by profile checksum.
+
+#### Get Stored Filters
+
+Retrieve stored filters from the filter store.
+
+```
+GET /filters
+```
+
+**Query Parameters:**
+
+- `checksum` (optional): DSP profile checksum to get filters for. If not specified, returns filters for all profiles.
+
+**Example Requests:**
+
+Get all stored filters:
+```bash
+curl -X GET http://localhost:13141/filters
+```
+
+Get filters for a specific profile by checksum:
+```bash
+curl -X GET "http://localhost:13141/filters?checksum=8B924F2C2210B903CB4226C12C56EE44"
+```
+
+**Example Response (All Profiles):**
+```json
+{
+  "profiles": {
+    "8B924F2C2210B903CB4226C12C56EE44": {
+      "eq1_band1_0": {
+        "address": "eq1_band1",
+        "offset": 0,
+        "filter": {
+          "type": "PeakingEq",
+          "f": 1000,
+          "db": -3.0,
+          "q": 1.0
+        },
+        "timestamp": 1699564123.456
+      },
+      "0x100_1": {
+        "address": "0x100",
+        "offset": 1,
+        "filter": {
+          "a0": 1.0,
+          "a1": -1.8,
+          "a2": 0.81,
+          "b0": 0.5,
+          "b1": 0.0,
+          "b2": -0.5
+        },
+        "timestamp": 1699564156.789
+      }
+    },
+    "A1B2C3D4E5F6789012345678ABCDEF01": {
+      ...
+    }
+  }
+}
+```
+
+**Example Response (Single Profile by Checksum):**
+```json
+{
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "filters": {
+    "eq1_band1_0": {
+      "address": "eq1_band1",
+      "offset": 0,
+      "filter": {
+        "type": "PeakingEq",
+        "f": 1000,
+        "db": -3.0,
+        "q": 1.0
+      },
+      "timestamp": 1699564123.456
+    }
+  }
+}
+```
+
+#### Store Filters Manually
+
+Manually store filters in the filter store without applying them to the DSP.
+
+```
+POST /filters
+```
+
+**Request Body:**
+
+```json
+{
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "filters": [
+    {
+      "address": "eq1_band1",
+      "offset": 0,
+      "filter": {
+        "type": "PeakingEq",
+        "f": 1000,
+        "db": -3.0,
+        "q": 1.0
+      }
+    },
+    {
+      "address": "0x200",
+      "offset": 2,
+      "filter": {
+        "a0": 1.0,
+        "a1": -1.5,
+        "a2": 0.5,
+        "b0": 0.8,
+        "b1": 0.0,
+        "b2": -0.8
+      }
+    }
+  ]
+}
+```
+
+**Parameters:**
+
+- `checksum` (optional): DSP profile checksum. If not provided, uses the current active profile checksum.
+- `filters`: Array of filter objects to store.
+
+Each filter object should contain:
+- `address`: Memory address or metadata key
+- `offset` (optional, default: 0): Offset value
+- `filter`: Filter specification (same format as `/biquad` endpoint)
+
+**Example Response:**
+```json
+{
+  "status": "success",
+  "checksum": "8B924F2C2210B903CB4226C12C56EE44",
+  "stored": 2,
+  "total": 2
+}
+```
+
+#### Delete Stored Filters
+
+Delete stored filters from the filter store.
+
+```
+DELETE /filters
+```
+
+**Query Parameters:**
+
+- `checksum`: DSP profile checksum to delete filters for
+- `address` (optional): Specific address to delete. If not provided, deletes all filters for the profile.
+- `all` (optional): Set to `true` to delete all filters for all profiles
+
+**Example Requests:**
+
+Delete all filters for a specific profile by checksum:
+```bash
+curl -X DELETE "http://localhost:13141/filters?checksum=8B924F2C2210B903CB4226C12C56EE44"
+```
+
+Delete a specific filter:
+```bash
+curl -X DELETE "http://localhost:13141/filters?checksum=8B924F2C2210B903CB4226C12C56EE44&address=eq1_band1"
+```
+
+Delete all filters for all profiles:
+```bash
+curl -X DELETE "http://localhost:13141/filters?all=true"
+```
+
+**Example Response:**
+```json
+{
+  "status": "success",
+  "message": "All filters deleted for profile checksum '8B924F2C2210B903CB4226C12C56EE44'"
+}
+```
+
+**Notes:**
+
+1. The filter store is saved as `filters.json` in the same directory as DSP profiles (`/usr/share/hifiberry/dspprofiles`).
+2. Filters are automatically stored when set via the `/biquad` endpoint using the current profile checksum.
+3. Filter keys are generated as `{address}_{offset}` or just `{address}` if offset is 0.
+4. Each stored filter includes a timestamp indicating when it was last modified.
+5. The filter store persists across system restarts and profile changes.
+6. Profiles are organized by their MD5 checksum for better reliability and uniqueness.
+7. Profile names are stored for display purposes but checksums are used as the primary identifier.
+8. Legacy support is provided for accessing filters by profile name, but checksum-based access is recommended.
 
 ### Register Access API
 
