@@ -61,7 +61,11 @@ from hifiberrydsp.api.restapi import run_api  # Import the REST API server
 from hifiberrydsp.api.settings_store import SettingsStore
 from hifiberrydsp.filtering.biquad import Biquad
 import binascii
+import shutil
 # import hifiberrydsp
+
+# Constants
+DSP_PROFILES_DIRECTORY = "/usr/share/hifiberry/dspprofiles"
 
 # URL to notify on DSP program updates
 this = sys.modules[__name__]
@@ -104,6 +108,106 @@ def startup_notify():
     
     logging.info("calling %s", this.command_after_startup)
     os.system(this.command_after_startup)
+
+
+def find_and_restore_dsp_profile():
+    """
+    Find and restore the correct DSP profile from the profiles directory
+    if the current profile is missing or has incorrect checksum
+    """
+    try:
+        current_profile_path = dspprogramfile()
+        
+        # Check if current profile exists and has correct checksum
+        profile_valid = False
+        current_checksum = None
+        
+        if os.path.exists(current_profile_path):
+            try:
+                # Get DSP program checksum first
+                dsp_checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=False)
+                if dsp_checksum_bytes:
+                    dsp_checksum = binascii.hexlify(dsp_checksum_bytes).decode('utf-8').upper()
+                    
+                    # Try to load current profile and check its checksum
+                    try:
+                        xml_profile = XmlProfile(current_profile_path)
+                        profile_checksum = xml_profile.get_meta("checksum")
+                        if profile_checksum and profile_checksum.upper() == dsp_checksum:
+                            profile_valid = True
+                            logging.debug(f"Current DSP profile is valid with checksum {dsp_checksum}")
+                        else:
+                            logging.info(f"DSP profile checksum mismatch: profile={profile_checksum}, DSP={dsp_checksum}")
+                    except Exception as e:
+                        logging.info(f"Error loading current DSP profile: {str(e)}")
+                else:
+                    logging.warning("Could not get DSP program checksum")
+                    
+            except Exception as e:
+                logging.warning(f"Error validating current DSP profile: {str(e)}")
+        else:
+            logging.info(f"DSP profile file not found: {current_profile_path}")
+        
+        if profile_valid:
+            return True
+            
+        # Profile is invalid or missing, search for correct one
+        if not os.path.exists(DSP_PROFILES_DIRECTORY):
+            logging.warning(f"DSP profiles directory not found: {DSP_PROFILES_DIRECTORY}")
+            return False
+            
+        # Get target checksum from DSP
+        dsp_checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=False)
+        if not dsp_checksum_bytes:
+            logging.warning("Could not get DSP program checksum for profile search")
+            return False
+            
+        target_checksum = binascii.hexlify(dsp_checksum_bytes).decode('utf-8').upper()
+        logging.info(f"Searching for DSP profile with checksum: {target_checksum}")
+        
+        # Search for matching profile in profiles directory
+        found_profile = None
+        try:
+            for filename in os.listdir(DSP_PROFILES_DIRECTORY):
+                if filename.endswith('.xml'):
+                    profile_path = os.path.join(DSP_PROFILES_DIRECTORY, filename)
+                    try:
+                        xml_profile = XmlProfile(profile_path)
+                        profile_checksum = xml_profile.get_meta("checksum")
+                        
+                        if profile_checksum and profile_checksum.upper() == target_checksum:
+                            found_profile = profile_path
+                            logging.info(f"Found matching DSP profile: {filename}")
+                            break
+                            
+                    except Exception as e:
+                        logging.debug(f"Error checking profile {filename}: {str(e)}")
+                        continue
+        except Exception as e:
+            logging.error(f"Error searching profiles directory: {str(e)}")
+            return False
+        
+        if found_profile:
+            try:
+                # Ensure target directory exists
+                target_dir = os.path.dirname(current_profile_path)
+                os.makedirs(target_dir, exist_ok=True)
+                
+                # Copy the profile
+                shutil.copy2(found_profile, current_profile_path)
+                logging.info(f"Copied DSP profile from {found_profile} to {current_profile_path}")
+                
+                return True
+            except Exception as e:
+                logging.error(f"Error copying DSP profile: {str(e)}")
+                return False
+        else:
+            logging.warning(f"No matching DSP profile found in {DSP_PROFILES_DIRECTORY} for checksum {target_checksum}")
+            return False
+        
+    except Exception as e:
+        logging.error(f"Error in find_and_restore_dsp_profile: {str(e)}")
+        return False
     
 
 class SigmaTCPHandler(BaseRequestHandler):
@@ -1206,8 +1310,12 @@ class SigmaTCPServerMain():
         else:
             logging.info("did not detect ADAU14xx DSP")
             this.dsp=""
-            
         
+        # Find and restore correct DSP profile if needed
+        if dsp_detected:
+            logging.info("Checking DSP profile integrity...")
+            find_and_restore_dsp_profile()
+            
         if (self.restore):
             try:
                 logging.info("restoring saved data memory")
