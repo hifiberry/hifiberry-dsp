@@ -522,6 +522,9 @@ def memory_access():
             if not data or 'address' not in data or 'value' not in data:
                 return jsonify({"error": "Address and value are required in the request body"}), 400
 
+            # Check if we should store this setting in the filter store
+            store_setting = data.get('store', False)
+
             try:
                 address = int(data['address'], 0)  # Auto-detect base: 0x prefix = hex, no prefix = decimal
                 
@@ -534,6 +537,7 @@ def memory_access():
                 if not isinstance(values, list):
                     values = [values]  # Convert single value to list
 
+                processed_values = []
                 for i, value in enumerate(values):
                     # Check if next address is still valid
                     current_addr = address + i
@@ -553,8 +557,46 @@ def memory_access():
                     # Convert to bytes and write directly to DSP memory
                     byte_data = Adau145x.int_data(int_value, 4)
                     Adau145x.write_memory(current_addr, byte_data)
+                    processed_values.append(value)
 
-                return jsonify({"address": hex(address), "values": [hex(v) if isinstance(v, int) else v for v in values], "status": "success"})
+                # Store in filter store if requested
+                if store_setting:
+                    try:
+                        # Get current profile checksum for storage
+                        checksum = get_current_profile_checksum()
+                        if checksum:
+                            # Store as a memory setting (different from filters)
+                            memory_setting = {
+                                "type": "memory",
+                                "address": data['address'],  # Store original address string
+                                "values": processed_values,
+                                "length": len(processed_values)
+                            }
+                            
+                            # Use a special key format for memory settings to distinguish from filters
+                            setting_key = f"memory_{data['address']}"
+                            
+                            success = filter_store.store_filter(checksum, setting_key, 0, memory_setting)
+                            if success:
+                                logging.info(f"Stored memory setting at address {data['address']} in filter store")
+                            else:
+                                logging.warning(f"Failed to store memory setting at address {data['address']} in filter store")
+                        else:
+                            logging.warning("Could not get current profile checksum for storing memory setting")
+                    except Exception as e:
+                        logging.error(f"Error storing memory setting: {str(e)}")
+                        # Don't fail the request if storage fails, just log the error
+
+                response_data = {
+                    "address": hex(address), 
+                    "values": [hex(v) if isinstance(v, int) else v for v in processed_values], 
+                    "status": "success"
+                }
+                
+                if store_setting:
+                    response_data["stored"] = True
+                    
+                return jsonify(response_data)
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
