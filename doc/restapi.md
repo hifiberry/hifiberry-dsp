@@ -398,6 +398,27 @@ curl -X POST http://localhost:13141/memory \
   -d '{"address": "0x100", "value": 1.23}'
 ```
 
+5. Store memory setting for auto-loading:
+```json
+{
+  "address": "4744",
+  "value": [1.0, 0.5],
+  "store": true
+}
+```
+
+```bash
+curl -X POST http://localhost:13141/memory \
+  -H "Content-Type: application/json" \
+  -d '{"address": "4744", "value": [1.0, 0.5], "store": true}'
+```
+
+**Parameters:**
+
+- `address` (required): Memory address in decimal or hexadecimal format
+- `value` (required): Single value or array of values to write
+- `store` (optional, default: false): If true, store this memory setting in the filter store for automatic loading on startup
+
 **Example Response:**
 ```json
 {
@@ -407,8 +428,21 @@ curl -X POST http://localhost:13141/memory \
 }
 ```
 
+**Example Response (with store=true):**
+```json
+{
+  "address": "0x1288", 
+  "values": [1.0, 0.5],
+  "status": "success",
+  "stored": true
+}
+```
+
 **Note on Float Values:**
 When using floating-point values, they must be within the valid range for the SigmaDSP fixed-point representation (approximately -256 to 256). Values will be automatically converted to the appropriate 32-bit fixed-point representation understood by the DSP.
+
+**Note on Stored Memory Settings:**
+When `store` is set to true, the memory setting will be saved in the filter store organized by the current DSP profile checksum. These settings will be automatically restored when the DSP profile is loaded on system startup, similar to how stored filters work.
 
 ### Biquad Filter API
 
