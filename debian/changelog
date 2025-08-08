@@ -1,3 +1,23 @@
+hifiberry-dsp (1.2) stable; urgency=medium
+
+  * Major architecture refactoring: Filter Store to Settings Store
+  * Renamed FilterStore class to SettingsStore for generic settings support
+  * Renamed filters.json to dspsettings.json for consistent naming
+  * Added dedicated memory settings storage with store parameter in memory API
+  * Enhanced JSON structure to support both filters and memory settings
+  * Added automatic migration from old filter-only format to new structure
+  * Enhanced sigmatcp server with memory settings autoloading support
+  * Fixed memory API address parsing bug (hex vs decimal inconsistency)
+  * Added concurrent write protection with file locking for settings store
+  * Added checksum normalization to prevent duplicate profile entries
+  * Enhanced REST API consistency across memory and register endpoints
+  * Added comprehensive backward compatibility for existing filter APIs
+  * Improved error handling and validation throughout settings system
+  * Enhanced debug logging with memory write tracing capabilities
+  * Added comprehensive documentation for new settings store architecture
+
+ -- HiFiBerry <info@hifiberry.com>  Thu, 08 Aug 2025 12:00:00 +0000
+
 hifiberry-dsp (1.1) stable; urgency=medium
 
   * Added comprehensive Filter Store API with JSON persistence
