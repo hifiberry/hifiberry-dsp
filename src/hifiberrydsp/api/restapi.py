@@ -523,7 +523,7 @@ def memory_access():
                 return jsonify({"error": "Address and value are required in the request body"}), 400
 
             try:
-                address = int(data['address'], 16)
+                address = int(data['address'], 0)  # Auto-detect base: 0x prefix = hex, no prefix = decimal
                 
                 # Check if address is valid memory address
                 if not Adau145x.is_valid_memory_address(address):
