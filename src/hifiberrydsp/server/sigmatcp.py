@@ -58,7 +58,7 @@ from hifiberrydsp.server.constants import \
     HEADER_SIZE, \
     DEFAULT_PORT
 from hifiberrydsp.api.restapi import run_api  # Import the REST API server
-from hifiberrydsp.api.filter_store import FilterStore
+from hifiberrydsp.api.settings_store import SettingsStore
 from hifiberrydsp.filtering.biquad import Biquad
 import binascii
 # import hifiberrydsp
@@ -664,42 +664,46 @@ class SigmaTCPHandler(BaseRequestHandler):
                 checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
                 logging.info(f"Using fallback: Autoloading filters for DSP profile checksum: {checksum_hex}")
                 
-                # Initialize filter store
-                filter_store = FilterStore()
+                # Initialize settings store
+                settings_store = SettingsStore()
                 
-                # Get stored filters for this checksum
-                filters = filter_store.get_filters(checksum_hex)
+                # Get stored filters and memory settings for this checksum
+                filters = settings_store.load_filters(checksum_hex)
+                memory_settings = settings_store.load_memory_settings(checksum_hex)
             
-            if not filters:
-                logging.info(f"No stored filters found for checksum {checksum_hex}")
+            total_settings = len(filters) + len(memory_settings)
+            if total_settings == 0:
+                logging.info(f"No stored settings found for checksum {checksum_hex}")
                 return True
                 
-            logging.info(f"Found {len(filters)} stored filters for current profile")
+            logging.info(f"Found {len(filters)} filters and {len(memory_settings)} memory settings for current profile")
             
             # Get the XML profile to resolve metadata keys if needed
             xml_profile = SigmaTCPHandler.get_checked_xml()
             
-            filters_applied = 0
+            settings_applied = 0
             
-            # Apply each stored filter and memory setting
+            # First apply memory settings
+            for memory_address, memory_data in memory_settings.items():
+                try:
+                    success = SigmaTCPHandler._apply_memory_setting_new(memory_address, memory_data)
+                    if success:
+                        settings_applied += 1
+                        logging.debug(f"Applied memory setting at {memory_address}")
+                    else:
+                        logging.warning(f"Failed to apply memory setting at {memory_address}")
+                except Exception as e:
+                    logging.error(f"Error applying memory setting {memory_address}: {str(e)}")
+                    continue
+            
+            # Then apply filter settings
             for filter_key, filter_data in filters.items():
                 try:
-                    # Check if this is a memory setting (has 'type': 'memory')
-                    filter_spec = filter_data.get("filter", {})
-                    if filter_spec.get("type") == "memory":
-                        # This is a memory setting, not a filter
-                        success = SigmaTCPHandler._apply_memory_setting(filter_key, filter_data)
-                        if success:
-                            filters_applied += 1
-                            logging.debug(f"Applied memory setting {filter_key}")
-                        else:
-                            logging.warning(f"Failed to apply memory setting {filter_key}")
-                        continue
-                    
-                    # Regular filter processing
+                    # This is a regular filter
                     address = filter_data.get("address")
                     offset = filter_data.get("offset", 0)
                     is_bypassed = filter_data.get("bypassed", False)
+                    filter_spec = filter_data.get("filter", {})
                     
                     if not address or not filter_spec:
                         logging.warning(f"Skipping invalid filter {filter_key}: missing address or filter data")
@@ -753,7 +757,7 @@ class SigmaTCPHandler(BaseRequestHandler):
                         filter_type = "active"
                     
                     if success:
-                        filters_applied += 1
+                        settings_applied += 1
                         logging.debug(f"Applied {filter_type} filter {filter_key} at address {hex(actual_address)}")
                     else:
                         logging.warning(f"Failed to apply filter {filter_key} at address {hex(actual_address)}")
@@ -762,8 +766,8 @@ class SigmaTCPHandler(BaseRequestHandler):
                     logging.error(f"Error applying filter {filter_key}: {str(e)}")
                     continue
             
-            logging.info(f"Successfully applied {filters_applied} out of {len(filters)} stored filters")
-            return filters_applied > 0
+            logging.info(f"Successfully applied {settings_applied} out of {total_settings} stored settings ({len(memory_settings)} memory + {len(filters)} filters)")
+            return settings_applied > 0
             
         except Exception as e:
             logging.error(f"Error during filter autoloading: {str(e)}")
@@ -846,6 +850,81 @@ class SigmaTCPHandler(BaseRequestHandler):
                 
         except Exception as e:
             logging.error(f"Error applying memory setting {setting_key}: {str(e)}")
+            return False
+
+    @staticmethod
+    def _apply_memory_setting_new(memory_address, memory_data):
+        """
+        Apply a memory setting from the new settings store structure
+        
+        Args:
+            memory_address (str): The memory address key
+            memory_data (dict): The memory data containing address and values
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Extract memory setting information from new structure
+            address_str = memory_data.get("address")
+            values = memory_data.get("values", [])
+            
+            if not address_str or not values:
+                logging.warning(f"Memory setting at {memory_address} missing address or values")
+                return False
+            
+            # Parse address (same logic as REST API)
+            try:
+                address = int(address_str, 0)  # Auto-detect hex/decimal
+            except ValueError:
+                logging.warning(f"Could not parse address {address_str} for memory setting at {memory_address}")
+                return False
+            
+            # Validate address range
+            if not adau145x.Adau145x.is_valid_memory_address(address):
+                logging.warning(f"Invalid address {hex(address)} for memory setting at {memory_address}")
+                return False
+            
+            # Apply each value
+            success_count = 0
+            for i, value in enumerate(values):
+                current_addr = address + i
+                
+                if not adau145x.Adau145x.is_valid_memory_address(current_addr):
+                    logging.warning(f"Invalid address {hex(current_addr)} in memory setting at {memory_address}")
+                    continue
+                
+                try:
+                    # Convert value to int (same logic as REST API)
+                    if isinstance(value, str) and value.startswith("0x"):
+                        int_value = int(value, 16)  # Hexadecimal
+                    elif isinstance(value, (float, int)):
+                        if isinstance(value, float):
+                            int_value = adau145x.Adau145x.decimal_repr(value)  # Convert float to fixed-point
+                        else:
+                            int_value = value
+                    else:
+                        logging.warning(f"Unsupported value type {type(value)} in memory setting at {memory_address}")
+                        continue
+                    
+                    # Write to DSP memory
+                    byte_data = adau145x.Adau145x.int_data(int_value, 4)
+                    adau145x.Adau145x.write_memory(current_addr, byte_data)
+                    success_count += 1
+                    
+                except Exception as e:
+                    logging.warning(f"Error writing value {value} to address {hex(current_addr)}: {str(e)}")
+                    continue
+            
+            if success_count > 0:
+                logging.debug(f"Applied memory setting at {memory_address}: {success_count}/{len(values)} values written to address {hex(address)}")
+                return True
+            else:
+                logging.warning(f"No values successfully written for memory setting at {memory_address}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error applying memory setting at {memory_address}: {str(e)}")
             return False
 
     @staticmethod
