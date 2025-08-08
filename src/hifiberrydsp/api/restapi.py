@@ -29,7 +29,7 @@ import requests
 from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
-from hifiberrydsp.api.filter_store import FilterStore
+from hifiberrydsp.api.settings_store import SettingsStore
 from waitress import serve
 import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -41,7 +41,7 @@ DEFAULT_HOST = "localhost"
 PROFILES_DIR = "/usr/share/hifiberry/dspprofiles"
 
 # Initialize filter store
-filter_store = FilterStore(PROFILES_DIR)
+settings_store = SettingsStore(PROFILES_DIR)
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
@@ -559,28 +559,18 @@ def memory_access():
                     Adau145x.write_memory(current_addr, byte_data)
                     processed_values.append(value)
 
-                # Store in filter store if requested
+                # Store in settings store if requested
                 if store_setting:
                     try:
                         # Get current profile checksum for storage
                         checksum = get_current_profile_checksum()
                         if checksum:
-                            # Store as a memory setting (different from filters)
-                            memory_setting = {
-                                "type": "memory",
-                                "address": data['address'],  # Store original address string
-                                "values": processed_values,
-                                "length": len(processed_values)
-                            }
-                            
-                            # Use a special key format for memory settings to distinguish from filters
-                            setting_key = f"memory_{data['address']}"
-                            
-                            success = filter_store.store_filter(checksum, setting_key, 0, memory_setting)
+                            # Store as a memory setting using the new method
+                            success = settings_store.store_memory_setting(checksum, data['address'], processed_values)
                             if success:
-                                logging.info(f"Stored memory setting at address {data['address']} in filter store")
+                                logging.info(f"Stored memory setting at address {data['address']} in settings store")
                             else:
-                                logging.warning(f"Failed to store memory setting at address {data['address']} in filter store")
+                                logging.warning(f"Failed to store memory setting at address {data['address']} in settings store")
                         else:
                             logging.warning("Could not get current profile checksum for storing memory setting")
                     except Exception as e:
@@ -1099,7 +1089,7 @@ def set_biquad_filter():
                 # Store the filter in the filter store using checksum
                 checksum = get_current_profile_checksum()
                 if checksum:
-                    filter_store.store_filter(checksum, raw_address, offset, filter_data)
+                    settings_store.store_filter(checksum, raw_address, offset, filter_data)
                 
                 return jsonify({
                     "status": "success", 
@@ -1135,7 +1125,7 @@ def set_biquad_filter():
                 # Store the filter in the filter store using checksum
                 checksum = get_current_profile_checksum()
                 if checksum:
-                    filter_store.store_filter(checksum, raw_address, offset, filter_data)
+                    settings_store.store_filter(checksum, raw_address, offset, filter_data)
                 
                 return jsonify({
                     "status": "success", 
@@ -1178,7 +1168,7 @@ def get_filters():
             if not current_checksum:
                 return jsonify({"error": "No active DSP profile found"}), 404
             
-            filters = filter_store.get_filters(current_checksum)
+            filters = settings_store.get_filters(current_checksum)
             
             return jsonify({
                 "checksum": current_checksum,
@@ -1187,7 +1177,7 @@ def get_filters():
             })
         elif checksum:
             # Use checksum to get filters
-            filters = filter_store.get_filters(checksum)
+            filters = settings_store.get_filters(checksum)
             
             return jsonify({
                 "checksum": checksum,
@@ -1195,7 +1185,7 @@ def get_filters():
             })
         else:
             # Return all profiles organized by checksum
-            all_filters = filter_store.get_filters()
+            all_filters = settings_store.get_filters()
             return jsonify({
                 "profiles": all_filters
             })
@@ -1247,7 +1237,7 @@ def set_filters():
             offset = filter_entry.get('offset', 0)
             filter_data = filter_entry['filter']
             
-            if filter_store.store_filter(checksum, address, offset, filter_data):
+            if settings_store.store_filter(checksum, address, offset, filter_data):
                 success_count += 1
             else:
                 errors.append(f"Filter {i}: Failed to store filter at {address}")
@@ -1284,7 +1274,7 @@ def delete_filters():
         address = request.args.get('address')
         delete_all = request.args.get('all', '').lower() in ('true', '1', 'yes')
         
-        success, message = filter_store.delete_filters(
+        success, message = settings_store.delete_filters(
             checksum=checksum,
             address=address,
             all_profiles=delete_all
@@ -1327,7 +1317,7 @@ def get_filter_bypass():
         
         if bank_mode or offset_param is None:
             # Get bypass state for entire filter bank
-            filters = filter_store.get_filters(checksum)
+            filters = settings_store.get_filters(checksum)
             bank_filters = []
             
             for filter_key, filter_data in filters.items():
@@ -1358,7 +1348,7 @@ def get_filter_bypass():
             except ValueError:
                 return jsonify({"error": "Offset must be a valid integer"}), 400
             
-            bypass_state = filter_store.get_filter_bypass_state(checksum, address, offset)
+            bypass_state = settings_store.get_filter_bypass_state(checksum, address, offset)
             
             if bypass_state is None:
                 return jsonify({"error": f"Filter not found at address '{address}' with offset {offset}"}), 404
@@ -1424,7 +1414,7 @@ def set_filter_bypass():
         
         if bank_mode:
             # Set bypass state for entire filter bank
-            filters = filter_store.get_filters(checksum)
+            filters = settings_store.get_filters(checksum)
             bank_filters = []
             
             # Find all filters with the same address
@@ -1446,7 +1436,7 @@ def set_filter_bypass():
                 filter_offset = filter_info["offset"]
                 
                 # Update bypass state in store
-                success, message = filter_store.set_filter_bypass(checksum, address, filter_offset, bypassed)
+                success, message = settings_store.set_filter_bypass(checksum, address, filter_offset, bypassed)
                 
                 if success:
                     # Apply the change to the DSP
@@ -1484,7 +1474,7 @@ def set_filter_bypass():
         else:
             # Set bypass state for single filter
             # Update bypass state in store
-            success, message = filter_store.set_filter_bypass(checksum, address, offset, bypassed)
+            success, message = settings_store.set_filter_bypass(checksum, address, offset, bypassed)
             
             if not success:
                 return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
@@ -1552,7 +1542,7 @@ def toggle_filter_bypass():
         
         if bank_mode:
             # Toggle bypass state for entire filter bank
-            filters = filter_store.get_filters(checksum)
+            filters = settings_store.get_filters(checksum)
             bank_filters = []
             
             # Find all filters with the same address
@@ -1579,7 +1569,7 @@ def toggle_filter_bypass():
                 filter_offset = filter_info["offset"]
                 
                 # Update bypass state in store
-                success, message = filter_store.set_filter_bypass(checksum, address, filter_offset, new_state)
+                success, message = settings_store.set_filter_bypass(checksum, address, filter_offset, new_state)
                 
                 if success:
                     # Apply the change to the DSP
@@ -1616,7 +1606,7 @@ def toggle_filter_bypass():
         
         else:
             # Toggle bypass state for single filter
-            success, new_state, message = filter_store.toggle_filter_bypass(checksum, address, offset)
+            success, new_state, message = settings_store.toggle_filter_bypass(checksum, address, offset)
             
             if not success:
                 return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
@@ -1660,7 +1650,7 @@ def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):
     """
     try:
         # Get the stored filter data
-        filters = filter_store.get_filters(checksum)
+        filters = settings_store.get_filters(checksum)
         filter_key = f"{address}_{offset}"
         
         if filter_key not in filters:

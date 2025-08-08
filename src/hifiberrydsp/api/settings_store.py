@@ -27,30 +27,52 @@ import time
 import fcntl
 
 
-class FilterStore:
+class SettingsStore:
     """
-    Manages the filter store for DSP profiles.
+    Manages the DSP settings store for DSP profiles.
     
-    The filter store saves and retrieves filter configurations organized by DSP profile.
-    Filters are stored in a JSON file at /var/lib/hifiberry/filters.json.
+    The settings store saves and retrieves both filter and memory settings organized by DSP profile.
+    Settings are stored in a JSON file at /var/lib/hifiberry/dspsettings.json.
+    
+    JSON Structure:
+    {
+      "PROFILE_CHECKSUM": {
+        "filters": {
+          "filter_key": {
+            "address": "eq1_band1",
+            "offset": 0,
+            "filter": {...},
+            "timestamp": 1691234567.89,
+            "bypassed": false
+          }
+        },
+        "memory": {
+          "memory_address": {
+            "address": "4744",
+            "values": [1.0, 0.5],
+            "timestamp": 1691234567.89
+          }
+        }
+      }
+    }
     """
     
     def __init__(self, profiles_dir="/usr/share/hifiberry/dspprofiles"):
         """
-        Initialize the FilterStore
+        Initialize the SettingsStore
         
         Args:
             profiles_dir (str): Directory where DSP profiles are stored (kept for compatibility)
         """
         self.profiles_dir = profiles_dir
-        self.store_file = "/var/lib/hifiberry/filters.json"
+        self.store_file = "/var/lib/hifiberry/dspsettings.json"
     
-    def load(self):
+    def load_store(self):
         """
-        Load the filter store from disk
+        Load the settings store from disk
         
         Returns:
-            dict: The filter store data structure
+            dict: The settings store data structure
         """
         if not os.path.exists(self.store_file):
             return {}
@@ -59,7 +81,7 @@ class FilterStore:
             with open(self.store_file, 'r') as f:
                 content = f.read().strip()
                 if not content:
-                    logging.warning("Filter store file is empty, creating new store")
+                    logging.warning("Settings store file is empty, creating new store")
                     return {}
                 
                 # Check for and fix common corruption issues
@@ -67,44 +89,115 @@ class FilterStore:
                 
                 data = json.loads(content)
                 
+                # Migrate old filter-only format to new structure if needed
+                migrated_data = self._migrate_legacy_format(data)
+                
                 # Normalize checksum keys to uppercase to prevent duplicates
                 normalized_data = {}
-                for checksum, filters in data.items():
-                    normalized_checksum = checksum.upper()
+                for checksum, profile_data in migrated_data.items():
+                    normalized_checksum = self.normalize_checksum(checksum)
                     if normalized_checksum in normalized_data:
                         # Merge duplicate checksums (same checksum in different cases)
                         logging.warning(f"Found duplicate checksum with different case: {checksum} -> {normalized_checksum}")
-                        for filter_key, filter_data in filters.items():
-                            if filter_key not in normalized_data[normalized_checksum]:
-                                normalized_data[normalized_checksum][filter_key] = filter_data
-                            else:
-                                # Keep the newer one based on timestamp
-                                existing_timestamp = normalized_data[normalized_checksum][filter_key].get("timestamp", 0)
-                                new_timestamp = filter_data.get("timestamp", 0)
-                                if new_timestamp > existing_timestamp:
-                                    normalized_data[normalized_checksum][filter_key] = filter_data
+                        
+                        # Merge filters
+                        if "filters" in profile_data:
+                            if "filters" not in normalized_data[normalized_checksum]:
+                                normalized_data[normalized_checksum]["filters"] = {}
+                            for filter_key, filter_data in profile_data["filters"].items():
+                                if filter_key not in normalized_data[normalized_checksum]["filters"]:
+                                    normalized_data[normalized_checksum]["filters"][filter_key] = filter_data
+                                else:
+                                    # Keep the newer one based on timestamp
+                                    existing_timestamp = normalized_data[normalized_checksum]["filters"][filter_key].get("timestamp", 0)
+                                    new_timestamp = filter_data.get("timestamp", 0)
+                                    if new_timestamp > existing_timestamp:
+                                        normalized_data[normalized_checksum]["filters"][filter_key] = filter_data
+                        
+                        # Merge memory settings
+                        if "memory" in profile_data:
+                            if "memory" not in normalized_data[normalized_checksum]:
+                                normalized_data[normalized_checksum]["memory"] = {}
+                            for mem_key, mem_data in profile_data["memory"].items():
+                                if mem_key not in normalized_data[normalized_checksum]["memory"]:
+                                    normalized_data[normalized_checksum]["memory"][mem_key] = mem_data
+                                else:
+                                    # Keep the newer one based on timestamp
+                                    existing_timestamp = normalized_data[normalized_checksum]["memory"][mem_key].get("timestamp", 0)
+                                    new_timestamp = mem_data.get("timestamp", 0)
+                                    if new_timestamp > existing_timestamp:
+                                        normalized_data[normalized_checksum]["memory"][mem_key] = mem_data
                     else:
-                        normalized_data[normalized_checksum] = filters
+                        normalized_data[normalized_checksum] = profile_data
                 
                 # Save normalized data if changes were made
-                if normalized_data != data:
-                    logging.info("Normalizing checksums and removing duplicates in filter store")
-                    self.save(normalized_data)
+                if normalized_data != migrated_data:
+                    logging.info("Normalizing checksums and removing duplicates in settings store")
+                    self.save_store(normalized_data)
                 
                 return normalized_data
         except json.JSONDecodeError as e:
-            logging.error(f"JSON decode error in filter store at line {e.lineno}, column {e.colno}: {e.msg}")
+            logging.error(f"JSON decode error in settings store at line {e.lineno}, column {e.colno}: {e.msg}")
             # Try to recover by backing up the corrupted file and starting fresh
             try:
                 backup_file = self.store_file + f".corrupted.{int(time.time())}"
                 os.rename(self.store_file, backup_file)
-                logging.warning(f"Corrupted filter store backed up to {backup_file}, starting with empty store")
+                logging.warning(f"Corrupted settings store backed up to {backup_file}, starting with empty store")
             except Exception as backup_e:
-                logging.error(f"Could not backup corrupted filter store: {backup_e}")
+                logging.error(f"Could not backup corrupted settings store: {backup_e}")
             return {}
         except Exception as e:
-            logging.error(f"Error loading filter store: {str(e)}")
+            logging.error(f"Error loading settings store: {str(e)}")
             return {}
+    
+    def _migrate_legacy_format(self, data):
+        """
+        Migrate legacy filter-only format to new settings structure
+        
+        Args:
+            data (dict): Raw data from JSON file
+            
+        Returns:
+            dict: Migrated data in new format
+        """
+        migrated_data = {}
+        
+        for checksum, profile_data in data.items():
+            if not isinstance(profile_data, dict):
+                continue
+                
+            # Check if this is already in new format (has filters/memory keys)
+            if any(key in profile_data for key in ["filters", "memory"]):
+                # Already in new format
+                migrated_data[checksum] = profile_data
+            else:
+                # Legacy format - all entries are filters
+                migrated_profile = {"filters": {}, "memory": {}}
+                
+                for key, value in profile_data.items():
+                    if isinstance(value, dict) and "filter" in value:
+                        # This looks like a filter entry
+                        migrated_profile["filters"][key] = value
+                    else:
+                        # Unknown entry, keep as filter for backward compatibility
+                        logging.warning(f"Unknown entry format in profile {checksum}, keeping as filter: {key}")
+                        migrated_profile["filters"][key] = value
+                
+                migrated_data[checksum] = migrated_profile
+        
+        return migrated_data
+    
+    def normalize_checksum(self, checksum):
+        """
+        Normalize checksum to uppercase to prevent duplicates
+        
+        Args:
+            checksum (str): Original checksum
+            
+        Returns:
+            str: Normalized checksum
+        """
+        return str(checksum).upper()
     
     def _fix_json_corruption(self, content):
         """
@@ -140,12 +233,12 @@ class FilterStore:
         
         return content
     
-    def save(self, store_data):
+    def save_store(self, store_data):
         """
-        Save the filter store to disk atomically with file locking
+        Save the settings store to disk atomically with file locking
         
         Args:
-            store_data (dict): The filter store data to save
+            store_data (dict): The settings store data to save
             
         Returns:
             bool: True if successful, False otherwise
@@ -186,7 +279,7 @@ class FilterStore:
             os.rename(temp_file, self.store_file)
             return True
         except Exception as e:
-            logging.error(f"Error saving filter store: {str(e)}")
+            logging.error(f"Error saving settings store: {str(e)}")
             # Clean up temp file if it exists
             try:
                 if os.path.exists(temp_file):
@@ -195,9 +288,39 @@ class FilterStore:
                 pass
             return False
     
+    def load_filters(self, checksum):
+        """
+        Load all filters for the specified DSP profile checksum.
+        
+        Args:
+            checksum (str): DSP profile checksum
+            
+        Returns:
+            dict: Dictionary mapping filter keys to filter data
+        """
+        store_data = self.load_store()
+        normalized_checksum = self.normalize_checksum(checksum)
+        profile_data = store_data.get(normalized_checksum, {})
+        return profile_data.get("filters", {})
+    
+    def load_memory_settings(self, checksum):
+        """
+        Load all memory settings for the specified DSP profile checksum.
+        
+        Args:
+            checksum (str): DSP profile checksum
+            
+        Returns:
+            dict: Dictionary mapping memory addresses to memory data
+        """
+        store_data = self.load_store()
+        normalized_checksum = self.normalize_checksum(checksum)
+        profile_data = store_data.get(normalized_checksum, {})
+        return profile_data.get("memory", {})
+    
     def store_filter(self, checksum, address, offset, filter_data, bypassed=False):
         """
-        Store a filter in the filter store organized by profile checksum
+        Store a filter in the settings store organized by profile checksum
         
         Args:
             checksum (str): DSP profile checksum
@@ -211,13 +334,17 @@ class FilterStore:
         """
         try:
             # Normalize checksum to uppercase to prevent duplicates
-            checksum = checksum.upper()
+            checksum = self.normalize_checksum(checksum)
             
-            store = self.load()
+            store = self.load_store()
             
             # Initialize checksum section if it doesn't exist
             if checksum not in store:
-                store[checksum] = {}
+                store[checksum] = {"filters": {}, "memory": {}}
+            
+            # Ensure filters section exists
+            if "filters" not in store[checksum]:
+                store[checksum]["filters"] = {}
             
             # Create a unique key for this filter location
             # Always include offset suffix for consistency
@@ -233,16 +360,56 @@ class FilterStore:
             }
             
             # If this filter already exists, preserve bypass state unless explicitly overridden
-            if filter_key in store[checksum] and "bypassed" in store[checksum][filter_key]:
+            if filter_key in store[checksum]["filters"] and "bypassed" in store[checksum]["filters"][filter_key]:
                 # Preserve existing bypass state if not explicitly set
-                existing_bypass = store[checksum][filter_key].get("bypassed", False)
+                existing_bypass = store[checksum]["filters"][filter_key].get("bypassed", False)
                 filter_entry["bypassed"] = existing_bypass
             
-            store[checksum][filter_key] = filter_entry
+            store[checksum]["filters"][filter_key] = filter_entry
             
-            return self.save(store)
+            return self.save_store(store)
         except Exception as e:
             logging.error(f"Error storing filter: {str(e)}")
+            return False
+    
+    def store_memory_setting(self, checksum, address, values):
+        """
+        Store a memory setting in the settings store organized by profile checksum
+        
+        Args:
+            checksum (str): DSP profile checksum
+            address (str): Memory address 
+            values (list): The memory values to store
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Normalize checksum to uppercase to prevent duplicates
+            checksum = self.normalize_checksum(checksum)
+            
+            store = self.load_store()
+            
+            # Initialize checksum section if it doesn't exist
+            if checksum not in store:
+                store[checksum] = {"filters": {}, "memory": {}}
+            
+            # Ensure memory section exists
+            if "memory" not in store[checksum]:
+                store[checksum]["memory"] = {}
+            
+            # Store the memory setting with timestamp
+            memory_entry = {
+                "address": address,
+                "values": values,
+                "timestamp": time.time()
+            }
+            
+            store[checksum]["memory"][address] = memory_entry
+            
+            return self.save_store(store)
+        except Exception as e:
+            logging.error(f"Error storing memory setting: {str(e)}")
             return False
     
     def get_filters(self, checksum=None, group_by_bank=False):
@@ -257,12 +424,13 @@ class FilterStore:
             dict: The stored filters
         """
         try:
-            store = self.load()
+            store = self.load_store()
             
             if checksum:
                 # Normalize checksum to uppercase
-                checksum = checksum.upper()
-                filters = store.get(checksum, {})
+                checksum = self.normalize_checksum(checksum)
+                profile_data = store.get(checksum, {})
+                filters = profile_data.get("filters", {})
                 
                 if group_by_bank:
                     return self._group_filters_by_bank(filters)
@@ -272,16 +440,75 @@ class FilterStore:
                 if group_by_bank:
                     # Group filters for all profiles
                     grouped_store = {}
-                    for profile_checksum, filters in store.items():
+                    for profile_checksum, profile_data in store.items():
+                        filters = profile_data.get("filters", {})
                         grouped_store[profile_checksum] = self._group_filters_by_bank(filters)
                     return grouped_store
                 else:
-                    return store
+                    # Return only filters from all profiles
+                    filters_only = {}
+                    for profile_checksum, profile_data in store.items():
+                        filters = profile_data.get("filters", {})
+                        if filters:  # Only include profiles that have filters
+                            filters_only[profile_checksum] = filters
+                    return filters_only
         except Exception as e:
             logging.error(f"Error getting stored filters: {str(e)}")
             return {}
     
+    # Backward compatibility methods
+    def load(self):
+        """Legacy method - load store data in old format for compatibility"""
+        store = self.load_store()
+        # Convert new format back to old format for compatibility
+        legacy_store = {}
+        for checksum, profile_data in store.items():
+            if "filters" in profile_data:
+                legacy_store[checksum] = profile_data["filters"]
+            else:
+                legacy_store[checksum] = {}
+        return legacy_store
+    
+    def save(self, legacy_data):
+        """Legacy method - save data in old format for compatibility"""
+        # Convert legacy format to new format
+        new_store = {}
+        for checksum, filters in legacy_data.items():
+            new_store[checksum] = {"filters": filters, "memory": {}}
+        return self.save_store(new_store)
+    
     def _group_filters_by_bank(self, filters):
+        """
+        Group filters by their base address (bank)
+        
+        Args:
+            filters (dict): Individual filters keyed by filter_key
+            
+        Returns:
+            dict: Filters grouped by bank address
+        """
+        banks = {}
+        
+        for filter_key, filter_data in filters.items():
+            address = filter_data.get("address", "")
+            offset = filter_data.get("offset", 0)
+            
+            # Use the base address as the bank key
+            if address not in banks:
+                banks[address] = []
+            
+            # Add filter to the bank array, sorted by offset
+            banks[address].append({
+                "offset": offset,
+                "filter": filter_data.get("filter", {}),
+                "timestamp": filter_data.get("timestamp", 0)
+            })
+        
+        # Sort filters within each bank by offset
+        for bank_address in banks:
+            banks[bank_address].sort(key=lambda f: f["offset"])
+        
+        return banks
         """
         Group filters by their base address (bank)
         
@@ -328,36 +555,45 @@ class FilterStore:
         """
         try:
             if all_profiles:
-                # Delete all filters for all profiles
-                if self.save({}):
+                # Delete all filters for all profiles, but keep memory settings
+                store = self.load_store()
+                for checksum in store:
+                    if "filters" in store[checksum]:
+                        store[checksum]["filters"] = {}
+                
+                if self.save_store(store):
                     return True, "All filters deleted"
                 else:
                     return False, "Failed to delete filters"
             
             elif checksum:
                 # Normalize checksum to uppercase
-                checksum = checksum.upper()
+                checksum = self.normalize_checksum(checksum)
                 
-                store = self.load()
+                store = self.load_store()
                 
                 if checksum not in store:
-                    return False, f"No filters found for profile checksum '{checksum}'"
+                    return False, f"No settings found for profile checksum '{checksum}'"
+                
+                # Ensure filters section exists
+                if "filters" not in store[checksum]:
+                    store[checksum]["filters"] = {}
                 
                 if address:
                     # Delete specific filter
                     filter_key = str(address)
-                    if filter_key in store[checksum]:
-                        del store[checksum][filter_key]
-                        if self.save(store):
+                    if filter_key in store[checksum]["filters"]:
+                        del store[checksum]["filters"][filter_key]
+                        if self.save_store(store):
                             return True, f"Filter at {address} deleted from profile checksum '{checksum}'"
                         else:
                             return False, "Failed to save changes"
                     else:
                         return False, f"No filter found at address '{address}' for profile checksum '{checksum}'"
                 else:
-                    # Delete all filters for the profile checksum
-                    del store[checksum]
-                    if self.save(store):
+                    # Delete all filters for the profile checksum, but keep memory settings
+                    store[checksum]["filters"] = {}
+                    if self.save_store(store):
                         return True, f"All filters deleted for profile checksum '{checksum}'"
                     else:
                         return False, "Failed to save changes"
@@ -381,8 +617,8 @@ class FilterStore:
         """
         try:
             # Normalize checksum to uppercase
-            checksum = checksum.upper()
-            filters = self.get_filters(checksum)
+            checksum = self.normalize_checksum(checksum)
+            filters = self.load_filters(checksum)
             return len(filters)
         except Exception as e:
             logging.error(f"Error getting filter count for profile checksum '{checksum}': {str(e)}")
@@ -390,13 +626,13 @@ class FilterStore:
     
     def get_all_profile_checksums(self):
         """
-        Get all profile checksums that have filters stored
+        Get all profile checksums that have settings stored
         
         Returns:
             list: List of profile checksums
         """
         try:
-            store = self.load()
+            store = self.load_store()
             return list(store.keys())
         except Exception as e:
             logging.error(f"Error getting profile checksums: {str(e)}")
@@ -404,39 +640,46 @@ class FilterStore:
     
     def get_profile_info_by_checksum(self, checksum):
         """
-        Get filters for a specific checksum
+        Get all settings for a specific checksum
         
         Args:
             checksum (str): DSP profile checksum
             
         Returns:
-            dict: Filters for the checksum
+            dict: Settings for the checksum (both filters and memory)
         """
         try:
             # Normalize checksum to uppercase
-            checksum = checksum.upper()
-            store = self.load()
-            return store.get(checksum, {})
+            checksum = self.normalize_checksum(checksum)
+            store = self.load_store()
+            return store.get(checksum, {"filters": {}, "memory": {}})
         except Exception as e:
-            logging.error(f"Error getting filters for checksum '{checksum}': {str(e)}")
-            return {}
+            logging.error(f"Error getting settings for checksum '{checksum}': {str(e)}")
+            return {"filters": {}, "memory": {}}
     
     def clear_empty_profiles(self):
         """
-        Remove profiles that have no filters stored
+        Remove profiles that have no settings stored
         
         Returns:
             tuple: (success: bool, removed_count: int)
         """
         try:
-            store = self.load()
+            store = self.load_store()
             original_count = len(store)
             
             # Remove empty profile sections
-            store = {checksum: filters for checksum, filters in store.items() if filters}
+            cleaned_store = {}
+            for checksum, profile_data in store.items():
+                # Check if profile has any filters or memory settings
+                has_filters = bool(profile_data.get("filters", {}))
+                has_memory = bool(profile_data.get("memory", {}))
+                
+                if has_filters or has_memory:
+                    cleaned_store[checksum] = profile_data
             
-            if self.save(store):
-                removed_count = original_count - len(store)
+            if self.save_store(cleaned_store):
+                removed_count = original_count - len(cleaned_store)
                 return True, removed_count
             else:
                 return False, 0
@@ -460,23 +703,26 @@ class FilterStore:
         """
         try:
             # Normalize checksum to uppercase
-            checksum = checksum.upper()
+            checksum = self.normalize_checksum(checksum)
             
-            store = self.load()
+            store = self.load_store()
             
             if checksum not in store:
-                return False, f"No filters found for profile checksum '{checksum}'"
+                return False, f"No settings found for profile checksum '{checksum}'"
+            
+            if "filters" not in store[checksum]:
+                store[checksum]["filters"] = {}
             
             filter_key = f"{address}_{offset}"
             
-            if filter_key not in store[checksum]:
+            if filter_key not in store[checksum]["filters"]:
                 return False, f"No filter found at address '{address}' with offset {offset}"
             
             # Update bypass state
-            store[checksum][filter_key]["bypassed"] = bypassed
-            store[checksum][filter_key]["timestamp"] = time.time()
+            store[checksum]["filters"][filter_key]["bypassed"] = bypassed
+            store[checksum]["filters"][filter_key]["timestamp"] = time.time()
             
-            if self.save(store):
+            if self.save_store(store):
                 state = "bypassed" if bypassed else "enabled"
                 return True, f"Filter at {address}+{offset} {state}"
             else:
@@ -500,19 +746,22 @@ class FilterStore:
         """
         try:
             # Normalize checksum to uppercase
-            checksum = checksum.upper()
+            checksum = self.normalize_checksum(checksum)
             
-            store = self.load()
+            store = self.load_store()
             
             if checksum not in store:
                 return None
             
-            filter_key = f"{address}_{offset}"
-            
-            if filter_key not in store[checksum]:
+            if "filters" not in store[checksum]:
                 return None
             
-            return store[checksum][filter_key].get("bypassed", False)
+            filter_key = f"{address}_{offset}"
+            
+            if filter_key not in store[checksum]["filters"]:
+                return None
+            
+            return store[checksum]["filters"][filter_key].get("bypassed", False)
             
         except Exception as e:
             logging.error(f"Error getting filter bypass state: {str(e)}")
@@ -562,16 +811,19 @@ class FilterStore:
         """
         try:
             # Normalize checksum to uppercase
-            checksum = checksum.upper()
+            checksum = self.normalize_checksum(checksum)
             
-            store = self.load()
+            store = self.load_store()
             
             if checksum not in store:
-                return 0, 0, f"No filters found for profile checksum '{checksum}'"
+                return 0, 0, f"No settings found for profile checksum '{checksum}'"
+            
+            if "filters" not in store[checksum]:
+                store[checksum]["filters"] = {}
             
             # Find all filters with the same address
             bank_filters = []
-            for filter_key, filter_data in store[checksum].items():
+            for filter_key, filter_data in store[checksum]["filters"].items():
                 if filter_data.get("address") == address:
                     bank_filters.append(filter_key)
             
@@ -581,11 +833,11 @@ class FilterStore:
             # Update bypass state for all filters in the bank
             success_count = 0
             for filter_key in bank_filters:
-                store[checksum][filter_key]["bypassed"] = bypassed
-                store[checksum][filter_key]["timestamp"] = time.time()
+                store[checksum]["filters"][filter_key]["bypassed"] = bypassed
+                store[checksum]["filters"][filter_key]["timestamp"] = time.time()
                 success_count += 1
             
-            if self.save(store):
+            if self.save_store(store):
                 state = "bypassed" if bypassed else "enabled"
                 return success_count, len(bank_filters), f"Filter bank at {address} {state} ({success_count} filters)"
             else:
@@ -608,15 +860,18 @@ class FilterStore:
         """
         try:
             # Normalize checksum to uppercase
-            checksum = checksum.upper()
+            checksum = self.normalize_checksum(checksum)
             
-            store = self.load()
+            store = self.load_store()
             
             if checksum not in store:
                 return []
             
+            if "filters" not in store[checksum]:
+                return []
+            
             bank_filters = []
-            for filter_key, filter_data in store[checksum].items():
+            for filter_key, filter_data in store[checksum]["filters"].items():
                 if filter_data.get("address") == address:
                     bank_filters.append({
                         "offset": filter_data.get("offset", 0),
@@ -635,47 +890,85 @@ class FilterStore:
     
     def validate_and_repair(self):
         """
-        Validate the filter store file and attempt to repair it if corrupted
+        Validate the settings store file and attempt to repair it if corrupted
         
         Returns:
             tuple: (is_valid: bool, was_repaired: bool, message: str)
         """
         try:
             if not os.path.exists(self.store_file):
-                return True, False, "Filter store file does not exist (will be created on first write)"
+                return True, False, "Settings store file does not exist (will be created on first write)"
             
             # Try to load the file
             try:
                 with open(self.store_file, 'r') as f:
                     content = f.read().strip()
                     if not content:
-                        return True, False, "Filter store file is empty"
+                        return True, False, "Settings store file is empty"
                     
                     # Try to parse as JSON
                     data = json.loads(content)
                     
                     # Validate structure
                     if not isinstance(data, dict):
-                        return False, False, "Filter store root is not a dictionary"
+                        return False, False, "Settings store root is not a dictionary"
                     
                     # Validate each profile section
-                    for checksum, filters in data.items():
-                        if not isinstance(filters, dict):
-                            logging.warning(f"Profile {checksum} filters section is not a dictionary")
+                    for checksum, profile_data in data.items():
+                        if not isinstance(profile_data, dict):
+                            logging.warning(f"Profile {checksum} data is not a dictionary")
                             continue
                         
-                        for filter_key, filter_data in filters.items():
-                            if not isinstance(filter_data, dict):
-                                logging.warning(f"Filter {filter_key} in profile {checksum} is not a dictionary")
-                                continue
+                        # Check for new format (with filters/memory sections)
+                        if "filters" in profile_data or "memory" in profile_data:
+                            # New format validation
+                            if "filters" in profile_data:
+                                filters = profile_data["filters"]
+                                if not isinstance(filters, dict):
+                                    logging.warning(f"Profile {checksum} filters section is not a dictionary")
+                                    continue
+                                
+                                for filter_key, filter_data in filters.items():
+                                    if not isinstance(filter_data, dict):
+                                        logging.warning(f"Filter {filter_key} in profile {checksum} is not a dictionary")
+                                        continue
+                                    
+                                    # Check for required fields
+                                    required_fields = ['address', 'offset', 'filter']
+                                    missing_fields = [field for field in required_fields if field not in filter_data]
+                                    if missing_fields:
+                                        logging.warning(f"Filter {filter_key} in profile {checksum} missing fields: {missing_fields}")
                             
-                            # Check for required fields
-                            required_fields = ['address', 'offset', 'filter']
-                            missing_fields = [field for field in required_fields if field not in filter_data]
-                            if missing_fields:
-                                logging.warning(f"Filter {filter_key} in profile {checksum} missing fields: {missing_fields}")
+                            if "memory" in profile_data:
+                                memory = profile_data["memory"]
+                                if not isinstance(memory, dict):
+                                    logging.warning(f"Profile {checksum} memory section is not a dictionary")
+                                    continue
+                                
+                                for mem_key, mem_data in memory.items():
+                                    if not isinstance(mem_data, dict):
+                                        logging.warning(f"Memory {mem_key} in profile {checksum} is not a dictionary")
+                                        continue
+                                    
+                                    # Check for required fields
+                                    required_fields = ['address', 'values']
+                                    missing_fields = [field for field in required_fields if field not in mem_data]
+                                    if missing_fields:
+                                        logging.warning(f"Memory {mem_key} in profile {checksum} missing fields: {missing_fields}")
+                        else:
+                            # Legacy format validation
+                            for filter_key, filter_data in profile_data.items():
+                                if not isinstance(filter_data, dict):
+                                    logging.warning(f"Filter {filter_key} in profile {checksum} is not a dictionary")
+                                    continue
+                                
+                                # Check for required fields in legacy format
+                                required_fields = ['address', 'offset', 'filter']
+                                missing_fields = [field for field in required_fields if field not in filter_data]
+                                if missing_fields:
+                                    logging.warning(f"Filter {filter_key} in profile {checksum} missing fields: {missing_fields}")
                     
-                    return True, False, "Filter store is valid"
+                    return True, False, "Settings store is valid"
                     
             except json.JSONDecodeError as e:
                 # Try to repair the JSON
@@ -709,16 +1002,16 @@ class FilterStore:
                     with open(self.store_file, 'w') as f:
                         f.write(content)
                     
-                    logging.info(f"Successfully repaired filter store. Original backed up to {backup_file}")
-                    return True, True, f"Filter store repaired. Original backed up to {backup_file}"
+                    logging.info(f"Successfully repaired settings store. Original backed up to {backup_file}")
+                    return True, True, f"Settings store repaired. Original backed up to {backup_file}"
                     
                 except json.JSONDecodeError:
                     # Repair failed, move corrupted file and start fresh
                     backup_file = self.store_file + f".corrupted.{int(time.time())}"
                     os.rename(self.store_file, backup_file)
-                    logging.warning(f"Could not repair filter store. Corrupted file moved to {backup_file}")
-                    return False, True, f"Could not repair filter store. Corrupted file moved to {backup_file}, will start with empty store"
+                    logging.warning(f"Could not repair settings store. Corrupted file moved to {backup_file}")
+                    return False, True, f"Could not repair settings store. Corrupted file moved to {backup_file}, will start with empty store"
                     
         except Exception as e:
-            logging.error(f"Error validating filter store: {str(e)}")
+            logging.error(f"Error validating settings store: {str(e)}")
             return False, False, f"Error during validation: {str(e)}"
