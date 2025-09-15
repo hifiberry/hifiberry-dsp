@@ -273,7 +273,7 @@ class AlsaSync(Thread):
         
         try:
             from alsaaudio import Mixer, mixers
-            logging.info("mixers: ", mixers())
+            logging.info("mixers: %s", mixers())
             return Mixer(name)
         except:
             from alsaaudio import cards, ALSAAudioError
