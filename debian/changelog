@@ -1,8 +1,27 @@
+hifiberry-dsp (1.3) stable; urgency=medium
+
+  * Enhanced checksum API with dual MD5/SHA-1 algorithm support
+  * Added intelligent checksum mode selection (signature-based vs length-based)
+  * Implemented efficient checksum caching system to minimize DSP memory access
+  * Added program memory subset functionality for optimized checksum calculation
+  * Enhanced program length API with max parameter for maximum length retrieval
+  * Enhanced program memory API with multiple end detection modes (signature/full/len)
+  * Added checksum priority system: SHA-1 (length-based) over MD5 (signature-based)
+  * Added comprehensive checksum documentation (doc/checksum.md)
+  * Improved performance with multi-level caching for memory and checksums
+  * Enhanced REST API with detailed checksum response including mode and length info
+
+ -- HiFiBerry <info@hifiberry.com>  Sun, 29 Sep 2025 15:00:00 +0000
+
 hifiberry-dsp (1.2.1) stable; urgency=medium
+
   * Fix logging bug
+  * Added REST API endpoint to retrieve DSP program length (/program-length)
+  * Added REST API endpoint to retrieve DSP program memory (/program-memory)
+  * Enhanced program memory API with multiple output formats (hex, raw, base64)
+  * Updated REST API documentation with new program memory endpoints
 
--- HiFiBerry <info@hifiberry.com>  Mon, 15 Sep 2025 12:00:00 +0000
-
+ -- HiFiBerry <info@hifiberry.com>  Sun, 29 Sep 2025 12:00:00 +0000
 
 hifiberry-dsp (1.2) stable; urgency=medium
 

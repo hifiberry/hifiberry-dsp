@@ -211,7 +211,7 @@ curl -X GET "http://localhost:13141/metadata?filter=biquad&start=eq1_"
 
 #### Get Current DSP Program Checksum
 
-Retrieves the MD5 checksum of the currently loaded DSP program in memory. This checksum can be used to verify program integrity and compare with profile checksums.
+Retrieves multiple checksums (MD5 and SHA-1) of the currently loaded DSP program in memory using both signature-based and length-based methods. These checksums can be used to verify program integrity and compare with profile checksums.
 
 ```
 GET /checksum
@@ -226,19 +226,184 @@ curl -X GET http://localhost:13141/checksum
 ```json
 {
   "checksum": "97C9C5A88582888D111259BF70D6D79E",
-  "format": "md5"
+  "format": "checksums",
+  "signature": {
+    "md5": "97C9C5A88582888D111259BF70D6D79E",
+    "sha1": "A1B2C3D4E5F67890ABCDEF1234567890FEDCBA09"
+  },
+  "length": {
+    "md5": "1234567890ABCDEF1234567890ABCDEF",
+    "sha1": "FEDCBA0987654321ABCDEF1234567890A1B2C3D4"
+  }
 }
 ```
 
 **Response Properties:**
 
-- `checksum`: MD5 checksum of the current DSP program in hexadecimal format
-- `format`: Always "md5" indicating the checksum algorithm used
+- `checksum`: MD5 checksum using signature-based detection (for backward compatibility)
+- `format`: Always "checksums" indicating multiple checksum algorithms are provided
+- `signature`: Object containing signature-based checksums
+  - `md5`: MD5 checksum using program end signature detection
+  - `sha1`: SHA-1 checksum using program end signature detection
+- `length`: Object containing length-based checksums
+  - `md5`: MD5 checksum using program length registers
+  - `sha1`: SHA-1 checksum using program length registers
 
 **Notes:**
-- The checksum is calculated from DSP memory and cached for performance. The cache is automatically cleared when a new DSP program is installed
-- This can be compared with profile checksums to verify the correct program is loaded
+- **Signature checksums**: Use program end signature detection (matches XML profile checksums)
+- **Length checksums**: Use program length registers to determine program boundaries
+- **Efficient caching**: Memory is read only once per mode, and all checksums are calculated and cached
+- **Multiple algorithms**: Both MD5 and SHA-1 checksums are provided for enhanced security
+- The `checksum` field maintains backward compatibility and contains the signature-based MD5
+- **Smart caching**: Checksums are cached per mode and algorithm to avoid recalculation
+- Cache is automatically cleared when a new DSP program is installed
+- Different methods may produce different checksums for the same program due to different end detection
+- Signature-based checksums are compatible with existing XML profile checksums
+- Length-based checksums provide precise register-based program verification
+- If one method fails, the other may still succeed (failed checksums return `null`)
 - Useful for debugging profile loading issues and ensuring program integrity
+
+#### Get Current DSP Program Length
+
+Retrieves the length of the currently loaded DSP program in memory. This information is read from the DSP's program length registers.
+
+```
+GET /program-length[?max={true|false}]
+```
+
+**Query Parameters:**
+
+- `max` (optional, default: `false`): If `true`, returns the maximum program length instead of current length
+
+**Example Request (Current Length):**
+```bash
+curl -X GET http://localhost:13141/program-length
+```
+
+**Example Request (Maximum Length):**
+```bash
+curl -X GET "http://localhost:13141/program-length?max=true"
+```
+
+**Example Response (Current Length):**
+```json
+{
+  "length": 2048,
+  "unit": "words",
+  "bytes": 8192,
+  "type": "current"
+}
+```
+
+**Example Response (Maximum Length):**
+```json
+{
+  "length": 8192,
+  "unit": "words", 
+  "bytes": 32768,
+  "type": "maximum"
+}
+```
+
+**Response Properties:**
+
+- `length`: Length of the DSP program in words
+- `unit`: Always "words" indicating the unit of measurement
+- `bytes`: Length converted to bytes (length × 4)
+- `type`: Either "current" or "maximum" depending on the `max` parameter
+
+**Notes:**
+- Current length is read from DSP registers 0xf463 and 0xf464
+- Maximum length is read from DSP registers 0xf465 and 0xf466
+- Current length shows how much program memory is currently in use
+- Maximum length shows the total available program memory space
+- Useful for debugging and monitoring DSP program size and available space
+- Returns null/error if the DSP is not accessible or the registers cannot be read
+
+#### Get Current DSP Program Memory
+
+Retrieves the complete program memory content from the DSP. This endpoint provides access to the actual program code running on the DSP with different end detection modes.
+
+```
+GET /program-memory[?format={hex|raw|base64}&end={signature|full|len}]
+```
+
+**Query Parameters:**
+
+- `format` (optional, default: `hex`): Output format for the program memory data. Supported values:
+  - `hex`: Return data as hexadecimal string (uppercase)
+  - `raw`: Return data as array of integers (0-255)
+  - `base64`: Return data as base64-encoded string
+
+- `end` (optional, default: `signature`): End detection mode for program memory. Supported values:
+  - `signature`: Find program end signature (default, stops at program end marker)
+  - `full`: Dump full program memory space (entire allocated memory region)
+  - `len`: Use program length registers to determine end (stops at current program length)
+
+**Example Request (Default - Signature End):**
+```bash
+curl -X GET http://localhost:13141/program-memory
+```
+
+**Example Request (Full Memory Dump):**
+```bash
+curl -X GET "http://localhost:13141/program-memory?end=full"
+```
+
+**Example Request (Length-based with Base64 Format):**
+```bash
+curl -X GET "http://localhost:13141/program-memory?end=len&format=base64"
+```
+
+**Example Response (Hex Format - Signature End):**
+```json
+{
+  "memory": "02C20000000000000000000000000000A1B2C3D4...",
+  "length": 8192,
+  "format": "hex",
+  "end_mode": "signature"
+}
+```
+
+**Example Response (Base64 Format - Full Memory):**
+```json
+{
+  "memory": "AsIAAAAAAAAAAAAAAAAAobLD1A==...",
+  "length": 32768,
+  "format": "base64",
+  "end_mode": "full"
+}
+```
+
+**Example Response (Raw Format - Length-based):**
+```json
+{
+  "memory": [2, 194, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 161, 178, 195, 212, ...],
+  "length": 8192,
+  "format": "raw",
+  "end_mode": "len"
+}
+```
+
+**Response Properties:**
+
+- `memory`: Program memory content in the requested format
+- `length`: Length of the program memory in bytes
+- `format`: Format of the returned data
+- `end_mode`: End detection mode used ("signature", "full", or "len")
+
+**Notes:**
+- The DSP core is temporarily stopped during memory read and automatically restarted
+- **Signature mode**: Stops at program end signature marker (default, most efficient)
+- **Full mode**: Dumps entire program memory space (largest output, includes unused memory)
+- **Length mode**: Uses program length registers to determine end (precise, based on DSP registers)
+- Large program memory may result in substantial response sizes, especially with `raw` format and `full` mode
+- Use `base64` format for efficient binary data transfer
+- Use `hex` format for human-readable debugging
+- Use `signature` mode for normal program analysis and backup
+- Use `full` mode for complete memory forensics or debugging
+- Use `len` mode for precise program content based on DSP registers
+- Useful for program backup, analysis, and verification
 
 ### Memory Access API
 

@@ -721,25 +721,147 @@ def get_program_checksum():
     logging.info("=== CHECKSUM ENDPOINT CALLED ===")
     print("=== CHECKSUM ENDPOINT CALLED ===")
     try:
-        # Use Adau145x directly for checksum calculation
-        checksum_bytes = Adau145x.calculate_program_checksum(cached=False)
+        # Calculate both signature and length-based checksums efficiently
+        signature_checksums = Adau145x.calculate_program_checksums(mode="signature", cached=True)
+        length_checksums = Adau145x.calculate_program_checksums(mode="length", cached=True)
         
-        if checksum_bytes:
-            # Convert bytes to hex representation
-            checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8')
-            logging.info(f"Current DSP checksum: {checksum_hex}")
-            print(f"Current DSP checksum: {checksum_hex}")
-            return jsonify({
-                "checksum": checksum_hex,
-                "format": "md5"
-            })
+        # Prepare response
+        response = {
+            "format": "checksums"
+        }
+        
+        # Add signature-based checksums
+        if "md5" in signature_checksums:
+            response["checksum"] = signature_checksums["md5"]  # Backward compatibility
+            response["signature"] = {
+                "md5": signature_checksums["md5"]
+            }
+            if "sha1" in signature_checksums:
+                response["signature"]["sha1"] = signature_checksums["sha1"]
+            
+            logging.info(f"Signature-based checksums: {signature_checksums}")
+            print(f"Signature-based checksums: {signature_checksums}")
         else:
-            logging.error("Failed to retrieve checksum")
-            print("ERROR: Failed to retrieve checksum")
-            return jsonify({"error": "Failed to retrieve checksum"}), 500
+            logging.error("Failed to retrieve signature-based checksums")
+            print("ERROR: Failed to retrieve signature-based checksums")
+            response["signature"] = None
+        
+        # Add length-based checksums
+        if "md5" in length_checksums:
+            response["length"] = {
+                "md5": length_checksums["md5"]
+            }
+            if "sha1" in length_checksums:
+                response["length"]["sha1"] = length_checksums["sha1"]
+            
+            logging.info(f"Length-based checksums: {length_checksums}")
+            print(f"Length-based checksums: {length_checksums}")
+        else:
+            logging.warning("Failed to retrieve length-based checksums")
+            print("WARNING: Failed to retrieve length-based checksums")
+            response["length"] = None
+        
+        # Return error only if both checksum types failed
+        if not signature_checksums and not length_checksums:
+            return jsonify({"error": "Failed to retrieve any checksums"}), 500
+        
+        return jsonify(response)
             
     except Exception as e:
         logging.error(f"Error getting program checksum: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/program-length', methods=['GET'])
+def get_program_length():
+    """API endpoint to get the length of the current DSP program"""
+    logging.info("=== PROGRAM LENGTH ENDPOINT CALLED ===")
+    print("=== PROGRAM LENGTH ENDPOINT CALLED ===")
+    try:
+        # Get max parameter from query string
+        max_length = request.args.get('max', '').lower() in ('true', '1', 'yes')
+        
+        # Use Adau145x directly to get program length
+        program_length = Adau145x.get_program_len(max=max_length)
+        
+        if program_length is not None:
+            length_type = "maximum" if max_length else "current"
+            logging.info(f"{length_type.capitalize()} DSP program length: {program_length} bytes")
+            print(f"{length_type.capitalize()} DSP program length: {program_length} bytes")
+            return jsonify({
+                "length": program_length,
+                "unit": "words",
+                "bytes": program_length * 4,  # Convert words to bytes
+                "type": length_type
+            })
+        else:
+            length_type = "maximum" if max_length else "current"
+            logging.error(f"Failed to retrieve {length_type} program length")
+            print(f"ERROR: Failed to retrieve {length_type} program length")
+            return jsonify({"error": f"Failed to retrieve {length_type} program length"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error getting program length: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/program-memory', methods=['GET'])
+def get_program_memory():
+    """API endpoint to get the program memory from the DSP"""
+    logging.info("=== PROGRAM MEMORY ENDPOINT CALLED ===")
+    print("=== PROGRAM MEMORY ENDPOINT CALLED ===")
+    try:
+        # Get format parameter
+        output_format = request.args.get('format', 'hex').lower()
+        if output_format not in ['hex', 'raw', 'base64']:
+            return jsonify({"error": "Invalid format. Supported values are 'hex', 'raw', 'base64'"}), 400
+        
+        # Get end parameter
+        end_mode = request.args.get('end', 'signature').lower()
+        if end_mode not in ['signature', 'full', 'len']:
+            return jsonify({"error": "Invalid end mode. Supported values are 'signature', 'full', 'len'"}), 400
+        
+        # Use Adau145x directly to get program memory
+        program_memory = Adau145x.get_program_memory(end=end_mode)
+        
+        if program_memory is not None:
+            logging.info(f"Retrieved DSP program memory ({end_mode} mode): {len(program_memory)} bytes")
+            print(f"Retrieved DSP program memory ({end_mode} mode): {len(program_memory)} bytes")
+            
+            if output_format == 'hex':
+                # Convert to hex string representation
+                hex_data = program_memory.hex().upper()
+                return jsonify({
+                    "memory": hex_data,
+                    "length": len(program_memory),
+                    "format": "hex",
+                    "end_mode": end_mode
+                })
+            elif output_format == 'base64':
+                # Convert to base64 for binary transfer
+                import base64
+                b64_data = base64.b64encode(program_memory).decode('ascii')
+                return jsonify({
+                    "memory": b64_data,
+                    "length": len(program_memory),
+                    "format": "base64",
+                    "end_mode": end_mode
+                })
+            elif output_format == 'raw':
+                # Return raw bytes (will be JSON encoded as array of integers)
+                return jsonify({
+                    "memory": list(program_memory),
+                    "length": len(program_memory),
+                    "format": "raw",
+                    "end_mode": end_mode
+                })
+        else:
+            logging.error(f"Failed to retrieve program memory (end mode: {end_mode})")
+            print(f"ERROR: Failed to retrieve program memory (end mode: {end_mode})")
+            return jsonify({"error": f"Failed to retrieve program memory (end mode: {end_mode})"}), 500
+            
+    except Exception as e:
+        logging.error(f"Error getting program memory: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
