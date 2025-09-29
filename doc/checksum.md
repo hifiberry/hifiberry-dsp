@@ -80,6 +80,37 @@ When multiple checksums are available for a DSP profile, the system uses this pr
 
 This ensures that modern, efficient checksums are preferred while maintaining backward compatibility.
 
+## XML Profile Integration
+
+DSP profiles stored in XML format can include checksum attributes for validation:
+
+### Checksum Attributes
+
+- **`checksum`**: MD5 checksum (legacy, signature-based detection)
+- **`checksum_sha1`**: SHA-1 checksum (modern, length-based detection)
+
+### XML Profile Example
+
+```xml
+<ROM>
+  <page>
+    <!-- DSP program data -->
+  </page>
+  <metadata type="checksum">A1B2C3D4E5F6789012345678901234EF</metadata>
+  <metadata type="checksum_sha1">FEDCBA0987654321ABCDEF1234567890A1B2C3D4</metadata>
+  <metadata type="profileName">My DSP Profile</metadata>
+</ROM>
+```
+
+### Profile Matching Priority
+
+When the system searches for matching DSP profiles (e.g., during startup), it uses this priority:
+
+1. **SHA-1 checksum match** (`checksum_sha1` attribute)
+2. **MD5 checksum match** (`checksum` attribute)
+
+This ensures that profiles with modern SHA-1 checksums are preferred while maintaining compatibility with legacy MD5-only profiles.
+
 ## API Usage
 
 ### Getting Checksums

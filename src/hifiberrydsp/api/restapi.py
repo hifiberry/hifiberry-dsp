@@ -125,27 +125,49 @@ def get_xml_profile():
     try:
         xml_profile = XmlProfile(profile_path)
         
-        # Validate checksum - compare memory checksum with XML profile checksum
+        # Validate checksum - compare memory checksums with XML profile checksums
         profile_valid = True
         try:
-            # Get memory checksum
-            memory_checksum = Adau145x.calculate_program_checksum(cached=True)
-            memory_checksum_hex = None
-            if memory_checksum:
-                memory_checksum_hex = binascii.hexlify(memory_checksum).decode('utf-8')
+            # Get memory checksums (try both SHA-1 and MD5)
+            memory_checksums = Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=True)
+            if not memory_checksums:
+                # Fallback to signature-based if length-based fails
+                memory_checksums = Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=True)
                 
-            # Get XML profile checksum
-            profile_checksum = xml_profile.get_meta("checksum")
+            memory_checksum_sha1 = memory_checksums.get("sha1") if memory_checksums else None
+            memory_checksum_md5 = memory_checksums.get("md5") if memory_checksums else None
+                
+            # Get XML profile checksums
+            profile_checksum_sha1 = xml_profile.get_meta("checksum_sha1")
+            profile_checksum_md5 = xml_profile.get_meta("checksum")
             
-            # Compare checksums if both are available
-            if memory_checksum_hex and profile_checksum:
-                if memory_checksum_hex.lower() != profile_checksum.lower():
-                    logging.warning(f"Checksum mismatch - Memory: {memory_checksum_hex}, XML: {profile_checksum}")
-                    profile_valid = False
+            # Check checksums with priority: SHA-1 first, then MD5
+            checksum_match = False
+            if profile_checksum_sha1 and memory_checksum_sha1:
+                if profile_checksum_sha1.lower() == memory_checksum_sha1.lower():
+                    checksum_match = True
+                    logging.debug(f"SHA-1 checksum match - Memory: {memory_checksum_sha1}, XML: {profile_checksum_sha1}")
                 else:
-                    logging.debug(f"Checksum match - Memory: {memory_checksum_hex}, XML: {profile_checksum}")
+                    logging.warning(f"SHA-1 checksum mismatch - Memory: {memory_checksum_sha1}, XML: {profile_checksum_sha1}")
+            
+            # Fall back to MD5 if SHA-1 doesn't match or isn't available
+            if not checksum_match and profile_checksum_md5 and memory_checksum_md5:
+                if profile_checksum_md5.lower() == memory_checksum_md5.lower():
+                    checksum_match = True
+                    logging.debug(f"MD5 checksum match - Memory: {memory_checksum_md5}, XML: {profile_checksum_md5}")
+                else:
+                    logging.warning(f"MD5 checksum mismatch - Memory: {memory_checksum_md5}, XML: {profile_checksum_md5}")
+            
+            # Set profile validity based on checksum results
+            if profile_checksum_sha1 or profile_checksum_md5:
+                profile_valid = checksum_match
+            else:
+                # No checksums in profile - assume valid but log warning
+                logging.info("XML profile has no checksums - cannot validate against memory")
+                profile_valid = True
+                
         except Exception as e:
-            logging.error(f"Error validating checksum: {str(e)}")
+            logging.error(f"Error validating checksums: {str(e)}")
             # If we can't validate, assume it's valid rather than blocking
             profile_valid = True
         
@@ -1068,20 +1090,43 @@ def get_xml_profile_data():
                 import time
                 time.sleep(0.5)
                 
-                # Calculate new program checksum
-                memory_checksum = Adau145x.calculate_program_checksum(cached=False)
-                memory_checksum_hex = None
-                if memory_checksum:
-                    memory_checksum_hex = binascii.hexlify(memory_checksum).decode('utf-8')
+                # Calculate new program checksums
+                memory_checksums = Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
+                if not memory_checksums:
+                    # Fallback to signature-based if length-based fails
+                    memory_checksums = Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
                 
-                # Load the profile again to get its checksum
+                memory_checksum_sha1 = memory_checksums.get("sha1") if memory_checksums else None
+                memory_checksum_md5 = memory_checksums.get("md5") if memory_checksums else None
+                
+                # Load the profile again to get its checksums
                 profile_path = get_default_dspprofile_path()
                 xml_profile = XmlProfile(profile_path)
-                profile_checksum = xml_profile.get_meta("checksum")
+                profile_checksum_sha1 = xml_profile.get_meta("checksum_sha1")
+                profile_checksum_md5 = xml_profile.get_meta("checksum")
                 
+                # Check checksums with priority: SHA-1 first, then MD5
                 checksums_match = False
-                if memory_checksum_hex and profile_checksum:
-                    checksums_match = memory_checksum_hex.lower() == profile_checksum.lower()
+                checksum_info = {}
+                
+                if profile_checksum_sha1 and memory_checksum_sha1:
+                    sha1_match = profile_checksum_sha1.lower() == memory_checksum_sha1.lower()
+                    checksums_match = sha1_match
+                    checksum_info["sha1"] = {
+                        "memory": memory_checksum_sha1,
+                        "profile": profile_checksum_sha1,
+                        "match": sha1_match
+                    }
+                
+                if profile_checksum_md5 and memory_checksum_md5:
+                    md5_match = profile_checksum_md5.lower() == memory_checksum_md5.lower()
+                    if not checksums_match:  # Only use MD5 if SHA-1 didn't match
+                        checksums_match = md5_match
+                    checksum_info["md5"] = {
+                        "memory": memory_checksum_md5,
+                        "profile": profile_checksum_md5,
+                        "match": md5_match
+                    }
                 
                 # The cache should have already been updated by the write_eeprom_content function,
                 # but we'll invalidate it again to be sure the next read loads the new profile
@@ -1090,11 +1135,8 @@ def get_xml_profile_data():
                 return jsonify({
                     "status": "success",
                     "message": f"Profile from {source_type} successfully written to EEPROM",
-                    "checksum": {
-                        "memory": memory_checksum_hex,
-                        "profile": profile_checksum,
-                        "match": checksums_match
-                    }
+                    "checksums": checksum_info,
+                    "match": checksums_match
                 })
                 
             except Exception as e:

@@ -30,6 +30,7 @@ from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.datatools import parse_int_length
 
 ATTRIBUTE_CHECKSUM = "checksum"
+ATTRIBUTE_CHECKSUM_SHA1 = "checksum_sha1"
 ATTRIBUTE_VOL_CTL = "volumeControlRegister"
 ATTRIBUTE_VOL_LIMIT = "volumeLimitRegister"
 ATTRIBUTE_VOL_LIMIT_PI = "volumeLimitPiRegister"

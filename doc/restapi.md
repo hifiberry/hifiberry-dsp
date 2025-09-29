@@ -259,6 +259,8 @@ curl -X GET http://localhost:13141/checksum
 - Cache is automatically cleared when a new DSP program is installed
 - Different methods may produce different checksums for the same program due to different end detection
 - Signature-based checksums are compatible with existing XML profile checksums
+- XML profiles can include both `checksum` (MD5) and `checksum_sha1` (SHA-1) attributes
+- Profile validation prioritizes SHA-1 over MD5 when both are available
 - Length-based checksums provide precise register-based program verification
 - If one method fails, the other may still succeed (failed checksums return `null`)
 - Useful for debugging profile loading issues and ensuring program integrity
