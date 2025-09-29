@@ -187,10 +187,20 @@ dsptoolkit get-checksum
  8B924F2C2210B903CB4226C12C56EE44
 ```
 
-Now add a metadata record to the XML profile
+Now add metadata records to the XML profile. For maximum compatibility and performance, add both MD5 and SHA-1 checksums:
 
 ```xml
 <metadata type="checksum">8B924F2C2210B903CB4226C12C56EE44</metadata>
+<metadata type="checksum_sha1">FEDCBA0987654321ABCDEF1234567890A1B2C3D4</metadata>
+```
+
+The system will prefer the SHA-1 checksum (`checksum_sha1`) when available, falling back to MD5 (`checksum`) for backward compatibility.
+
+To get both checksums:
+
+```bash
+# Get both MD5 and SHA-1 checksums
+curl "http://localhost:8080/api/checksum"
 ```
 
 Push the profile to the DSP again
