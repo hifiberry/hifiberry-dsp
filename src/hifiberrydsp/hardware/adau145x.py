@@ -62,6 +62,9 @@ class Adau145x():
     PROGRAM_LEN_UPPER = 0xf463 
     PROGRAM_LEN_LOWER = 0xf464 
 
+    PROGRAM_MAX_LEN_UPPER = 0xf465
+    PROGRAM_MAX_LEN_LOWER = 0xf466 
+
     START_ADDRESS = {
         "DM0": 0x0000,
         "DM1": 0x6000,
@@ -69,8 +72,17 @@ class Adau145x():
         "REG": 0xf000,
     }
     
-    # Cache for program checksum
-    _checksum_cache = None
+    # Cache for program checksums - structure: {mode: {algorithm: digest}}
+    _checksum_cache = {
+        "signature": {"md5": None, "sha1": None},
+        "length": {"md5": None, "sha1": None}
+    }
+    
+    # Cache for program memory to avoid multiple reads
+    _memory_cache = {
+        "signature": None,
+        "length": None
+    }
 
     @staticmethod
     def decimal_repr(f):
@@ -304,63 +316,124 @@ class Adau145x():
         return memory[0:length * Adau145x.WORD_LENGTH]
 
     @staticmethod
-    def get_program_len():
+    def get_program_len(max=False):
         '''
         Read the program length from the DSP registers
+        
+        Args:
+            max (bool): If True, read maximum program length instead of current length
         
         Returns:
             int: Program length in bytes
         '''
         spi = SpiHandler()
-        upper = spi.read(Adau145x.PROGRAM_LEN_UPPER, 2)
-        lower = spi.read(Adau145x.PROGRAM_LEN_LOWER, 2)
+        
+        if max:
+            # Read maximum program length registers
+            upper = spi.read(Adau145x.PROGRAM_MAX_LEN_UPPER, 2)
+            lower = spi.read(Adau145x.PROGRAM_MAX_LEN_LOWER, 2)
+            register_type = "maximum program length"
+        else:
+            # Read current program length registers
+            upper = spi.read(Adau145x.PROGRAM_LEN_UPPER, 2)
+            lower = spi.read(Adau145x.PROGRAM_LEN_LOWER, 2)
+            register_type = "program length"
+            
         if upper is None or lower is None:
-            logging.error("Failed to read program length registers")
+            logging.error(f"Failed to read {register_type} registers")
             return None
+            
         upper_val = int.from_bytes(upper, byteorder='big')
         lower_val = int.from_bytes(lower, byteorder='big')
         program_length = (upper_val << 16) | lower_val
-        logging.debug(f"Program length read from DSP: {program_length} bytes")
+        logging.debug(f"{register_type.capitalize()} read from DSP: {program_length} bytes")
         return program_length
     
     @staticmethod
-    def get_program_memory():
+    def get_program_memory(end="signature"):
         '''
-        Read the program memory from the DSP including program end detection
+        Read the program memory from the DSP with different end detection modes
+        
+        Args:
+            end (str): End detection mode:
+                - "signature": Find program end signature (default behavior)
+                - "full": Dump full program memory space
+                - "len": Use program length registers to determine end
         
         Returns:
-            bytearray: Program memory content up to the end marker
+            bytearray: Program memory content
         '''
+        if end not in ["signature", "full", "len"]:
+            raise ValueError(f"Invalid end mode '{end}'. Must be 'signature', 'full', or 'len'")
+        
         Adau145x.kill_dsp()
         time.sleep(0.0001)
-        memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
-                                          Adau145x.PROGRAM_LENGTH)
-        Adau145x.start_dsp()
-        logging.debug("Read program from address %s to %s", Adau145x.PROGRAM_ADDR, Adau145x.PROGRAM_ADDR + Adau145x.PROGRAM_LENGTH)
+        
+        try:
+            if end == "full":
+                # Dump full program memory space
+                memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
+                                                  Adau145x.PROGRAM_LENGTH)
+                logging.debug("Read full program memory from address %s to %s (%s bytes)", 
+                             Adau145x.PROGRAM_ADDR, 
+                             Adau145x.PROGRAM_ADDR + Adau145x.PROGRAM_LENGTH * Adau145x.WORD_LENGTH,
+                             len(memory))
+                return memory
+                
+            elif end == "len":
+                # Use program length registers to determine end
+                program_len = Adau145x.get_program_len()
+                if program_len is None:
+                    logging.error("Failed to read program length for memory dump")
+                    return None
+                    
+                # Convert from words to bytes
+                program_len_bytes = program_len * Adau145x.WORD_LENGTH
+                
+                # Read only the used program memory
+                memory_length_words = min(program_len, Adau145x.PROGRAM_LENGTH)
+                memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
+                                                  memory_length_words)
+                
+                logging.debug("Read program memory using length registers: %s words (%s bytes)",
+                             program_len, program_len_bytes)
+                return memory[0:program_len_bytes]
+                
+            else:  # end == "signature" (default)
+                # Original behavior: find program end signature
+                memory = Adau145x.get_memory_block(Adau145x.PROGRAM_ADDR,
+                                                  Adau145x.PROGRAM_LENGTH)
+                logging.debug("Read program from address %s to %s", 
+                             Adau145x.PROGRAM_ADDR, 
+                             Adau145x.PROGRAM_ADDR + Adau145x.PROGRAM_LENGTH * Adau145x.WORD_LENGTH)
 
-        end_index = memory.find(Adau145x.PROGRAM_END_SIGNATURE)
-        logging.debug("Program end signature found at %s", end_index)
+                end_index = memory.find(Adau145x.PROGRAM_END_SIGNATURE)
+                logging.debug("Program end signature found at %s", end_index)
 
-        if end_index < 0:
-            memsum = 0
-            for i in memory:
-                memsum = memsum + i
+                if end_index < 0:
+                    memsum = 0
+                    for i in memory:
+                        memsum = memsum + i
 
-            if (memsum > 0):
-                logging.error("couldn't find program end signature," +
-                              " using full program memory")
-                end_index = Adau145x.PROGRAM_LENGTH - Adau145x.WORD_LENGTH
-            else:
-                logging.error("SPI returned only zeros - communication "
-                              "error")
-                return None
-        else:
-            end_index = end_index + len(Adau145x.PROGRAM_END_SIGNATURE)
+                    if (memsum > 0):
+                        logging.error("couldn't find program end signature," +
+                                      " using full program memory")
+                        end_index = len(memory) - Adau145x.WORD_LENGTH
+                    else:
+                        logging.error("SPI returned only zeros - communication "
+                                      "error")
+                        return None
+                else:
+                    end_index = end_index + len(Adau145x.PROGRAM_END_SIGNATURE)
 
-        logging.debug("Program lengths = %s words",
-                      end_index / Adau145x.WORD_LENGTH)
+                logging.debug("Program lengths = %s words",
+                              end_index / Adau145x.WORD_LENGTH)
 
-        return memory[0:end_index]
+                return memory[0:end_index]
+                
+        finally:
+            # Always restart the DSP core
+            Adau145x.start_dsp()
     
     @staticmethod
     def get_data_memory():
@@ -376,48 +449,162 @@ class Adau145x():
                       Adau145x.DATA_LENGTH / Adau145x.WORD_LENGTH)
 
         return memory[0:Adau145x.DATA_LENGTH]
+    
+    @staticmethod
+    def get_program_memory_subset(mode="signature", cached=True):
+        '''
+        Get a subset of program memory based on either signature or length detection
+        with efficient caching to avoid multiple memory reads
+        
+        Args:
+            mode (str): Detection mode - "signature" or "length"
+            cached (bool): Whether to use cached memory if available
+            
+        Returns:
+            bytearray: Program memory subset or None if failed
+        '''
+        if mode not in ["signature", "length"]:
+            raise ValueError(f"Invalid mode '{mode}'. Must be 'signature' or 'length'")
+        
+        # Check cache first
+        if cached and Adau145x._memory_cache[mode] is not None:
+            logging.debug(f"Using cached program memory ({mode} mode)")
+            return Adau145x._memory_cache[mode]
+        
+        logging.debug(f"Reading program memory ({mode} mode)")
+        
+        if mode == "signature":
+            # Use signature-based detection
+            memory = Adau145x.get_program_memory(end="signature")
+        else:  # mode == "length"
+            # Use length-based detection
+            memory = Adau145x.get_program_memory(end="len")
+        
+        # Cache the result
+        if memory is not None:
+            Adau145x._memory_cache[mode] = memory
+            logging.debug(f"Cached program memory ({mode} mode): {len(memory)} bytes")
+        
+        return memory
+    
+    @staticmethod
+    def calculate_program_checksums(mode="signature", algorithms=None, cached=True):
+        '''
+        Calculate multiple checksums of program memory efficiently
+        
+        Args:
+            mode (str): Detection mode - "signature" or "length"
+            algorithms (list): List of algorithms ["md5", "sha1"]. If None, calculates both
+            cached (bool): Whether to use cached checksums if available
+            
+        Returns:
+            dict: Dictionary with algorithm names as keys and hex digests as values
+        '''
+        if mode not in ["signature", "length"]:
+            raise ValueError(f"Invalid mode '{mode}'. Must be 'signature' or 'length'")
+        
+        if algorithms is None:
+            algorithms = ["md5", "sha1"]
+        
+        # Validate algorithms
+        valid_algorithms = {"md5", "sha1"}
+        for alg in algorithms:
+            if alg not in valid_algorithms:
+                raise ValueError(f"Invalid algorithm '{alg}'. Must be one of {valid_algorithms}")
+        
+        result = {}
+        
+        # Check cache for each requested algorithm
+        all_cached = True
+        for alg in algorithms:
+            if cached and Adau145x._checksum_cache[mode][alg] is not None:
+                result[alg] = Adau145x._checksum_cache[mode][alg]
+                logging.debug(f"Using cached {alg} checksum ({mode} mode)")
+            else:
+                all_cached = False
+        
+        # If all requested checksums are cached, return them
+        if all_cached:
+            return result
+        
+        # Get program memory (cached if possible)
+        program_data = Adau145x.get_program_memory_subset(mode=mode, cached=cached)
+        if program_data is None:
+            logging.error(f"Failed to get program memory for checksum calculation ({mode} mode)")
+            return {}
+        
+        # Calculate missing checksums
+        import hashlib
+        for alg in algorithms:
+            if alg not in result:  # Only calculate if not cached
+                try:
+                    if alg == "md5":
+                        hasher = hashlib.md5()
+                    elif alg == "sha1":
+                        hasher = hashlib.sha1()
+                    
+                    hasher.update(program_data)
+                    digest_hex = hasher.hexdigest().upper()
+                    
+                    # Cache and store result
+                    Adau145x._checksum_cache[mode][alg] = digest_hex
+                    result[alg] = digest_hex
+                    
+                    logging.debug(f"Calculated {alg} checksum ({mode} mode): {digest_hex}")
+                    
+                except Exception as e:
+                    logging.error(f"Failed to calculate {alg} checksum ({mode} mode): {str(e)}")
+        
+        return result
+    
+    @staticmethod
+    def clear_checksum_cache():
+        '''Clear all cached checksums and memory'''
+        Adau145x._checksum_cache = {
+            "signature": {"md5": None, "sha1": None},
+            "length": {"md5": None, "sha1": None}
+        }
+        Adau145x._memory_cache = {
+            "signature": None,
+            "length": None
+        }
+        logging.debug("Cleared all checksum and memory caches")
         
     @staticmethod
     def calculate_program_checksum(program_data=None, cached=True):
         '''
-        Calculate MD5 checksum of program memory
+        Calculate MD5 checksum of program memory (backward compatibility method)
         
         Args:
-            program_data: Optional program data. If None, reads from DSP
+            program_data: Optional program data. If None, reads from DSP using signature mode
             cached: Whether to use cached checksum if available
             
         Returns:
             bytes: MD5 digest
         '''
-        if cached and Adau145x._checksum_cache is not None:
-            logging.debug("using cached program checksum")
-            return Adau145x._checksum_cache
-
-        if program_data is None:
-            program_data = Adau145x.get_program_memory()
-            
-        if program_data is None:
-            return None
-            
-        m = hashlib.md5()
-        try:
-            m.update(program_data)
-        except:
-            logging.error("Can't calculate checksum")
-            return None
-
-        logging.debug("length: %s, digest: %s", len(program_data), m.digest())
-        
-        # Cache the result
-        Adau145x._checksum_cache = m.digest()
-        
-        return m.digest()
+        if program_data is not None:
+            # If program_data is provided, calculate directly (legacy behavior)
+            import hashlib
+            m = hashlib.md5()
+            try:
+                m.update(program_data)
+                return m.digest()
+            except:
+                logging.error("Can't calculate checksum from provided data")
+                return None
+        else:
+            # Use new efficient method for signature-based MD5
+            checksums = Adau145x.calculate_program_checksums(mode="signature", algorithms=["md5"], cached=cached)
+            if "md5" in checksums:
+                # Convert hex string back to bytes for backward compatibility
+                try:
+                    return bytes.fromhex(checksums["md5"])
+                except:
+                    logging.error("Failed to convert hex checksum to bytes")
+                    return None
+            else:
+                return None
     
-    @staticmethod
-    def clear_checksum_cache():
-        '''Clear the cached program checksum'''
-        Adau145x._checksum_cache = None
-        
     @staticmethod
     def write_biquad(start_addr, bq):
         '''
