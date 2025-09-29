@@ -59,6 +59,9 @@ class Adau145x():
 
     PROGRAM_END_SIGNATURE = b'\x02\xC2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 
+    PROGRAM_LEN_UPPER = 0xf463 
+    PROGRAM_LEN_LOWER = 0xf464 
+
     START_ADDRESS = {
         "DM0": 0x0000,
         "DM1": 0x6000,
@@ -299,6 +302,26 @@ class Adau145x():
         Adau145x.start_dsp()
 
         return memory[0:length * Adau145x.WORD_LENGTH]
+
+    @staticmethod
+    def get_program_len():
+        '''
+        Read the program length from the DSP registers
+        
+        Returns:
+            int: Program length in bytes
+        '''
+        spi = SpiHandler()
+        upper = spi.read(Adau145x.PROGRAM_LEN_UPPER, 2)
+        lower = spi.read(Adau145x.PROGRAM_LEN_LOWER, 2)
+        if upper is None or lower is None:
+            logging.error("Failed to read program length registers")
+            return None
+        upper_val = int.from_bytes(upper, byteorder='big')
+        lower_val = int.from_bytes(lower, byteorder='big')
+        program_length = (upper_val << 16) | lower_val
+        logging.debug(f"Program length read from DSP: {program_length} bytes")
+        return program_length
     
     @staticmethod
     def get_program_memory():
