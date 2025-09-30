@@ -63,3 +63,7 @@ directly control the DSP program, you need to add some additional
 metadata to the XML file.
 The process to create a DSP profile is documented in [doc/dspprofiles.md](/doc/dspprofiles.md)
 
+## Contributing
+
+When contributing to this project, please follow the AI and style guidelines in `.ai-guidelines` and `.ai-config.json`. This ensures consistent, professional documentation without decorative elements like emojis.
+
