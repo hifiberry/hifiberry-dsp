@@ -1,0 +1,355 @@
+#!/bin/bash
+#
+# dsp-get-profile - Retrieve DSP profile from HiFiBerry DSP using REST API
+#
+# This script connects to a HiFiBerry DSP via the REST API and retrieves
+# the current DSP profile in XML format.
+#
+# Usage: dsp-get-profile [OPTIONS] [output_file]
+#
+# Exit codes:
+#   0 - Success
+#   1 - General error
+#   2 - Invalid arguments
+#   3 - File I/O error
+#   4 - Connection error
+#   5 - API error (no profile found, server error, etc.)
+#
+
+set -euo pipefail
+
+# Default values
+DEFAULT_HOST="localhost"
+DEFAULT_PORT="13141"
+DEFAULT_TIMEOUT="30"
+
+# Global variables
+host="$DEFAULT_HOST"
+port="$DEFAULT_PORT"
+timeout="$DEFAULT_TIMEOUT"
+verbose=false
+quiet=false
+output_file=""
+stdout_output=false
+
+# Logging function
+log() {
+    local level="$1"
+    shift
+    local message="$*"
+    
+    case "$level" in
+        "ERROR")
+            echo "ERROR: $message" >&2
+            ;;
+        "WARN")
+            echo "WARN: $message" >&2
+            ;;
+        "INFO")
+            if [ "$quiet" = false ]; then
+                echo "INFO: $message" >&2
+            fi
+            ;;
+        "VERBOSE")
+            if [ "$verbose" = true ]; then
+                echo "VERBOSE: $message" >&2
+            fi
+            ;;
+    esac
+}
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to show help
+show_help() {
+    cat << EOF
+Usage: dsp-get-profile [OPTIONS] [output_file]
+
+Retrieve the current DSP profile from HiFiBerry DSP using the REST API.
+If no output file is specified, the profile is written to stdout.
+
+ARGUMENTS:
+    output_file         File to save the retrieved profile (optional)
+                       If not specified, profile is written to stdout
+
+OPTIONS:
+    -h, --host HOST     DSP server hostname or IP address (default: $DEFAULT_HOST)
+    -p, --port PORT     DSP server port (default: $DEFAULT_PORT)
+    -t, --timeout SEC   Connection timeout in seconds (default: $DEFAULT_TIMEOUT)
+    -v, --verbose       Enable verbose output
+    -q, --quiet         Suppress non-error output
+    --help              Show this help message
+    --version           Show version information
+
+EXAMPLES:
+    # Get profile and save to file
+    dsp-get-profile current-profile.xml
+    
+    # Get profile from remote DSP and save to file
+    dsp-get-profile -h 192.168.1.100 backup-profile.xml
+    
+    # Get profile and display on stdout
+    dsp-get-profile
+    
+    # Get profile quietly and save to file
+    dsp-get-profile -q profile-backup.xml
+    
+    # Get profile with verbose output
+    dsp-get-profile -v my-profile.xml
+
+EXIT CODES:
+    0   Success
+    1   General error
+    2   Invalid arguments
+    3   File I/O error
+    4   Connection error
+    5   API error (no profile found, server error, etc.)
+
+For more information, see dsp-get-profile(1).
+EOF
+}
+
+# Function to show version
+show_version() {
+    echo "dsp-get-profile 1.3.2"
+    echo "Part of HiFiBerry DSP toolkit"
+    echo "Uses REST API for DSP communication"
+}
+
+# Function to test server connection
+test_connection() {
+    log "VERBOSE" "Testing connection to $host:$port"
+    
+    if ! curl -sf --connect-timeout "$timeout" \
+         "http://$host:$port/hardware/dsp" >/dev/null 2>&1; then
+        log "ERROR" "Cannot connect to DSP API at $host:$port"
+        log "ERROR" "Make sure the sigmatcpserver is running and accessible"
+        return 4
+    fi
+    
+    log "VERBOSE" "Connection successful"
+    return 0
+}
+
+# Function to retrieve profile from API
+retrieve_profile() {
+    log "VERBOSE" "Retrieving profile from API endpoint"
+    
+    # Make API call
+    local response
+    local http_code
+    
+    response="$(curl -s --connect-timeout "$timeout" \
+                     -w "HTTPSTATUS:%{http_code}" \
+                     -H "Accept: application/xml" \
+                     -X GET \
+                     "http://$host:$port/dspprofile" 2>&1)"
+    
+    if [ $? -ne 0 ]; then
+        log "ERROR" "Failed to connect to DSP API"
+        return 4
+    fi
+    
+    # Extract HTTP status code
+    http_code="$(echo "$response" | grep "HTTPSTATUS:" | cut -d: -f2)"
+    
+    # Remove HTTP status from response
+    response="$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')"
+    
+    log "VERBOSE" "HTTP response code: $http_code"
+    
+    # Check HTTP status
+    case "$http_code" in
+        200)
+            log "VERBOSE" "Profile retrieved successfully"
+            ;;
+        404)
+            log "ERROR" "No DSP profile found on server"
+            log "ERROR" "Response: $response"
+            return 5
+            ;;
+        4*)
+            log "ERROR" "Client error during profile retrieval"
+            log "ERROR" "Response: $response"
+            return 5
+            ;;
+        5*)
+            log "ERROR" "Server error during profile retrieval"
+            log "ERROR" "Response: $response"
+            return 5
+            ;;
+        *)
+            log "ERROR" "Unexpected HTTP status code: $http_code"
+            log "ERROR" "Response: $response"
+            return 5
+            ;;
+    esac
+    
+    # Validate that we got XML content
+    if ! echo "$response" | head -n 1 | grep -q "<?xml"; then
+        log "ERROR" "Invalid response - not XML content"
+        log "ERROR" "Response: $response"
+        return 5
+    fi
+    
+    # Output the profile
+    if [ "$stdout_output" = true ]; then
+        echo "$response"
+    else
+        if ! echo "$response" > "$output_file"; then
+            log "ERROR" "Failed to write profile to file '$output_file'"
+            return 3
+        fi
+        log "INFO" "Profile saved to '$output_file'"
+    fi
+    
+    return 0
+}
+
+# Function to validate dependencies
+check_dependencies() {
+    if ! command_exists curl; then
+        log "ERROR" "curl is required but not found"
+        log "ERROR" "Please install curl: apt-get install curl"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to validate arguments
+validate_arguments() {
+    # Validate host
+    if [ -z "$host" ]; then
+        log "ERROR" "Host cannot be empty"
+        return 2
+    fi
+    
+    # Validate port
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        log "ERROR" "Invalid port number: $port"
+        return 2
+    fi
+    
+    # Validate timeout
+    if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [ "$timeout" -lt 1 ]; then
+        log "ERROR" "Invalid timeout: $timeout"
+        return 2
+    fi
+    
+    # Check if output file is specified
+    if [ -z "$output_file" ]; then
+        stdout_output=true
+        log "VERBOSE" "No output file specified, using stdout"
+    else
+        # Check if output file directory exists and is writable
+        local output_dir
+        output_dir="$(dirname "$output_file")"
+        if [ ! -d "$output_dir" ]; then
+            log "ERROR" "Output directory does not exist: $output_dir"
+            return 2
+        fi
+        if [ ! -w "$output_dir" ]; then
+            log "ERROR" "Output directory is not writable: $output_dir"
+            return 2
+        fi
+        log "VERBOSE" "Will save profile to: $output_file"
+    fi
+    
+    return 0
+}
+
+# Main function
+main() {
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--host)
+                if [ -z "${2:-}" ]; then
+                    log "ERROR" "Host argument requires a value"
+                    return 2
+                fi
+                host="$2"
+                shift 2
+                ;;
+            -p|--port)
+                if [ -z "${2:-}" ]; then
+                    log "ERROR" "Port argument requires a value"
+                    return 2
+                fi
+                port="$2"
+                shift 2
+                ;;
+            -t|--timeout)
+                if [ -z "${2:-}" ]; then
+                    log "ERROR" "Timeout argument requires a value"
+                    return 2
+                fi
+                timeout="$2"
+                shift 2
+                ;;
+            -v|--verbose)
+                verbose=true
+                shift
+                ;;
+            -q|--quiet)
+                quiet=true
+                shift
+                ;;
+            --help)
+                show_help
+                return 0
+                ;;
+            --version)
+                show_version
+                return 0
+                ;;
+            -*)
+                log "ERROR" "Unknown option: $1"
+                log "ERROR" "Use --help for usage information"
+                return 2
+                ;;
+            *)
+                # This should be the output file
+                if [ -n "$output_file" ]; then
+                    log "ERROR" "Multiple output files specified"
+                    log "ERROR" "Use --help for usage information"
+                    return 2
+                fi
+                output_file="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    # Validate dependencies
+    if ! check_dependencies; then
+        return 1
+    fi
+    
+    # Validate arguments
+    if ! validate_arguments; then
+        return 2
+    fi
+    
+    log "INFO" "Retrieving profile from DSP at $host:$port"
+    
+    # Test connection
+    if ! test_connection; then
+        return 4
+    fi
+    
+    # Retrieve profile
+    if ! retrieve_profile; then
+        return $?
+    fi
+    
+    log "INFO" "Profile retrieved successfully"
+    return 0
+}
+
+# Run main function with all arguments
+main "$@"

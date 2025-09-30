@@ -1,0 +1,359 @@
+#!/bin/bash
+
+# dsp-program-info - Get DSP program information using REST API
+# Copyright (c) 2025 HiFiBerry
+
+set -e
+
+SCRIPT_NAME="$(basename "$0")"
+VERSION="1.3.2"
+DEFAULT_HOST="localhost"
+DEFAULT_PORT="13141"
+TIMEOUT=30
+
+# Function to show usage
+show_usage() {
+    cat << EOF
+Usage: $SCRIPT_NAME [OPTIONS]
+
+Get DSP program information from HiFiBerry DSP using the REST API.
+Returns comprehensive program information including checksums and program length.
+
+OPTIONS:
+    -h, --host HOST     DSP server hostname or IP address (default: $DEFAULT_HOST)
+    -p, --port PORT     DSP server port (default: $DEFAULT_PORT)
+    -t, --timeout SEC   Connection timeout in seconds (default: $TIMEOUT)
+    -f, --format FMT    Output format: json, text, or brief (default: text)
+    -v, --verbose       Enable verbose output
+    -q, --quiet         Suppress non-error output (only show program info)
+    --help              Show this help message
+    --version           Show version information
+
+OUTPUT FORMATS:
+    json        Raw JSON response from API
+    text        Human-readable formatted output
+    brief       Compact single-line output
+
+EXAMPLES:
+    # Get program info from local DSP
+    $SCRIPT_NAME
+    
+    # Get program info from remote DSP in JSON format
+    $SCRIPT_NAME -h 192.168.1.100 -f json
+    
+    # Get brief info quietly
+    $SCRIPT_NAME -q -f brief
+    
+    # Get program info with verbose output
+    $SCRIPT_NAME -v
+
+EXIT CODES:
+    0   Success
+    1   General error
+    2   Invalid arguments
+    4   Connection error
+    5   API error
+
+For more information, see dsp-program-info(1).
+EOF
+}
+
+# Function to show version
+show_version() {
+    echo "$SCRIPT_NAME version $VERSION"
+    echo "Part of HiFiBerry DSP toolkit"
+}
+
+# Function to log messages
+log() {
+    local level="$1"
+    shift
+    case "$level" in
+        "ERROR")
+            echo "ERROR: $*" >&2
+            ;;
+        "WARN")
+            echo "WARNING: $*" >&2
+            ;;
+        "INFO")
+            if [ "$QUIET" != "1" ]; then
+                echo "INFO: $*"
+            fi
+            ;;
+        "VERBOSE")
+            if [ "$VERBOSE" = "1" ]; then
+                echo "VERBOSE: $*"
+            fi
+            ;;
+    esac
+}
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to test API connectivity
+test_api_connection() {
+    local host="$1"
+    local port="$2"
+    local timeout="$3"
+    
+    log "VERBOSE" "Testing connection to $host:$port"
+    
+    if ! curl -sf --connect-timeout "$timeout" \
+              "http://$host:$port/metadata" \
+              >/dev/null 2>&1; then
+        log "ERROR" "Cannot connect to DSP API at $host:$port"
+        log "ERROR" "Make sure the sigmatcpserver is running and accessible"
+        return 4
+    fi
+    
+    log "VERBOSE" "Connection test successful"
+    return 0
+}
+
+# Function to format bytes to human readable
+format_bytes() {
+    local bytes="$1"
+    if [ "$bytes" -lt 1024 ]; then
+        echo "${bytes} bytes"
+    elif [ "$bytes" -lt 1048576 ]; then
+        echo "$(( bytes / 1024 )) KB"
+    else
+        echo "$(( bytes / 1048576 )) MB"
+    fi
+}
+
+# Function to format program info as text
+format_text_output() {
+    local json_response="$1"
+    
+    # Extract values using basic string manipulation (avoiding jq dependency)
+    local program_length
+    local md5_checksum
+    local sha1_checksum
+    
+    program_length="$(echo "$json_response" | sed -n 's/.*"program_length":\s*\([0-9]*\).*/\1/p')"
+    md5_checksum="$(echo "$json_response" | sed -n 's/.*"md5":\s*"\([^"]*\)".*/\1/p')"
+    sha1_checksum="$(echo "$json_response" | sed -n 's/.*"sha1":\s*"\([^"]*\)".*/\1/p')"
+    
+    # Handle null values
+    if [ "$md5_checksum" = "null" ] || [ -z "$md5_checksum" ]; then
+        md5_checksum="(not available)"
+    fi
+    if [ "$sha1_checksum" = "null" ] || [ -z "$sha1_checksum" ]; then
+        sha1_checksum="(not available)"
+    fi
+    
+    echo "DSP Program Information:"
+    echo "======================="
+    echo "Program Length: $program_length words ($(format_bytes $((program_length * 4))))"
+    echo "MD5 Checksum:   $md5_checksum"
+    echo "SHA-1 Checksum: $sha1_checksum"
+}
+
+# Function to format program info as brief
+format_brief_output() {
+    local json_response="$1"
+    
+    # Extract values using basic string manipulation
+    local program_length
+    local sha1_checksum
+    
+    program_length="$(echo "$json_response" | sed -n 's/.*"program_length":\s*\([0-9]*\).*/\1/p')"
+    sha1_checksum="$(echo "$json_response" | sed -n 's/.*"sha1":\s*"\([^"]*\)".*/\1/p')"
+    
+    # Handle null values
+    if [ "$sha1_checksum" = "null" ] || [ -z "$sha1_checksum" ]; then
+        sha1_checksum="N/A"
+    fi
+    
+    echo "${program_length}w ${sha1_checksum}"
+}
+
+# Function to get program info
+get_program_info() {
+    local host="$1"
+    local port="$2"
+    local timeout="$3"
+    local format="$4"
+    
+    log "VERBOSE" "Requesting program info from $host:$port"
+    
+    # Make API call
+    local response
+    local http_code
+    
+    response="$(curl -s --connect-timeout "$timeout" \
+                     -w "HTTPSTATUS:%{http_code}" \
+                     "http://$host:$port/program-info" 2>&1)"
+    
+    if [ $? -ne 0 ]; then
+        log "ERROR" "Failed to connect to DSP API"
+        log "ERROR" "Response: $response"
+        return 4
+    fi
+    
+    # Extract HTTP status code
+    http_code="$(echo "$response" | grep "HTTPSTATUS:" | cut -d: -f2)"
+    response="$(echo "$response" | sed 's/HTTPSTATUS:.*$//')"
+    
+    log "VERBOSE" "HTTP Status: $http_code"
+    log "VERBOSE" "Response: $response"
+    
+    # Check HTTP status
+    case "$http_code" in
+        "200")
+            log "VERBOSE" "Successfully retrieved program info"
+            
+            # Format output based on requested format
+            case "$format" in
+                "json")
+                    echo "$response"
+                    ;;
+                "text")
+                    format_text_output "$response"
+                    ;;
+                "brief")
+                    format_brief_output "$response"
+                    ;;
+                *)
+                    log "ERROR" "Unknown format: $format"
+                    return 1
+                    ;;
+            esac
+            ;;
+        "404")
+            log "ERROR" "API endpoint not found - check server version"
+            return 5
+            ;;
+        "500")
+            log "ERROR" "Server error while retrieving program info"
+            log "ERROR" "Response: $response"
+            return 5
+            ;;
+        *)
+            log "ERROR" "Unexpected HTTP status: $http_code"
+            log "ERROR" "Response: $response"
+            return 5
+            ;;
+    esac
+    
+    return 0
+}
+
+# Main function
+main() {
+    local host="$DEFAULT_HOST"
+    local port="$DEFAULT_PORT"
+    local timeout="$TIMEOUT"
+    local format="text"
+    local VERBOSE=0
+    local QUIET=0
+    
+    # Check for required tools
+    if ! command_exists curl; then
+        log "ERROR" "curl is required but not found"
+        log "ERROR" "Please install curl: apt-get install curl"
+        exit 1
+    fi
+    
+    # Parse arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--host)
+                shift
+                if [ -z "$1" ]; then
+                    log "ERROR" "Host argument requires a value"
+                    exit 2
+                fi
+                host="$1"
+                ;;
+            -p|--port)
+                shift
+                if [ -z "$1" ]; then
+                    log "ERROR" "Port argument requires a value"
+                    exit 2
+                fi
+                if ! echo "$1" | grep -q '^[0-9]\+$'; then
+                    log "ERROR" "Port must be a number"
+                    exit 2
+                fi
+                port="$1"
+                ;;
+            -t|--timeout)
+                shift
+                if [ -z "$1" ]; then
+                    log "ERROR" "Timeout argument requires a value"
+                    exit 2
+                fi
+                if ! echo "$1" | grep -q '^[0-9]\+$'; then
+                    log "ERROR" "Timeout must be a number"
+                    exit 2
+                fi
+                timeout="$1"
+                ;;
+            -f|--format)
+                shift
+                if [ -z "$1" ]; then
+                    log "ERROR" "Format argument requires a value"
+                    exit 2
+                fi
+                case "$1" in
+                    "json"|"text"|"brief")
+                        format="$1"
+                        ;;
+                    *)
+                        log "ERROR" "Invalid format: $1. Valid formats: json, text, brief"
+                        exit 2
+                        ;;
+                esac
+                ;;
+            -v|--verbose)
+                VERBOSE=1
+                ;;
+            -q|--quiet)
+                QUIET=1
+                ;;
+            --help)
+                show_usage
+                exit 0
+                ;;
+            --version)
+                show_version
+                exit 0
+                ;;
+            -*)
+                log "ERROR" "Unknown option: $1"
+                show_usage >&2
+                exit 2
+                ;;
+            *)
+                log "ERROR" "Unexpected argument: $1"
+                show_usage >&2
+                exit 2
+                ;;
+        esac
+        shift
+    done
+    
+    # Test API connection
+    test_api_connection "$host" "$port" "$timeout"
+    local ret=$?
+    if [ $ret -ne 0 ]; then
+        exit $ret
+    fi
+    
+    # Get program info
+    get_program_info "$host" "$port" "$timeout" "$format"
+    ret=$?
+    if [ $ret -ne 0 ]; then
+        exit $ret
+    fi
+    
+    exit 0
+}
+
+# Run main function
+main "$@"
