@@ -265,6 +265,56 @@ curl -X GET http://localhost:13141/checksum
 - If one method fails, the other may still succeed (failed checksums return `null`)
 - Useful for debugging profile loading issues and ensuring program integrity
 
+#### Get Comprehensive Program Information
+
+Retrieves comprehensive information about the currently loaded DSP program, including checksums calculated with different methods and program length.
+
+```
+GET /program-info
+```
+
+**Example Request:**
+
+```bash
+curl http://localhost:8080/api/program-info
+```
+
+**Response Format:**
+
+```json
+{
+  "program_length": 1536,
+  "checksums": {
+    "signature": {
+      "md5": "A1B2C3D4E5F6789012345678901234EF",
+      "sha1": "FEDCBA0987654321ABCDEF1234567890A1B2C3D4"
+    },
+    "length": {
+      "md5": "1234567890ABCDEF1234567890ABCDEF",
+      "sha1": "ABCDEF1234567890FEDCBA0987654321A1B2C3D4"
+    }
+  }
+}
+```
+
+**Response Properties:**
+
+- `program_length`: Length of the current DSP program in words (from length registers)
+- `checksums`: Object containing checksums calculated with different detection methods
+  - `signature`: Checksums using program end signature detection
+    - `md5`: MD5 checksum (compatible with XML profile `checksum` attribute)
+    - `sha1`: SHA-1 checksum
+  - `length`: Checksums using program length registers
+    - `md5`: MD5 checksum using precise length detection
+    - `sha1`: SHA-1 checksum (compatible with XML profile `checksum_sha1` attribute)
+
+**Notes:**
+- Provides all checksum variants in a single API call for comprehensive program verification
+- Signature-based checksums match those stored in XML profiles for validation
+- Length-based checksums provide more precise program boundary detection
+- Useful for debugging, profile validation, and program integrity verification
+- All checksums are cached for performance
+
 #### Get Current DSP Program Length
 
 Retrieves the length of the currently loaded DSP program in memory. This information is read from the DSP's program length registers.

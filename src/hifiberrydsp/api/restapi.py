@@ -794,6 +794,38 @@ def get_program_checksum():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/program-info', methods=['GET'])
+def get_program_info():
+    """
+    Get comprehensive program information including checksums and length
+    
+    Returns:
+        JSON response with program checksums (signature/length based) and program length
+    """
+    try:
+        # Get program length
+        program_length = Adau145x.get_program_len()
+        
+        # Get checksums for both modes
+        signature_checksums = Adau145x.calculate_program_checksums(mode="signature", algorithms=["md5", "sha1"], cached=True)
+        length_checksums = Adau145x.calculate_program_checksums(mode="length", algorithms=["md5", "sha1"], cached=True)
+        
+        result = {
+            "program_length": program_length,
+            "checksums": {
+                "md5": signature_checksums.get("md5"),
+                "sha1": length_checksums.get("sha1")
+                }
+            }
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error getting program info: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/program-length', methods=['GET'])
 def get_program_length():
     """API endpoint to get the length of the current DSP program"""
