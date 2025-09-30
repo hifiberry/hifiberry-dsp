@@ -1,5 +1,35 @@
-Command line utility
-====================
+# Command Line Utility (DEPRECATED)
+
+> **⚠️ DEPRECATION NOTICE**
+> 
+> The `dsptoolkit` command-line utility is **DEPRECATED** and will be removed in a future version.
+> 
+> **Please migrate to the REST API instead:**
+> - **Start server**: `sigmatcpserver --rest`
+> - **API documentation**: [http://localhost:8080/api/docs](http://localhost:8080/api/docs)
+> - **Migration guide**: See [restapi.md](restapi.md)
+> 
+> **Benefits of the REST API:**
+> - Better performance with intelligent caching
+> - Modern JSON responses
+> - Enhanced checksum support (MD5 + SHA-1)
+> - Web-based interface
+> - Comprehensive documentation
+> - Better error handling and validation
+> 
+> **Quick migration examples:**
+> ```bash
+> # Old: dsptoolkit get-checksum
+> curl http://localhost:8080/api/checksum
+> 
+> # Old: dsptoolkit get-volume
+> curl http://localhost:8080/api/volume
+> 
+> # Old: dsptoolkit install-profile profile.xml
+> curl -X POST -F "file=@profile.xml" http://localhost:8080/api/dspprofile
+> ```
+
+## Legacy Documentation
 
 dsptoolkit is a tool that is used to directly access functions of the DSP via the TCP server. This means it can run on another system.
 
@@ -116,3 +146,58 @@ The following commands are supported. Note that some command need specific param
 * `reset`
 
   Resets the DSP. The program will be loaded from the EEPROM. The parameter RAM won't be stored and/or recovered from the file system.
+
+## Migration to REST API
+
+The REST API provides a modern, more efficient alternative to the dsptoolkit command-line utility. Here's a comparison and migration guide:
+
+### Starting the Server
+
+```bash
+# Start the SigmaTCP server with REST API support
+sigmatcpserver --rest
+
+# The API will be available at http://localhost:8080/api/
+# Documentation at http://localhost:8080/api/docs
+```
+
+### Command Migration Examples
+
+| dsptoolkit Command | REST API Equivalent |
+|-------------------|-------------------|
+| `dsptoolkit get-checksum` | `curl http://localhost:8080/api/checksum` |
+| `dsptoolkit get-volume` | `curl http://localhost:8080/api/volume` |
+| `dsptoolkit set-volume 50%` | `curl -X POST -d "volume=50%" http://localhost:8080/api/volume` |
+| `dsptoolkit get-meta profileName` | `curl http://localhost:8080/api/profile/metadata` |
+| `dsptoolkit install-profile file.xml` | `curl -X POST -F "file=@file.xml" http://localhost:8080/api/dspprofile` |
+| `dsptoolkit store` | `curl -X POST http://localhost:8080/api/store` |
+| `dsptoolkit reset` | `curl -X POST http://localhost:8080/api/reset` |
+
+### REST API Advantages
+
+- **Performance**: Intelligent caching reduces DSP memory access
+- **Modern**: JSON responses, standard HTTP methods
+- **Enhanced Features**: 
+  - Dual checksum support (MD5 + SHA-1)
+  - Comprehensive program information via `/program-info`
+  - Better error handling and validation
+- **Documentation**: Interactive API documentation
+- **Integration**: Easy integration with web applications and scripts
+- **Future-Proof**: Active development and new features
+
+### Getting Started with REST API
+
+1. **Start the server**:
+   ```bash
+   sigmatcpserver --rest
+   ```
+
+2. **Explore the API**:
+   - Visit http://localhost:8080/api/docs for interactive documentation
+   - Try basic endpoints like `/api/checksum` or `/api/volume`
+
+3. **Read the documentation**:
+   - See [restapi.md](restapi.md) for comprehensive API documentation
+   - Check [checksum.md](checksum.md) for enhanced checksum features
+
+For more information and detailed examples, see the [REST API Documentation](restapi.md).
