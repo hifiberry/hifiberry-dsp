@@ -1,0 +1,48 @@
+{
+  "ai_config": {
+    "style_guidelines": {
+      "no_emojis": true,
+      "text_only": true,
+      "professional_tone": true,
+      "technical_writing": true
+    },
+    "formatting": {
+      "markdown_style": "standard",
+      "warning_format": "> **WARNING**",
+      "note_format": "> **NOTE**", 
+      "deprecated_format": "> **DEPRECATED**",
+      "bullet_points": "*",
+      "max_line_length": 100
+    },
+    "code_style": {
+      "comment_style": "technical",
+      "no_decorative_chars": true,
+      "descriptive_variables": true,
+      "logging_format": "standard"
+    },
+    "documentation": {
+      "api_format": "openapi",
+      "example_format": "curl_commands",
+      "error_descriptions": "detailed",
+      "include_troubleshooting": true
+    },
+    "project_context": {
+      "domain": "audio_dsp",
+      "audience": "technical_users",
+      "environment": "production",
+      "reliability_focus": true
+    },
+    "prohibited": [
+      "emojis",
+      "decorative_unicode",
+      "casual_language",
+      "marketing_speak"
+    ],
+    "preferred": [
+      "plain_text_symbols",
+      "technical_precision",
+      "clear_instructions",
+      "professional_tone"
+    ]
+  }
+}

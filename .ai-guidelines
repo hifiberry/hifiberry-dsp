@@ -1,0 +1,81 @@
+# AI Agent Guidelines for HiFiBerry DSP Project
+
+## Code Style and Documentation Requirements
+
+### Text Formatting
+- **NO EMOJIS**: Do not use emojis in any code, comments, documentation, or commit messages
+- Use plain text symbols instead: *, -, >, !, WARNING, NOTE, etc.
+- Maintain professional, technical writing style throughout
+
+### Documentation Standards
+- Use standard Markdown formatting
+- Use text-based warning indicators:
+  - `> **WARNING**` instead of emoji warnings
+  - `> **NOTE**` instead of emoji notes
+  - `> **DEPRECATED**` instead of emoji deprecation notices
+- Use bullet points (*) or numbered lists (1.) for organization
+
+### Code Comments
+- Write clear, concise technical comments
+- Use standard comment formatting without decorative elements
+- Focus on explaining complex logic, not obvious operations
+
+### Commit Messages
+- Follow conventional commit format
+- Use imperative mood: "Add feature" not "Added feature"
+- No emojis or decorative characters
+- Maximum 72 characters for subject line
+
+### Error Messages and Logging
+- Use clear, descriptive error messages
+- Include relevant context and suggested solutions
+- Use standard logging levels (DEBUG, INFO, WARNING, ERROR)
+- No decorative characters in log output
+
+### API Documentation
+- Use OpenAPI/Swagger standard formatting
+- Include comprehensive examples
+- Document all parameters, responses, and error conditions
+- Use consistent terminology throughout
+
+## Examples
+
+### Good Documentation Format:
+```markdown
+> **DEPRECATION NOTICE**
+> 
+> This feature is deprecated and will be removed in version 2.0.
+> Please use the new REST API instead.
+```
+
+### Good Code Comment:
+```python
+# Calculate SHA-1 checksum using length-based detection for better performance
+# Falls back to signature-based detection if length registers are not available
+```
+
+### Good Error Message:
+```python
+logging.error("Failed to calculate checksum: DSP communication timeout after 5s")
+```
+
+## Project-Specific Guidelines
+
+### HiFiBerry DSP Context
+- This is a professional audio DSP control system
+- Code is used in production environments
+- Documentation must be clear for technical users
+- Maintain consistency with existing codebase style
+- Focus on functionality and reliability over visual appeal
+
+### File Types to Follow These Guidelines
+- Python source files (.py)
+- Markdown documentation (.md)
+- Configuration files (.json, .toml, .ini)
+- Shell scripts (.sh)
+- API documentation
+- README files
+- Changelog entries
+
+## Enforcement
+All code contributions, documentation updates, and AI-generated content must adhere to these guidelines. This ensures consistency and professionalism across the entire codebase.
