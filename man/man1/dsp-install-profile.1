@@ -1,0 +1,143 @@
+.TH DSP-INSTALL-PROFILE 1 "30 September 2025" "HiFiBerry DSP toolkit 1.3.2" "User Commands"
+.SH NAME
+dsp-install-profile \- install DSP profile using REST API
+.SH SYNOPSIS
+.B dsp-install-profile
+[\fIOPTIONS\fR] \fIPROFILE_FILE\fR
+.SH DESCRIPTION
+.B dsp-install-profile
+installs a DSP profile XML file to a HiFiBerry DSP using the REST API.
+This tool provides a simple command-line interface to upload and activate
+DSP profiles without requiring direct access to SigmaStudio or complex
+API calls.
+
+The tool connects to the DSP's REST API server (sigmatcpserver), uploads
+the specified XML profile file, and verifies the installation. The profile
+is written to the DSP's EEPROM and becomes active immediately.
+
+.SH ARGUMENTS
+.TP
+.BR PROFILE_FILE
+Path to the XML profile file to install. The file must be a valid
+SigmaStudio-exported XML profile compatible with the target DSP hardware.
+
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-host " " \fIHOST\fR
+DSP server hostname or IP address (default: localhost)
+.TP
+.BR \-p ", " \-\-port " " \fIPORT\fR
+DSP server port (default: 13141)
+.TP
+.BR \-t ", " \-\-timeout " " \fISECONDS\fR
+Connection timeout in seconds (default: 30)
+.TP
+.BR \-v ", " \-\-verbose
+Enable verbose output for debugging and detailed progress information
+.TP
+.BR \-q ", " \-\-quiet
+Suppress non-error output messages
+.TP
+.BR \-\-help
+Show help message and exit
+.TP
+.BR \-\-version
+Show version information and exit
+
+.SH EXAMPLES
+.TP
+Install profile to local DSP:
+.B dsp-install-profile /path/to/profile.xml
+
+.TP
+Install profile to remote DSP:
+.B dsp-install-profile -h 192.168.1.100 /path/to/profile.xml
+
+.TP
+Install with custom port and verbose output:
+.B dsp-install-profile -h dsp.local -p 8080 -v /path/to/profile.xml
+
+.TP
+Quiet installation with timeout:
+.B dsp-install-profile -q -t 60 /usr/share/profiles/my-profile.xml
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+General error
+.TP
+.B 2
+Invalid arguments or command-line options
+.TP
+.B 3
+Profile file not found or not readable
+.TP
+.B 4
+Connection error - cannot reach DSP API server
+.TP
+.B 5
+API error - server rejected the profile or returned an error
+
+.SH FILES
+.TP
+.B /usr/share/hifiberry/dspprofiles/
+Default location for DSP profile XML files
+.TP
+.B /etc/sigmatcp.conf
+SigmaTCP server configuration file
+
+.SH ENVIRONMENT
+.TP
+.B HTTP_PROXY, HTTPS_PROXY
+Proxy settings for curl (if needed for network access)
+
+.SH DEPENDENCIES
+.TP
+.B curl
+Required for making HTTP requests to the DSP API server
+
+.SH NOTES
+.PP
+This tool requires the sigmatcpserver to be running on the target DSP
+system with the REST API enabled. The default configuration listens on
+localhost:13141.
+
+.PP
+The XML profile file should be exported from SigmaStudio and be compatible
+with the target DSP hardware (typically ADAU145x series).
+
+.PP
+Profile installation writes to the DSP's EEPROM, making the change
+persistent across reboots. The new profile becomes active immediately
+upon successful installation.
+
+.PP
+For security reasons, ensure that the DSP API server is properly
+configured and access-controlled in production environments.
+
+.SH SEE ALSO
+.BR dsptoolkit (1),
+.BR sigmatcpserver (1),
+.BR curl (1)
+
+.PP
+HiFiBerry DSP documentation:
+.I https://www.hifiberry.com/docs/
+
+.PP
+REST API documentation:
+.I /usr/share/doc/hifiberry-dsp/restapi.md
+
+.SH BUGS
+Report bugs to: https://github.com/hifiberry/hifiberry-dsp/issues
+
+.SH AUTHOR
+HiFiBerry team <info@hifiberry.com>
+
+.SH COPYRIGHT
+Copyright \(co 2025 HiFiBerry. This is free software; see the source
+for copying conditions. There is NO warranty; not even for MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.

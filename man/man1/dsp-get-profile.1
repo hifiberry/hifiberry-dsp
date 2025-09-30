@@ -1,0 +1,135 @@
+.TH DSP-GET-PROFILE 1 "September 2025" "HiFiBerry DSP 1.3.2" "HiFiBerry DSP Tools"
+.SH NAME
+dsp-get-profile \- retrieve DSP profile from HiFiBerry DSP using REST API
+.SH SYNOPSIS
+.B dsp-get-profile
+[\fIOPTIONS\fR] [\fIoutput_file\fR]
+.SH DESCRIPTION
+.B dsp-get-profile
+retrieves the current DSP profile from a HiFiBerry DSP device using the REST API.
+The profile is returned in XML format and can be saved to a file or displayed on stdout.
+This tool is useful for backing up current DSP configurations or examining the active profile.
+
+The tool connects to the DSP via the REST API server (sigmatcpserver) and retrieves
+the currently active DSP profile. The profile contains all DSP configuration data
+including filters, parameters, and metadata.
+
+.SH ARGUMENTS
+.TP
+.I output_file
+Optional file path where the retrieved profile should be saved. If not specified,
+the profile is written to stdout. The output file will contain the complete XML
+profile data.
+
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-host " " \fIHOST\fR
+Specify the DSP server hostname or IP address.
+.br
+Default: localhost
+.TP
+.BR \-p ", " \-\-port " " \fIPORT\fR
+Specify the DSP server port number.
+.br
+Default: 13141
+.TP
+.BR \-t ", " \-\-timeout " " \fISECONDS\fR
+Set the connection timeout in seconds.
+.br
+Default: 30
+.TP
+.BR \-v ", " \-\-verbose
+Enable verbose output showing detailed operation information.
+.TP
+.BR \-q ", " \-\-quiet
+Suppress all non-error output. Only error messages will be displayed.
+.TP
+.BR \-\-help
+Display help message and exit.
+.TP
+.BR \-\-version
+Display version information and exit.
+
+.SH EXIT STATUS
+The program exits with one of the following status codes:
+.TP
+.B 0
+Success - profile retrieved successfully
+.TP
+.B 1
+General error - unexpected failure
+.TP
+.B 2
+Invalid arguments - check command line parameters
+.TP
+.B 3
+File I/O error - cannot write to output file
+.TP
+.B 4
+Connection error - cannot connect to DSP API server
+.TP
+.B 5
+API error - server error or no profile found
+
+.SH EXAMPLES
+.TP
+.B dsp-get-profile current-profile.xml
+Retrieve the current profile and save it to 'current-profile.xml'.
+.TP
+.B dsp-get-profile -h 192.168.1.100 backup.xml
+Retrieve profile from a remote DSP at IP 192.168.1.100 and save to 'backup.xml'.
+.TP
+.B dsp-get-profile
+Retrieve the current profile and display it on stdout.
+.TP
+.B dsp-get-profile -q profile-backup.xml
+Quietly retrieve the profile and save to 'profile-backup.xml' with minimal output.
+.TP
+.B dsp-get-profile -v | grep metadata
+Retrieve profile with verbose output and filter for metadata lines.
+
+.SH DEPENDENCIES
+This tool requires:
+.TP
+.B curl
+Used for HTTP communication with the REST API server
+.TP
+.B sigmatcpserver
+The HiFiBerry DSP REST API server must be running and accessible
+
+.SH FILES
+The tool retrieves profiles from the DSP via the REST API. The profile data
+is typically stored at:
+.TP
+.I /var/lib/hifiberry/dspprogram.xml
+Default location for the active DSP profile (server-side)
+
+.SH TROUBLESHOOTING
+.TP
+.B Connection refused
+Ensure sigmatcpserver is running:
+.br
+sudo systemctl status sigmatcpserver
+.TP
+.B No profile found (exit code 5)
+The DSP may not have a profile loaded, or the profile file may be missing.
+Check the server logs:
+.br
+journalctl -u sigmatcpserver
+.TP
+.B Permission denied writing file
+Ensure you have write permissions to the output directory.
+
+.SH SEE ALSO
+.BR dsp-install-profile (1),
+.BR dsp-program-info (1),
+.BR sigmatcpserver (1)
+
+.SH AUTHOR
+Written by the HiFiBerry team.
+
+.SH REPORTING BUGS
+Report bugs to the HiFiBerry support team or GitHub issues.
+
+.SH COPYRIGHT
+This is free software; see the source for copying conditions.
