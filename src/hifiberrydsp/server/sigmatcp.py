@@ -779,6 +779,15 @@ class SigmaTCPHandler(BaseRequestHandler):
         '''
         logging.info("preparing for memory update")
         adau145x.Adau145x.clear_checksum_cache()
+        
+        # Also clear REST API checksum cache
+        try:
+            from hifiberrydsp.api.restapi import clear_checksum_cache
+            clear_checksum_cache()
+        except ImportError:
+            # REST API might not be available
+            pass
+            
         SigmaTCPHandler.checksum = None
         SigmaTCPHandler.update_alsasync(clear=True)
         SigmaTCPHandler.update_lgsoundsync(clear=True)
@@ -833,19 +842,36 @@ class SigmaTCPHandler(BaseRequestHandler):
         SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr)
 
     @staticmethod
-    def load_and_apply_filters():
+    def load_and_apply_filters(type="sha1"):
         """
         Automatically load and apply stored filters for the current DSP profile checksum
+        
+        Args:
+            type (str): Checksum type to use - "sha1" (length-based, default) or "md5" (signature-based)
         """
         try:
-            # Get current DSP program checksum
-            checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=True)
-            if not checksum_bytes:
-                logging.warning("Could not get DSP program checksum for filter autoloading")
+            # Validate checksum type parameter
+            if type not in ["md5", "sha1"]:
+                logging.error(f"Invalid checksum type '{type}'. Must be 'md5' or 'sha1'")
                 return False
-                
-            checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
-            logging.info(f"Autoloading filters for DSP profile checksum: {checksum_hex}")
+            
+            # Get current DSP program checksum based on type
+            if type == "md5":
+                # MD5 with signature-based detection (legacy compatibility)
+                checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=True)
+                if not checksum_bytes:
+                    logging.warning("Could not get DSP program MD5 checksum for filter autoloading")
+                    return False
+                checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
+                logging.info(f"Autoloading filters for DSP profile MD5 checksum (signature-based): {checksum_hex}")
+            else:  # type == "sha1"
+                # SHA-1 with length-based detection (modern approach)
+                checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1"], cached=True)
+                if not checksums or "sha1" not in checksums:
+                    logging.warning("Could not get DSP program SHA-1 checksum for filter autoloading")
+                    return False
+                checksum_hex = checksums["sha1"]
+                logging.info(f"Autoloading filters for DSP profile SHA-1 checksum (length-based): {checksum_hex}")
             
             # Initialize settings store for direct access
             settings_store = SettingsStore()
