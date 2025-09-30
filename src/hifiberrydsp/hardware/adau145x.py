@@ -65,6 +65,24 @@ class Adau145x():
     PROGRAM_MAX_LEN_UPPER = 0xf465
     PROGRAM_MAX_LEN_LOWER = 0xf466 
 
+    # PLL Control Registers
+    PLL_CTRL0 = 0xf000          # PLL feedback divider
+    PLL_CTRL1 = 0xf001          # PLL prescale divider
+    PLL_CLK_SRC = 0xf002        # PLL clock source
+    PLL_ENABLE = 0xf003         # PLL enable
+    PLL_LOCK = 0xf004           # PLL lock (read-only)
+    MCLK_OUT = 0xf005           # CLKOUT control
+    PLL_WATCHDOG = 0xf006       # Analog PLL watchdog control
+
+    # Clock Generator Registers
+    CLK_GEN1_M = 0xf020         # Denominator (M) for Clock Generator 1
+    CLK_GEN1_N = 0xf021         # Numerator (N) for Clock Generator 1
+    CLK_GEN2_M = 0xf022         # Denominator (M) for Clock Generator 2
+    CLK_GEN2_N = 0xf023         # Numerator (N) for Clock Generator 2
+    CLK_GEN3_M = 0xf024         # Denominator (M) for Clock Generator 3
+    CLK_GEN3_N = 0xf025         # Numerator (N) for Clock Generator 3
+    CLK_GEN3_SRC = 0xf026       # Input Reference for Clock Generator 3 
+
     START_ADDRESS = {
         "DM0": 0x0000,
         "DM1": 0x6000,
