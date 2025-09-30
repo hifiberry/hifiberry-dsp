@@ -129,43 +129,52 @@ def get_xml_profile():
         # Validate checksum - compare memory checksums with XML profile checksums
         profile_valid = True
         try:
-            # Get memory checksums (try both SHA-1 and MD5)
-            memory_checksums = Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=True)
-            if not memory_checksums:
-                # Fallback to signature-based if length-based fails
-                memory_checksums = Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=True)
+            # Get memory checksums using the same approach as /program-info endpoint
+            # MD5 from signature-based mode, SHA-1 from length-based mode
+            signature_checksums = Adau145x.calculate_program_checksums(mode="signature", algorithms=["md5"], cached=True)
+            length_checksums = Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1"], cached=True)
                 
-            memory_checksum_sha1 = memory_checksums.get("sha1") if memory_checksums else None
-            memory_checksum_md5 = memory_checksums.get("md5") if memory_checksums else None
+            memory_checksum_md5 = signature_checksums.get("md5") if signature_checksums else None
+            memory_checksum_sha1 = length_checksums.get("sha1") if length_checksums else None
                 
             # Get XML profile checksums
             profile_checksum_sha1 = xml_profile.get_meta("checksum_sha1")
             profile_checksum_md5 = xml_profile.get_meta("checksum")
             
-            # Check checksums with priority: SHA-1 first, then MD5
-            checksum_match = False
+            # Only validate if we have both memory and profile checksums
+            checksum_match = None  # None means validation not possible
+            
+            # Check SHA-1 first if both are available
             if profile_checksum_sha1 and memory_checksum_sha1:
                 if profile_checksum_sha1.lower() == memory_checksum_sha1.lower():
                     checksum_match = True
                     logging.debug(f"SHA-1 checksum match - Memory: {memory_checksum_sha1}, XML: {profile_checksum_sha1}")
                 else:
+                    checksum_match = False
                     logging.warning(f"SHA-1 checksum mismatch - Memory: {memory_checksum_sha1}, XML: {profile_checksum_sha1}")
             
-            # Fall back to MD5 if SHA-1 doesn't match or isn't available
-            if not checksum_match and profile_checksum_md5 and memory_checksum_md5:
+            # Fall back to MD5 if SHA-1 validation didn't happen or failed
+            elif profile_checksum_md5 and memory_checksum_md5:
                 if profile_checksum_md5.lower() == memory_checksum_md5.lower():
                     checksum_match = True
                     logging.debug(f"MD5 checksum match - Memory: {memory_checksum_md5}, XML: {profile_checksum_md5}")
                 else:
+                    checksum_match = False
                     logging.warning(f"MD5 checksum mismatch - Memory: {memory_checksum_md5}, XML: {profile_checksum_md5}")
             
             # Set profile validity based on checksum results
-            if profile_checksum_sha1 or profile_checksum_md5:
-                profile_valid = checksum_match
-            else:
-                # No checksums in profile - assume valid but log warning
-                logging.info("XML profile has no checksums - cannot validate against memory")
+            if checksum_match is None:
+                # Can't validate (checksums not available) - assume valid
+                if not memory_checksum_md5 and not memory_checksum_sha1:
+                    logging.info("Memory checksums not available (not cached yet) - assuming profile is valid")
+                elif not profile_checksum_md5 and not profile_checksum_sha1:
+                    logging.info("XML profile has no checksums - cannot validate against memory")
+                else:
+                    logging.info("Partial checksum data available - cannot validate reliably")
                 profile_valid = True
+            else:
+                # We have validation result - use it
+                profile_valid = checksum_match
                 
         except Exception as e:
             logging.error(f"Error validating checksums: {str(e)}")
@@ -1123,7 +1132,9 @@ def get_xml_profile_data():
     API endpoint to get or update the DSP profile
     
     GET: Retrieve the full XML profile data
-    POST: Upload a new DSP profile from XML content, local file, or URL (JSON-only API)
+    POST: Upload a new DSP profile from:
+      - Raw XML content (Content-Type: application/xml or text/xml)
+      - JSON with embedded XML, file path, or URL (Content-Type: application/json)
     """
     if request.method == 'GET':
         try:
@@ -1144,43 +1155,52 @@ def get_xml_profile_data():
     
     elif request.method == 'POST':
         try:
-            # Check request format - only JSON is supported
-            if not request.is_json:
-                return jsonify({"error": "Only JSON format is supported. Content-Type must be application/json"}), 400
+            # Check request format - accept both JSON and raw XML
+            if request.is_json:
+                # JSON format with embedded XML content
+                data = request.json
                 
-            data = request.json
-            
-            # Check which source type is provided
-            if 'xml' in data:
-                # Direct XML content
-                xml_content = data['xml']
-                source_type = 'direct'
+                # Check which source type is provided
+                if 'xml' in data:
+                    # Direct XML content
+                    xml_content = data['xml']
+                    source_type = 'direct'
+                    
+                elif 'file' in data:
+                    # Local file path
+                    file_path = data['file']
+                    try:
+                        with open(file_path, 'r') as f:
+                            xml_content = f.read()
+                        source_type = 'file'
+                    except Exception as e:
+                        return jsonify({"error": f"Could not read file {file_path}: {str(e)}"}), 400
                 
-            elif 'file' in data:
-                # Local file path
-                file_path = data['file']
-                try:
-                    with open(file_path, 'r') as f:
-                        xml_content = f.read()
-                    source_type = 'file'
-                except Exception as e:
-                    return jsonify({"error": f"Could not read file {file_path}: {str(e)}"}), 400
-            
-            elif 'url' in data:
-                # URL to remote file
-                url = data['url']
-                try:
-                    import requests
-                    response = requests.get(url, timeout=10)
-                    if response.status_code != 200:
-                        return jsonify({"error": f"Failed to retrieve profile from URL, status code: {response.status_code}"}), 400
-                    xml_content = response.text
-                    source_type = 'url'
-                except Exception as e:
-                    return jsonify({"error": f"Could not download from URL {url}: {str(e)}"}), 400
-            
+                elif 'url' in data:
+                    # URL to remote file
+                    url = data['url']
+                    try:
+                        import requests
+                        response = requests.get(url, timeout=10)
+                        if response.status_code != 200:
+                            return jsonify({"error": f"Failed to retrieve profile from URL, status code: {response.status_code}"}), 400
+                        xml_content = response.text
+                        source_type = 'url'
+                    except Exception as e:
+                        return jsonify({"error": f"Could not download from URL {url}: {str(e)}"}), 400
+                
+                else:
+                    return jsonify({"error": "Request must contain one of: 'xml', 'file', or 'url'"}), 400
+                    
+            elif request.content_type and ('xml' in request.content_type or 'text' in request.content_type):
+                # Raw XML content
+                xml_content = request.get_data(as_text=True)
+                if not xml_content.strip():
+                    return jsonify({"error": "Empty XML content provided"}), 400
+                source_type = 'raw'
+                
             else:
-                return jsonify({"error": "Request must contain one of: 'xml', 'file', or 'url'"}), 400
+                return jsonify({"error": "Content-Type must be application/json, application/xml, or text/xml"}), 400
             
             # Write the profile to EEPROM
             from hifiberrydsp.hardware.adau145x import Adau145x
