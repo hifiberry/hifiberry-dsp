@@ -53,6 +53,7 @@ class Adau145x():
 
     RESET_REGISTER = 0xf890
     HIBERNATE_REGISTER = 0xf400
+    START_PULSE_REGISTER = 0xf401
 
     STARTCORE_REGISTER = 0xf402
     KILLCORE_REGISTER = 0xf403
@@ -684,8 +685,8 @@ class Adau145x():
             int or None: Sample rate in Hz (48000, 96000, 192000) or None if detection fails
         '''
         try:
-            # read START_PULSE (0xf401) to find DSP sample rate (assume 294.912MHz core frequency)
-            start_pulse = Adau145x.read_memory(0xf401,2)[1]
+            # read START_PULSE register to find DSP sample rate (assume 294.912MHz core frequency)
+            start_pulse = Adau145x.read_memory(Adau145x.START_PULSE_REGISTER, 2)[1]
             logging.debug(f"START_PULSE value: {start_pulse}")
             if start_pulse == 2:
                 return 48000
