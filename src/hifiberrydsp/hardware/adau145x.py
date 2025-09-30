@@ -53,7 +53,7 @@ class Adau145x():
 
     RESET_REGISTER = 0xf890
     HIBERNATE_REGISTER = 0xf400
-    START_PULSE_REGISTER = 0xf401
+    START_PULSE_REGISTER = 0xf401    # Register to read DSP sample rate configuration
 
     STARTCORE_REGISTER = 0xf402
     KILLCORE_REGISTER = 0xf403
