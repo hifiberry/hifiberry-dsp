@@ -838,39 +838,21 @@ class SigmaTCPHandler(BaseRequestHandler):
         Automatically load and apply stored filters for the current DSP profile checksum
         """
         try:
-            # Get stored filters using REST API
-            try:
-                response = requests.get("http://localhost:13141/filters?current=true", timeout=5)
-                if response.status_code == 200:
-                    result = response.json()
-                    checksum_hex = result.get('checksum', '')
-                    filters = result.get('filters', {})
-                    
-                    if not checksum_hex:
-                        logging.warning("No checksum returned from filters API")
-                        return False
-                        
-                    logging.info(f"Autoloading filters for DSP profile checksum: {checksum_hex}")
-                else:
-                    logging.warning(f"Failed to get filters from API: {response.status_code}")
-                    return False
-            except requests.RequestException as e:
-                logging.warning(f"Failed to connect to REST API for filter loading: {e}")
-                # Fallback to direct filter store access
-                checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=True)
-                if not checksum_bytes:
-                    logging.warning("Could not get DSP program checksum for filter autoloading")
-                    return False
-                    
-                checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
-                logging.info(f"Using fallback: Autoloading filters for DSP profile checksum: {checksum_hex}")
+            # Get current DSP program checksum
+            checksum_bytes = adau145x.Adau145x.calculate_program_checksum(cached=True)
+            if not checksum_bytes:
+                logging.warning("Could not get DSP program checksum for filter autoloading")
+                return False
                 
-                # Initialize settings store
-                settings_store = SettingsStore()
-                
-                # Get stored filters and memory settings for this checksum
-                filters = settings_store.load_filters(checksum_hex)
-                memory_settings = settings_store.load_memory_settings(checksum_hex)
+            checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
+            logging.info(f"Autoloading filters for DSP profile checksum: {checksum_hex}")
+            
+            # Initialize settings store for direct access
+            settings_store = SettingsStore()
+            
+            # Get stored filters and memory settings for this checksum
+            filters = settings_store.load_filters(checksum_hex)
+            memory_settings = settings_store.load_memory_settings(checksum_hex)
             
             total_settings = len(filters) + len(memory_settings)
             if total_settings == 0:
