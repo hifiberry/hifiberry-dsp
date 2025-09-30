@@ -815,7 +815,6 @@ def get_program_info():
             "checksums": {
                 "md5": signature_checksums.get("md5"),
                 "sha1": length_checksums.get("sha1")
-                }
             }
         }
         
