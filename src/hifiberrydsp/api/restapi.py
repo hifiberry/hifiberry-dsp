@@ -56,8 +56,9 @@ _xml_profile_cache = {
 
 # Cache for current DSP program checksum
 _checksum_cache = {
-    "checksum": None,
-    "valid": False
+    "md5": None,       # MD5 checksum (signature-based)
+    "sha1": None,      # SHA-1 checksum (length-based)
+    "program_length": None,  # Program length for cache validation
 }
 
 
@@ -304,44 +305,120 @@ def get_current_profile_name():
 
 def clear_checksum_cache():
     """
-    Clear the cached checksum. This should be called when a new DSP program is installed.
+    Clear the cached checksums and program length. This should be called when a new DSP program is installed.
     """
     global _checksum_cache
-    _checksum_cache["checksum"] = None
-    _checksum_cache["valid"] = False
+    _checksum_cache["md5"] = None
+    _checksum_cache["sha1"] = None
+    _checksum_cache["program_length"] = None
     logging.debug("Checksum cache cleared")
 
 
-def get_current_profile_checksum():
+def is_checksum_cache_valid():
     """
-    Get the checksum of the currently active DSP profile (cached)
+    Check if the checksum cache is still valid by comparing current program length
+    with the cached program length.
     
     Returns:
-        str: Profile checksum or None if not found
+        bool: True if cache is valid, False if it should be invalidated
     """
     global _checksum_cache
     
-    # Return cached checksum if valid
-    if _checksum_cache["valid"] and _checksum_cache["checksum"]:
-        return _checksum_cache["checksum"]
+    # If no cached program length, consider invalid
+    if _checksum_cache["program_length"] is None:
+        return False
     
     try:
-        # Calculate checksum from DSP memory
-        checksum_bytes = Adau145x.calculate_program_checksum(cached=False)
+        # Get current program length
+        current_length = Adau145x.get_program_len()
+        
+        # Compare with cached length
+        if current_length != _checksum_cache["program_length"]:
+            logging.debug(f"Program length changed: cached={_checksum_cache['program_length']}, current={current_length}")
+            return False
+        
+        return True
+    except Exception as e:
+        logging.error(f"Error checking program length for cache validation: {str(e)}")
+        return False
+
+
+def get_current_program_checksum():
+    """
+    Get the MD5 checksum of the currently active DSP profile (signature-based, for backward compatibility)
+    
+    Returns:
+        str: Profile MD5 checksum or None if not found
+    """
+    global _checksum_cache
+    
+    # Check if cache is valid and we have cached MD5 checksum
+    if _checksum_cache["md5"] is not None and is_checksum_cache_valid():
+        logging.debug("Using cached MD5 checksum")
+        return _checksum_cache["md5"]
+    
+    # Clear invalid cache
+    if not is_checksum_cache_valid():
+        logging.debug("Cache invalidated due to program length change")
+        clear_checksum_cache()
+    
+    try:
+        # Get current program length for cache validation
+        program_length = Adau145x.get_program_len()
+        
+        # Calculate MD5 checksum (signature-based)
+        checksum_bytes = Adau145x.calculate_program_checksum(cached=True)
         if checksum_bytes:
             checksum_hex = binascii.hexlify(checksum_bytes).decode('utf-8').upper()
-            
-            # Cache the result
-            _checksum_cache["checksum"] = checksum_hex
-            _checksum_cache["valid"] = True
-            
-            logging.debug(f"Checksum calculated and cached: {checksum_hex}")
+            _checksum_cache["md5"] = checksum_hex
+            _checksum_cache["program_length"] = program_length
+            logging.debug(f"Calculated and cached MD5 checksum: {checksum_hex} (program length: {program_length})")
             return checksum_hex
-            
+        else:
+            logging.warning("Could not calculate MD5 checksum")
+            return None
     except Exception as e:
-        logging.warning(f"Error calculating profile checksum: {str(e)}")
+        logging.error(f"Error calculating MD5 checksum: {str(e)}")
+        return None
+
+
+def get_current_program_checksum_sha1():
+    """
+    Get the SHA-1 checksum of the currently active DSP profile (length-based, for internal use)
     
-    return None
+    Returns:
+        str: Profile SHA-1 checksum or None if not found
+    """
+    global _checksum_cache
+    
+    # Check if cache is valid and we have cached SHA-1 checksum
+    if _checksum_cache["sha1"] is not None and is_checksum_cache_valid():
+        logging.debug("Using cached SHA-1 checksum")
+        return _checksum_cache["sha1"]
+    
+    # Clear invalid cache
+    if not is_checksum_cache_valid():
+        logging.debug("Cache invalidated due to program length change")
+        clear_checksum_cache()
+    
+    try:
+        # Get current program length for cache validation
+        program_length = Adau145x.get_program_len()
+        
+        # Calculate SHA-1 checksum (length-based)
+        checksums = Adau145x.calculate_program_checksums(cached=True)
+        if checksums and "sha1" in checksums:
+            checksum_hex = checksums["sha1"]
+            _checksum_cache["sha1"] = checksum_hex
+            _checksum_cache["program_length"] = program_length
+            logging.debug(f"Calculated and cached SHA-1 checksum: {checksum_hex} (program length: {program_length})")
+            return checksum_hex
+        else:
+            logging.warning("Could not calculate SHA-1 checksum")
+            return None
+    except Exception as e:
+        logging.error(f"Error calculating SHA-1 checksum: {str(e)}")
+        return None
 
 
 @app.route('/hardware/dsp', methods=['GET'])
@@ -585,7 +662,7 @@ def memory_access():
                 if store_setting:
                     try:
                         # Get current profile checksum for storage
-                        checksum = get_current_profile_checksum()
+                        checksum = get_current_program_checksum_sha1()
                         if checksum:
                             # Store as a memory setting using the new method
                             success = settings_store.store_memory_setting(checksum, data['address'], processed_values)
@@ -1005,8 +1082,10 @@ def get_cache_status():
                 "cached": _xml_profile_cache["metadata"] is not None
             },
             "checksum": {
-                "cached": _checksum_cache["valid"],
-                "value": _checksum_cache["checksum"] if _checksum_cache["valid"] else None
+                "cached": is_checksum_cache_valid(),
+                "md5": _checksum_cache["md5"],
+                "sha1": _checksum_cache["sha1"],
+                "program_length": _checksum_cache["program_length"]
             }
         }
         
@@ -1282,7 +1361,7 @@ def set_biquad_filter():
                 Adau145x.write_biquad(actual_address, bq)
                 
                 # Store the filter in the filter store using checksum
-                checksum = get_current_profile_checksum()
+                checksum = get_current_program_checksum_sha1()
                 if checksum:
                     settings_store.store_filter(checksum, raw_address, offset, filter_data)
                 
@@ -1318,7 +1397,7 @@ def set_biquad_filter():
                 Adau145x.write_biquad(actual_address, bq)
                 
                 # Store the filter in the filter store using checksum
-                checksum = get_current_profile_checksum()
+                checksum = get_current_program_checksum_sha1()
                 if checksum:
                     settings_store.store_filter(checksum, raw_address, offset, filter_data)
                 
@@ -1359,7 +1438,7 @@ def get_filters():
         
         if current:
             # Get filters for the currently active profile
-            current_checksum = get_current_profile_checksum()
+            current_checksum = get_current_program_checksum_sha1()
             if not current_checksum:
                 return jsonify({"error": "No active DSP profile found"}), 404
             
@@ -1396,16 +1475,18 @@ def set_filters():
     API endpoint to manually store filters in the filter store
     
     The request body should contain:
-    - checksum: DSP profile checksum (optional, will use current checksum if not provided)
+    - checksum: DSP profile checksum (optional, will use current SHA-1 checksum if not provided)
     - filters: Array of filter objects with address, offset, and filter data
+    
+    Note: This endpoint uses SHA-1 checksums internally for DSP program identification.
     """
     try:
         data = request.json
         if not data or 'filters' not in data:
             return jsonify({"error": "Filters array is required in the request body"}), 400
         
-        # Get checksum
-        checksum = data.get('checksum', get_current_profile_checksum())
+        # Get checksum (always use SHA-1 for internal DSP program identification)
+        checksum = data.get('checksum', get_current_program_checksum_sha1())
         
         # If no checksum provided and we can't get current, return error
         if not checksum:
@@ -1506,7 +1587,7 @@ def get_filter_bypass():
             return jsonify({"error": "Address parameter is required"}), 400
         
         if not checksum:
-            checksum = get_current_profile_checksum()
+            checksum = get_current_program_checksum_sha1()
             if not checksum:
                 return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
         
@@ -1603,7 +1684,7 @@ def set_filter_bypass():
             return jsonify({"error": "Bypassed must be true or false"}), 400
         
         if not checksum:
-            checksum = get_current_profile_checksum()
+            checksum = get_current_program_checksum_sha1()
             if not checksum:
                 return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
         
@@ -1731,7 +1812,7 @@ def toggle_filter_bypass():
             return jsonify({"error": "Address is required"}), 400
         
         if not checksum:
-            checksum = get_current_profile_checksum()
+            checksum = get_current_program_checksum_sha1()
             if not checksum:
                 return jsonify({"error": "No active DSP profile found and no checksum provided"}), 404
         
