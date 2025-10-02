@@ -30,6 +30,7 @@ from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
 from hifiberrydsp.api.settings_store import SettingsStore
+from hifiberrydsp import __version__
 from waitress import serve
 import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -428,6 +429,27 @@ def get_current_program_checksum_sha1():
     except Exception as e:
         logging.error(f"Error calculating SHA-1 checksum: {str(e)}")
         return None
+
+
+@app.route('/version', methods=['GET'])
+def get_version():
+    """
+    API endpoint to get the version information of the HiFiBerry DSP toolkit
+    
+    Returns version information including the package version.
+    """
+    try:
+        version_info = {
+            "version": __version__,
+            "name": "hifiberry-dsp",
+            "description": "HiFiBerry DSP toolkit"
+        }
+        
+        return jsonify(version_info)
+        
+    except Exception as e:
+        logging.error(f"Error getting version info: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/hardware/dsp', methods=['GET'])
