@@ -11,6 +11,36 @@ http://localhost:13141
 
 ## Endpoints
 
+### Version API
+
+#### Get Version Information
+
+Retrieves version information about the HiFiBerry DSP toolkit.
+
+```
+GET /version
+```
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:13141/version
+```
+
+**Example Response:**
+```json
+{
+  "version": "1.3.2",
+  "name": "hifiberry-dsp",
+  "description": "HiFiBerry DSP toolkit"
+}
+```
+
+**Response Properties:**
+
+- `version`: The version string of the HiFiBerry DSP toolkit
+- `name`: The package name
+- `description`: Brief description of the toolkit
+
 ### Hardware Detection API
 
 #### Get Detected DSP Hardware
