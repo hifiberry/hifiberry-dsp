@@ -3,8 +3,7 @@ Description=HiFiBerry DSP TCP/REST API service
 After=network.target
 
 [Service]
-EnvironmentFile=-/etc/default/sigmatcpserver
-ExecStart=sigmatcpserver --localhost --enable-rest --alsa $DEBUG_OPTIONS $EXTRA_OPTIONS
+ExecStart=sigmatcpserver --localhost --enable-rest --alsa
 Restart=on-failure
 RestartSec=5
 
