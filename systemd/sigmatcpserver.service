@@ -3,7 +3,7 @@ Description=HiFiBerry DSP TCP/REST API service
 After=network.target
 
 [Service]
-ExecStart=sigmatcpserver --localhost --enable-rest --alsa
+ExecStart=sigmatcpserver --localhost --enable-rest --alsa --disable-tcp
 Restart=on-failure
 RestartSec=5
 
