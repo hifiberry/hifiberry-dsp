@@ -22,9 +22,6 @@ SOFTWARE.
 
 import struct
 
-import numpy as np
-from numpy.fft import fft
-
 
 def read_sample_file_float32(filename):
 
