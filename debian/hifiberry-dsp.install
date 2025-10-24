@@ -1,5 +1,4 @@
 systemd/sigmatcpserver.service usr/lib/systemd/system/
-systemd/sigmatcpserver etc/default/
 src/bin/dsp-install-profile usr/bin/
 src/bin/dsp-program-info usr/bin/
 src/bin/dsp-get-profile usr/bin/
