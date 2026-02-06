@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+# Stop service before removal
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if [ -f /lib/systemd/system/sigmatcpserver.service ]; then
+        echo "Stopping HiFiBerry DSP systemd service"
+        deb-systemd-invoke stop sigmatcpserver.service >/dev/null || true
+    fi
+fi
+
+#DEBHELPER#

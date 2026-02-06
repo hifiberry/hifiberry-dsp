@@ -133,11 +133,6 @@ class AlsaSync(Thread):
         if value is None:
             return
 
-        # Don't write to DSP if no volume register is available
-        if self.volume_register is None:
-            logging.debug("No DSP volume register available, ignoring ALSA volume change")
-            return
-
         # convert percent to multiplier
         logging.debug("Updating DSP to %s",value)
         volume = percent2amplification(value)
@@ -217,13 +212,6 @@ class AlsaSync(Thread):
     def check_sync(self):
         alsa_changed = self.read_alsa_data()
         dsp_changed = self.read_dsp_data()
-
-        # If no volume register is available, keep ALSA at 100% and ignore changes
-        if self.volume_register is None:
-            if self.alsavol != 100:
-                logging.debug("No DSP volume register, resetting ALSA to 100%")
-                self.update_alsa(100)
-            return
 
         # Check if one of the control has changed and update the other
         # one. If both have changed, ALSA takes precedence

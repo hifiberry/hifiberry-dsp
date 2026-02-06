@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+# Enable systemd service
+if [ "$1" = "configure" ]; then
+    if [ -f /lib/systemd/system/sigmatcpserver.service ]; then
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-helper unmask sigmatcpserver.service >/dev/null || true
+            deb-systemd-helper --quiet was-enabled sigmatcpserver.service && deb-systemd-helper --quiet enable sigmatcpserver.service || true
+            if deb-systemd-helper --quiet was-enabled sigmatcpserver.service; then
+                deb-systemd-invoke start sigmatcpserver.service >/dev/null || echo "Failed to start sigmatcpserver.service"
+            else
+                echo "Systemd service enabled. To start it, run: systemctl start sigmatcpserver"
+            fi
+        fi
+    fi
+fi
+
+#DEBHELPER#
