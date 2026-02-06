@@ -1,6 +1,5 @@
 import json
 import math
-import numpy as np
 import cmath
 
 from hifiberrydsp.filtering.biquad import Biquad
@@ -126,7 +125,7 @@ class Filter:
             frequencies = Filter.logspace_frequencies(20, 20000, 8)
         
         # Initialize the response array with zeros (0 dB is neutral)
-        response = np.zeros(len(frequencies))
+        response = [0] * len(frequencies)
         
         # Calculate the combined response at each frequency
         for filter_obj in filters:
@@ -135,7 +134,7 @@ class Filter:
         
         return {
             'frequencies': frequencies,
-            'response': response.tolist()
+            'response': response
         }
     
     @staticmethod

@@ -32,7 +32,6 @@ from hifiberrydsp.api.filters import Filter
 from hifiberrydsp.api.settings_store import SettingsStore
 from hifiberrydsp import __version__
 from waitress import serve
-import numpy as np
 from hifiberrydsp.hardware.adau145x import Adau145x
 from hifiberrydsp.filtering.biquad import Biquad
 
