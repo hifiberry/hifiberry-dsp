@@ -1,5 +1,0 @@
-requests
-pyalsaaudio
-spi
-xmltodict
-rpi.gpio
