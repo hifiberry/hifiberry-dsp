@@ -1,0 +1,9 @@
+RPi.GPIO
+flask
+lxml
+numpy
+pyalsaaudio
+requests
+spidev
+waitress
+xmltodict
