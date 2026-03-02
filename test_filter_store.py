@@ -13,7 +13,7 @@ from unittest.mock import patch, MagicMock
 # Add the src directory to the path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from hifiberrydsp.api.filter_store import FilterStore
+from hifiberrydsp.api.settings_store import SettingsStore as FilterStore
 
 class TestFilterStore(unittest.TestCase):
     

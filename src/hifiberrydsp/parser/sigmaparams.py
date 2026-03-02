@@ -230,7 +230,7 @@ def merge_params_main(xmlfile=None, paramsfile=None):
         try:
             xmlfile = sys.argv[1]
             paramsfile = sys.argv[2]
-        except:
+        except IndexError:
             print("call with {} xmlprofile paramsfile".format(sys.argv[0]))
             sys.exit(1)
 

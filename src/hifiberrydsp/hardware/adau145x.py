@@ -285,13 +285,13 @@ class Adau145x():
             from hifiberrydsp.server.sigmatcp import SigmaTCPHandler
             if hasattr(SigmaTCPHandler, 'debug_memory_writes') and SigmaTCPHandler.debug_memory_writes:
                 length = len(data)
-                logging.info(f"DEBUG: Memory write to address 0x{addr:04X} ({addr}), length: {length} bytes")
+                logging.debug(f"Memory write to address 0x{addr:04X} ({addr}), length: {length} bytes")
                 if length <= 32:  # Log full data for small writes
                     hex_data = ' '.join(f"{b:02X}" for b in data)
-                    logging.info(f"DEBUG: Write data: {hex_data}")
+                    logging.debug(f"Write data: {hex_data}")
                 else:  # Log first 16 bytes for large writes
                     hex_data = ' '.join(f"{b:02X}" for b in data[:16])
-                    logging.info(f"DEBUG: Write data (first 16 bytes): {hex_data}...")
+                    logging.debug(f"Write data (first 16 bytes): {hex_data}...")
         except ImportError:
             # SigmaTCPHandler not available, skip debug logging
             pass
@@ -608,7 +608,7 @@ class Adau145x():
             try:
                 m.update(program_data)
                 return m.digest()
-            except:
+            except (TypeError, ValueError):
                 logging.error("Can't calculate checksum from provided data")
                 return None
         else:
@@ -618,7 +618,7 @@ class Adau145x():
                 # Convert hex string back to bytes for backward compatibility
                 try:
                     return bytes.fromhex(checksums["md5"])
-                except:
+                except (ValueError, TypeError):
                     logging.error("Failed to convert hex checksum to bytes")
                     return None
             else:
@@ -668,11 +668,10 @@ class Adau145x():
             b2: Numerator coefficient 2
         '''
         from hifiberrydsp.filtering.biquad import Biquad
-        
+
         # Create a Biquad object with the provided coefficients
-        # We use the constructor that accepts a0, a1, a2, b0, b1, b2
-        bq = Biquad.from_parameters(a0, a1, a2, b0, b1, b2)
-        
+        bq = Biquad(a0, a1, a2, b0, b1, b2)
+
         # Use the existing write_biquad method
         Adau145x.write_biquad(start_addr, bq)
     

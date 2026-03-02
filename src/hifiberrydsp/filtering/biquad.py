@@ -173,7 +173,7 @@ class Biquad():
                       "allpass", f0, q)
 
     @classmethod
-    def peaking_eq(self, f0, q, dbgain, fs):
+    def peaking_eq(cls, f0, q, dbgain, fs):
         w0 = Biquad.omega(f0, fs)
         alpha = Biquad.alpha(w0, q)
         a = Biquad.a(dbgain)
@@ -188,7 +188,7 @@ class Biquad():
                       "eq", f0, q, dbgain)
 
     @classmethod
-    def low_shelf(self, f0, q, dbgain, fs):
+    def low_shelf(cls, f0, q, dbgain, fs):
         w0 = Biquad.omega(f0, fs)
         alpha = Biquad.alpha(w0, q)
         a = Biquad.a(dbgain)
@@ -218,7 +218,7 @@ class Biquad():
                       "hs", f0, q, dbgain)
 
     @classmethod
-    def plain(self):
+    def plain(cls):
         return Biquad(1, 0, 0, 1, 0, 0, "Null filter", "null")
 
     '''
@@ -285,7 +285,7 @@ class Biquad():
             try:
                 (_lp, f, q) = definition.split(":")
                 q = float(q)
-            except:
+            except (ValueError, TypeError):
                 (_lp, f) = definition.split(":")
                 q = 0.707
             f = parse_frequency(f)
@@ -294,7 +294,7 @@ class Biquad():
             try:
                 (_hp, f, q) = definition.split(":")
                 q = float(q)
-            except:
+            except (ValueError, TypeError):
                 (_hp, f) = definition.split(":")
                 q = 0.707
             f = parse_frequency(f)
@@ -302,7 +302,7 @@ class Biquad():
         elif definition.startswith("ls:"):
             try:
                 (_ls, f, dbgain, q) = definition.split(":")
-            except:
+            except ValueError:
                 (_ls, f, dbgain) = definition.split(":")
                 q = 0.707
             f = parse_frequency(f)
@@ -311,7 +311,7 @@ class Biquad():
         elif definition.startswith("hs:"):
             try:
                 (_ls, f, dbgain, q) = definition.split(":")
-            except:
+            except ValueError:
                 (_ls, f, dbgain) = definition.split(":")
                 q = 0.707
             f = parse_frequency(f)
@@ -324,15 +324,15 @@ class Biquad():
                 f = parse_frequency(f)
                 dbgain = parse_decibel(dbgain)
                 return Biquad.peaking_eq(f, q, dbgain, fs)
-            except:
-                logging.error("can't parse ea filter")
+            except (ValueError, TypeError):
+                logging.error("can't parse eq filter")
                 return None
         elif definition.startswith("vol:"):
             try:
                 (_vol, db) = definition.split(":")
                 db = parse_decibel(db)
                 return Biquad.volume(db)
-            except:
+            except (ValueError, TypeError):
                 logging.error("can't parse vol filter")
                 return None
         elif definition.startswith("coeff:"):

@@ -60,7 +60,7 @@ def parse_int_length(val):
         else:
             addr = parse_int(val)
             length = 1
-    except:
+    except (ValueError, TypeError):
         addr = None
         length = 0
         logging.error("can't parse metadata %s", val)
@@ -80,7 +80,7 @@ def parse_int_list(val):
             else:
                 res.append(int(v))
         return res
-    except:
+    except (ValueError, TypeError):
         logging.error("can't parse list %s", val)
         return None
 

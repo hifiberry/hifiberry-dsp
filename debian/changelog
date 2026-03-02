@@ -1,3 +1,20 @@
+hifiberry-dsp (1.3.8) stable; urgency=medium
+
+  * Fix critical bug: Biquad.from_parameters() replaced with correct Biquad() constructor
+  * Fix duplicate _group_filters_by_bank() method in settings_store.py
+  * Fix wrong import in test_filter_store.py (FilterStore → SettingsStore)
+  * Fix @classmethod methods using self instead of cls in biquad.py
+  * Change debug-level messages from logging.info to logging.debug in adau145x.py
+  * Replace bare except clauses with specific exception types across 11 files
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 02 Mar 2026 12:00:00 +0000
+
+hifiberry-dsp (1.3.7) stable; urgency=medium
+
+  * Add nginx include file for DSP Toolkit API proxy (/etc/nginx/hifiberry-api.d/)
+
+ -- HiFiBerry <support@hifiberry.com>  Sat, 28 Feb 2026 12:00:00 +0000
+
 hifiberry-dsp (1.3.6) stable; urgency=medium
 
   * Fixed ALSA volume sync to ignore ALSA changes when no DSP volume register

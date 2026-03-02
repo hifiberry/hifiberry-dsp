@@ -209,7 +209,7 @@ class AlsaSync(Thread):
                 if [match for match in mixers if mixername in match]:
                     hw_dev = "hw:{0}".format(str(i))
                     return alsaaudio.Mixer(mixername,device=hw_dev)
-            except:
+            except Exception:
                 find_card = False
             i+=1
         return None
@@ -287,6 +287,6 @@ class AlsaSync(Thread):
             from alsaaudio import Mixer, mixers
             logging.info("mixers: %s", mixers())
             return Mixer(name)
-        except:
+        except Exception:
             from alsaaudio import cards, ALSAAudioError
             raise ALSAAudioError("Mixer {} not found (cards: {})".format(name, cards()))

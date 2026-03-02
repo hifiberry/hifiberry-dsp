@@ -576,7 +576,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         
         try:
             xml = SigmaTCPHandler.get_checked_xml()
-        except:
+        except Exception:
             return None
 
         if xml is None:
@@ -584,7 +584,7 @@ class SigmaTCPHandler(BaseRequestHandler):
         else:
             try:
                 return xml.get_meta(attribute)
-            except:
+            except Exception:
                 logging.error("can't get attribute %s from XML", attribute)
                 return None
 
@@ -1177,11 +1177,11 @@ class SigmaTCPHandler(BaseRequestHandler):
                         xml_profile = SigmaTCPHandler.get_checked_xml()
                         if xml_profile:
                             sample_rate = xml_profile.samplerate() or 48000
-                    except:
+                    except Exception:
                         # Try to guess from DSP
                         try:
                             sample_rate = adau145x.Adau145x.guess_samplerate() or 48000
-                        except:
+                        except Exception:
                             pass
                     
                     # Create filter object
@@ -1392,12 +1392,12 @@ class SigmaTCPServerMain():
 
         try:
             this.command_after_startup = config.get("server", "command_after_startup")
-        except:
+        except (configparser.NoSectionError, configparser.NoOptionError):
             this.command_after_startup = None
 
         try:
             this.notify_on_updates = config.get("server", "notify_on_updates")
-        except:
+        except (configparser.NoSectionError, configparser.NoOptionError):
             this.notify_on_updates = None
 
         # Override any previous logging configuration

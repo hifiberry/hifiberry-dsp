@@ -284,7 +284,7 @@ class SettingsStore:
             try:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-            except:
+            except OSError:
                 pass
             return False
     
@@ -509,38 +509,7 @@ class SettingsStore:
             banks[bank_address].sort(key=lambda f: f["offset"])
         
         return banks
-        """
-        Group filters by their base address (bank)
-        
-        Args:
-            filters (dict): Individual filters keyed by filter_key
-            
-        Returns:
-            dict: Filters grouped by bank address
-        """
-        banks = {}
-        
-        for filter_key, filter_data in filters.items():
-            address = filter_data.get("address", "")
-            offset = filter_data.get("offset", 0)
-            
-            # Use the base address as the bank key
-            if address not in banks:
-                banks[address] = []
-            
-            # Add filter to the bank array, sorted by offset
-            banks[address].append({
-                "offset": offset,
-                "filter": filter_data.get("filter", {}),
-                "timestamp": filter_data.get("timestamp", 0)
-            })
-        
-        # Sort filters within each bank by offset
-        for bank_address in banks:
-            banks[bank_address].sort(key=lambda f: f["offset"])
-        
-        return banks
-    
+
     def delete_filters(self, checksum=None, address=None, all_profiles=False):
         """
         Delete stored filters

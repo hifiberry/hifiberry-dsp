@@ -1125,20 +1125,20 @@ def get_cache_status():
                 profile_name = _xml_profile_cache["profile"].get_meta("profileName")
                 if profile_name:
                     cache_info["profile"]["name"] = profile_name
-            except:
+            except Exception:
                 pass
-                
+
         # Add metadata key count if available
         if _xml_profile_cache["metadata"] is not None:
             try:
                 # Count non-system metadata keys
                 meta_count = len(_xml_profile_cache["metadata"]) - (1 if "_system" in _xml_profile_cache["metadata"] else 0)
                 cache_info["metadata"]["keyCount"] = meta_count
-                
+
                 # Add system metadata if available
                 if "_system" in _xml_profile_cache["metadata"]:
                     cache_info["metadata"]["system"] = _xml_profile_cache["metadata"]["_system"]
-            except:
+            except Exception:
                 pass
                 
         return jsonify(cache_info)

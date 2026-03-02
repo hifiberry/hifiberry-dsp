@@ -150,7 +150,7 @@ class DSPToolkit():
         try:
             volctl = datatools.parse_int(
                 self.sigmatcp.request_metadata(ATTRIBUTE_VOL_CTL))
-        except:
+        except Exception:
             pass
 
         if volctl is not None:
@@ -503,7 +503,7 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
             try:
                 dbval = float(strval[0:-2])
                 vol = decibel2amplification(dbval)
-            except:
+            except (ValueError, TypeError):
                 logging.error("Can't parse db value {}", strval)
                 return None
             # TODO
@@ -511,8 +511,8 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
             try:
                 pval = float(strval[0:-1])
                 vol = percent2amplification(pval)
-            except:
-                logging.error("Can't parse db value {}", strval)
+            except (ValueError, TypeError):
+                logging.error("Can't parse percent value {}", strval)
                 return None
         else:
             vol = float(strval)
@@ -618,7 +618,7 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
     def cmd_read(self, display=DISPLAY_FLOAT, loop=False, length=None):
         try:
             addr = parse_int(self.args.parameters[0])
-        except:
+        except (ValueError, TypeError, IndexError):
             print("Can't parse address {}".format(self.args.parameters))
             sys.exit(1)
 
@@ -946,7 +946,7 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
         settingsfile = self.args.parameters[0]
         try:
             xmlfile = self.args.parameters[1]
-        except:
+        except IndexError:
             xmlfile = None
 
         (registerfile, xmlprofile) = self.read_register_and_xml(
@@ -961,7 +961,7 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
         settingsfile = self.args.parameters[0]
         try:
             xmlfile = self.args.parameters[1]
-        except:
+        except IndexError:
             xmlfile = None
 
         (registerfile, xmlprofile) = self.read_register_and_xml(
@@ -1008,13 +1008,13 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
         xmlprofile = XmlProfile()
         try:
             xmlprofile.read_from_text(xml)
-        except:
+        except Exception:
             print("can't parse XML profile")
             sys.exit(1)
 
         try:
             registerfile = SettingsFile(settingsfile, xmlprofile.samplerate())
-        except:
+        except Exception:
             print("can't parse settings file")
             sys.exit(1)
 
@@ -1033,14 +1033,14 @@ for more documentation visit https://github.com/hifiberry/hifiberry-dsp/blob/mas
             backupfile = xmlfile + ".bak"
             try:
                 os.rename(xmlfile, backupfile)
-            except:
-                print("can't write rename %s to %s", xmlfile, backupfile)
+            except OSError:
+                print("can't rename %s to %s", xmlfile, backupfile)
                 sys.exit(1)
 
             try:
                 with open(xmlfile, "w") as outfile:
                     outfile.write(str(xmlprofile))
-            except:
+            except OSError:
                 print("can't write %s", xmlfile)
                 sys.exit(1)
 

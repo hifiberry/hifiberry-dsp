@@ -45,7 +45,7 @@ class SettingsFile():
 
                 try:
                     (attrib, value) = line.split(":", maxsplit=1)
-                except:
+                except ValueError:
                     logging.error("can't parse line %s", line)
                     continue
 
@@ -98,7 +98,7 @@ class SettingsFile():
                 try:
                     addr = int(attribute,16)
                     length = 1
-                except: 
+                except ValueError:
                     logging.error("can't parse address %s", addr)
                     addr = None
                         
