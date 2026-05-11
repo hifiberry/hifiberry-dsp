@@ -1,3 +1,20 @@
+hifiberry-dsp (1.3.9) stable; urgency=medium
+
+  * sigmatcpserver: fix profile-vs-DSP checksum comparison. XML profiles
+    store signature-based MD5/SHA-1 under <metadata type="checksum">, but
+    the server was reading the DSP's length-based checksums and comparing
+    against them. Two different algorithms over the same firmware never
+    match, so every healthy boot was logging "checksums do not match,
+    aborting" and refusing to wire alsasync to the volume control
+    register. Result: the DSPVolume ALSA control had no effect on the
+    actual DSP volume register, which boots at a near-mute default
+    value, and speakers stayed silent. Fix is to compare signature ↔
+    signature (with length as a fallback only). Length-mode is still
+    used for filter-store indexing where the algorithm difference is
+    intentional.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 11 May 2026 12:00:00 +0000
+
 hifiberry-dsp (1.3.8) stable; urgency=medium
 
   * Fix critical bug: Biquad.from_parameters() replaced with correct Biquad() constructor

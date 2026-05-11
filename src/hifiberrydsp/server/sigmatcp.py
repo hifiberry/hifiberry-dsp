@@ -124,11 +124,12 @@ def find_and_restore_dsp_profile():
         
         if os.path.exists(current_profile_path):
             try:
-                # Get DSP program checksums (try both SHA-1 and MD5)
-                dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
+                # XML profiles store signature-based checksums under "checksum"
+                # and "checksum_sha1", so we must read signature-mode from the
+                # DSP to compare. See read_xml_profile() for the same fix.
+                dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
                 if not dsp_checksums:
-                    # Fallback to signature-based if length-based fails
-                    dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
+                    dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
                 
                 if dsp_checksums:
                     dsp_checksum_sha1 = dsp_checksums.get("sha1")
@@ -185,11 +186,12 @@ def find_and_restore_dsp_profile():
             logging.warning(f"DSP profiles directory not found: {DSP_PROFILES_DIRECTORY}")
             return False
             
-        # Get target checksum from DSP (try both SHA-1 and MD5)
-        dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
+        # Get target checksum from DSP. Use signature mode because that's
+        # what bundled profile XMLs store; length mode is a different
+        # algorithm and would never produce a match against the XML.
+        dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
         if not dsp_checksums:
-            # Fallback to signature-based if length-based fails
-            dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
+            dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
         
         if not dsp_checksums:
             logging.warning("Could not get DSP program checksum for profile search")
@@ -496,14 +498,20 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.debug("SHA-1 checksum from XML: %s", cs_sha1)
         logging.debug("MD5 checksum from XML: %s", cs_md5)
         
-        # Get memory checksums
+        # Get memory checksums. The XML's "checksum" / "checksum_sha1" metadata
+        # are signature-based (computed from the program signature bytes), so
+        # we must compute signature-based checksums on the live DSP to compare
+        # like-with-like. Length-based mode is a different algorithm and will
+        # never match the XML's stored value, even for a correctly loaded
+        # profile — using it here was a latent bug that caused every healthy
+        # boot to log "checksums do not match, aborting", which in turn left
+        # alsasync without the volumeControlRegister mapping.
         try:
-            # Try length-based checksums first
-            memory_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=True)
+            memory_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=True)
             if not memory_checksums:
-                # Fallback to signature-based checksums
-                memory_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=True)
-            
+                # Length-based as a last-ditch fallback only.
+                memory_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=True)
+
             memory_checksum_sha1 = memory_checksums.get("sha1")
             memory_checksum_md5 = memory_checksums.get("md5")
             
