@@ -1,3 +1,14 @@
+hifiberry-dsp (1.3.10) stable; urgency=medium
+
+  * sigmatcpserver: compare each XML checksum field against the matching
+    algorithm — "checksum" (signature MD5) vs DSP signature-mode MD5,
+    "checksum_sha1" (length SHA-1) vs DSP length-mode SHA-1. Either
+    match is sufficient. Pairs with hifiberry-dspprofiles 1.1.1 which
+    now ships both metadata entries. Profiles that still carry only the
+    old "checksum" entry continue to work via the MD5 path.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 11 May 2026 13:00:00 +0000
+
 hifiberry-dsp (1.3.9) stable; urgency=medium
 
   * sigmatcpserver: fix profile-vs-DSP checksum comparison. XML profiles

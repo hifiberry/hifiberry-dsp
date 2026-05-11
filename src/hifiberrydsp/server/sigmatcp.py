@@ -124,50 +124,52 @@ def find_and_restore_dsp_profile():
         
         if os.path.exists(current_profile_path):
             try:
-                # XML profiles store signature-based checksums under "checksum"
-                # and "checksum_sha1", so we must read signature-mode from the
-                # DSP to compare. See read_xml_profile() for the same fix.
-                dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
-                if not dsp_checksums:
-                    dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
-                
-                if dsp_checksums:
-                    dsp_checksum_sha1 = dsp_checksums.get("sha1")
-                    dsp_checksum_md5 = dsp_checksums.get("md5")
-                    
-                    # Try to load current profile and check its checksums
+                # XML metadata uses two different algorithms:
+                #   "checksum"      → signature-mode MD5
+                #   "checksum_sha1" → length-mode  SHA-1
+                # Compute both modes from the live DSP and compare each
+                # against the matching XML field.
+                sig_checksums = adau145x.Adau145x.calculate_program_checksums(
+                    mode="signature", algorithms=["md5"], cached=False) or {}
+                len_checksums = adau145x.Adau145x.calculate_program_checksums(
+                    mode="length", algorithms=["sha1"], cached=False) or {}
+
+                dsp_checksum_md5_sig = sig_checksums.get("md5")
+                dsp_checksum_sha1_len = len_checksums.get("sha1")
+
+                if dsp_checksum_md5_sig or dsp_checksum_sha1_len:
                     try:
                         xml_profile = XmlProfile(current_profile_path)
-                        
-                        # Check SHA-1 checksum first (preferred)
+
                         profile_checksum_sha1 = xml_profile.get_meta("checksum_sha1")
-                        if profile_checksum_sha1 and dsp_checksum_sha1:
-                            if profile_checksum_sha1.upper() == dsp_checksum_sha1.upper():
+                        if profile_checksum_sha1 and dsp_checksum_sha1_len:
+                            if profile_checksum_sha1.upper() == dsp_checksum_sha1_len.upper():
                                 profile_valid = True
-                                logging.debug(f"Current DSP profile is valid with SHA-1 checksum {dsp_checksum_sha1}")
-                        
-                        # Fall back to MD5 checksum if SHA-1 not available or doesn't match
+                                logging.debug(
+                                    f"Current DSP profile is valid (length-mode SHA-1 {dsp_checksum_sha1_len})"
+                                )
+
                         if not profile_valid:
                             profile_checksum_md5 = xml_profile.get_meta("checksum")
-                            if profile_checksum_md5 and dsp_checksum_md5:
-                                if profile_checksum_md5.upper() == dsp_checksum_md5.upper():
+                            if profile_checksum_md5 and dsp_checksum_md5_sig:
+                                if profile_checksum_md5.upper() == dsp_checksum_md5_sig.upper():
                                     profile_valid = True
-                                    logging.debug(f"Current DSP profile is valid with MD5 checksum {dsp_checksum_md5}")
-                                else:
-                                    logging.info(f"DSP profile checksum mismatch: profile MD5={profile_checksum_md5}, DSP MD5={dsp_checksum_md5}")
-                        
+                                    logging.debug(
+                                        f"Current DSP profile is valid (signature-mode MD5 {dsp_checksum_md5_sig})"
+                                    )
+
                         if not profile_valid:
                             checksums_info = []
                             if profile_checksum_sha1:
-                                checksums_info.append(f"profile SHA-1={profile_checksum_sha1}")
+                                checksums_info.append(f"XML length-SHA-1={profile_checksum_sha1}")
                             if profile_checksum_md5:
-                                checksums_info.append(f"profile MD5={profile_checksum_md5}")
-                            if dsp_checksum_sha1:
-                                checksums_info.append(f"DSP SHA-1={dsp_checksum_sha1}")
-                            if dsp_checksum_md5:
-                                checksums_info.append(f"DSP MD5={dsp_checksum_md5}")
+                                checksums_info.append(f"XML signature-MD5={profile_checksum_md5}")
+                            if dsp_checksum_sha1_len:
+                                checksums_info.append(f"DSP length-SHA-1={dsp_checksum_sha1_len}")
+                            if dsp_checksum_md5_sig:
+                                checksums_info.append(f"DSP signature-MD5={dsp_checksum_md5_sig}")
                             logging.info(f"DSP profile checksum mismatch: {', '.join(checksums_info)}")
-                            
+
                     except Exception as e:
                         logging.info(f"Error loading current DSP profile: {str(e)}")
                 else:
@@ -186,29 +188,24 @@ def find_and_restore_dsp_profile():
             logging.warning(f"DSP profiles directory not found: {DSP_PROFILES_DIRECTORY}")
             return False
             
-        # Get target checksum from DSP. Use signature mode because that's
-        # what bundled profile XMLs store; length mode is a different
-        # algorithm and would never produce a match against the XML.
-        dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=False)
-        if not dsp_checksums:
-            dsp_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=False)
-        
-        if not dsp_checksums:
-            logging.warning("Could not get DSP program checksum for profile search")
-            return False
-            
-        # Prefer SHA-1 over MD5 for matching
-        target_checksum_sha1 = dsp_checksums.get("sha1")
-        target_checksum_md5 = dsp_checksums.get("md5")
-        
+        # Compute both modes from the DSP so we can match either of the
+        # two algorithms the XMLs may carry.
+        sig_checksums = adau145x.Adau145x.calculate_program_checksums(
+            mode="signature", algorithms=["md5"], cached=False) or {}
+        len_checksums = adau145x.Adau145x.calculate_program_checksums(
+            mode="length", algorithms=["sha1"], cached=False) or {}
+
+        target_checksum_md5 = sig_checksums.get("md5")    # XML: "checksum"
+        target_checksum_sha1 = len_checksums.get("sha1")  # XML: "checksum_sha1"
+
         if target_checksum_sha1:
-            logging.info(f"Searching for DSP profile with SHA-1 checksum: {target_checksum_sha1}")
+            logging.info(f"Searching for DSP profile with length-mode SHA-1: {target_checksum_sha1}")
         elif target_checksum_md5:
-            logging.info(f"Searching for DSP profile with MD5 checksum: {target_checksum_md5}")
+            logging.info(f"Searching for DSP profile with signature-mode MD5: {target_checksum_md5}")
         else:
             logging.warning("No valid checksums available for profile search")
             return False
-        
+
         # Search for matching profile in profiles directory
         found_profile = None
         try:
@@ -217,23 +214,23 @@ def find_and_restore_dsp_profile():
                     profile_path = os.path.join(DSP_PROFILES_DIRECTORY, filename)
                     try:
                         xml_profile = XmlProfile(profile_path)
-                        
-                        # Check SHA-1 checksum first (preferred)
+
+                        # XML "checksum_sha1" is length-mode SHA-1
                         profile_checksum_sha1 = xml_profile.get_meta("checksum_sha1")
                         if profile_checksum_sha1 and target_checksum_sha1:
                             if profile_checksum_sha1.upper() == target_checksum_sha1.upper():
                                 found_profile = profile_path
-                                logging.info(f"Found matching DSP profile (SHA-1): {filename}")
+                                logging.info(f"Found matching DSP profile (length-mode SHA-1): {filename}")
                                 break
-                        
-                        # Fall back to MD5 checksum if SHA-1 not available or doesn't match
+
+                        # XML "checksum" is signature-mode MD5
                         profile_checksum_md5 = xml_profile.get_meta("checksum")
                         if profile_checksum_md5 and target_checksum_md5:
                             if profile_checksum_md5.upper() == target_checksum_md5.upper():
                                 found_profile = profile_path
-                                logging.info(f"Found matching DSP profile (MD5): {filename}")
+                                logging.info(f"Found matching DSP profile (signature-mode MD5): {filename}")
                                 break
-                            
+
                     except Exception as e:
                         logging.debug(f"Error checking profile {filename}: {str(e)}")
                         continue
@@ -498,55 +495,56 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.debug("SHA-1 checksum from XML: %s", cs_sha1)
         logging.debug("MD5 checksum from XML: %s", cs_md5)
         
-        # Get memory checksums. The XML's "checksum" / "checksum_sha1" metadata
-        # are signature-based (computed from the program signature bytes), so
-        # we must compute signature-based checksums on the live DSP to compare
-        # like-with-like. Length-based mode is a different algorithm and will
-        # never match the XML's stored value, even for a correctly loaded
-        # profile — using it here was a latent bug that caused every healthy
-        # boot to log "checksums do not match, aborting", which in turn left
-        # alsasync without the volumeControlRegister mapping.
+        # The XML now carries two independent identifiers:
+        #   <metadata type="checksum">      → signature-mode MD5
+        #   <metadata type="checksum_sha1"> → length-mode  SHA-1
+        # We compute both modes on the live DSP and compare each XML field
+        # against the matching algorithm. Either match is sufficient — that
+        # gives us robustness against profiles that, for whatever reason,
+        # only carry one of the two metadata entries (older profile files
+        # that pre-date the dual-checksum scheme will only have "checksum",
+        # which still works).
         try:
-            memory_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["sha1", "md5"], cached=True)
-            if not memory_checksums:
-                # Length-based as a last-ditch fallback only.
-                memory_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1", "md5"], cached=True)
-
-            memory_checksum_sha1 = memory_checksums.get("sha1")
-            memory_checksum_md5 = memory_checksums.get("md5")
-            
-            logging.debug("SHA-1 checksum from memory: %s", memory_checksum_sha1)
-            logging.debug("MD5 checksum from memory: %s", memory_checksum_md5)
-            
+            sig_checksums = adau145x.Adau145x.calculate_program_checksums(mode="signature", algorithms=["md5"], cached=True)
         except Exception as e:
-            logging.error(f"Error calculating memory checksums: {str(e)}")
-            memory_checksum_sha1 = None
-            memory_checksum_md5 = None
-        
-        # Check checksums with priority: SHA-1 first, then MD5
+            logging.error(f"Error calculating signature-mode checksum: {str(e)}")
+            sig_checksums = {}
+        try:
+            len_checksums = adau145x.Adau145x.calculate_program_checksums(mode="length", algorithms=["sha1"], cached=True)
+        except Exception as e:
+            logging.error(f"Error calculating length-mode checksum: {str(e)}")
+            len_checksums = {}
+
+        memory_checksum_md5 = sig_checksums.get("md5") if sig_checksums else None
+        memory_checksum_sha1 = len_checksums.get("sha1") if len_checksums else None
+
+        logging.debug("signature MD5 from DSP: %s", memory_checksum_md5)
+        logging.debug("length SHA-1 from DSP: %s", memory_checksum_sha1)
+
+        # Match either field. SHA-1 (length-mode) is checked first because
+        # it's the newer, more robust identifier; we fall back to MD5
+        # (signature-mode) for older profile XMLs that only carry "checksum".
         checksum_match = False
         if cs_sha1 and memory_checksum_sha1:
             if cs_sha1.upper() == memory_checksum_sha1.upper():
                 checksum_match = True
-                logging.info("SHA-1 checksums match")
+                logging.info("length-mode SHA-1 checksum matches")
             else:
-                logging.warning(f"SHA-1 checksum mismatch: XML={cs_sha1}, memory={memory_checksum_sha1}")
-        
-        # Fall back to MD5 if SHA-1 doesn't match or isn't available
+                logging.warning(f"length-mode SHA-1 mismatch: XML={cs_sha1}, DSP={memory_checksum_sha1}")
+
         if not checksum_match and cs_md5 and memory_checksum_md5:
-            # Convert memory checksum to bytes format for backward compatibility
             try:
                 memory_checksum_md5_bytes = bytes.fromhex(memory_checksum_md5)
                 SigmaTCPHandler.checksum_xml = bytearray()
                 for i in range(0, len(cs_md5), 2):
                     octet = int(cs_md5[i:i + 2], 16)
                     SigmaTCPHandler.checksum_xml.append(octet)
-                
+
                 if SigmaTCPHandler.checksum_xml == memory_checksum_md5_bytes:
                     checksum_match = True
-                    logging.info("MD5 checksums match")
+                    logging.info("signature-mode MD5 checksum matches")
                 else:
-                    logging.warning(f"MD5 checksum mismatch: XML={cs_md5}, memory={memory_checksum_md5}")
+                    logging.warning(f"signature-mode MD5 mismatch: XML={cs_md5}, DSP={memory_checksum_md5}")
             except Exception as e:
                 logging.error(f"Error comparing MD5 checksums: {str(e)}")
         
