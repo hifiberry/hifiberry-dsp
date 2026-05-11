@@ -3,7 +3,18 @@ Description=HiFiBerry DSP TCP/REST API service
 After=network.target
 
 [Service]
-ExecStart=sigmatcpserver --localhost --enable-rest --alsa --disable-tcp
+# --store: dump DSP data memory on graceful shutdown
+# --restore: re-apply that dump on next start so volume/EQ/etc survive
+#            a reboot. On a fresh install with no saved snapshot,
+#            --restore logs "no saved data found" and continues.
+ExecStart=sigmatcpserver --localhost --enable-rest --alsa --disable-tcp --store --restore
+
+# The store path is in a `except KeyboardInterrupt` block, which Python
+# only raises for SIGINT (not the default SIGTERM systemd would send),
+# so route the stop signal as SIGINT to actually trigger the dump.
+KillSignal=SIGINT
+TimeoutStopSec=15
+
 Restart=on-failure
 RestartSec=5
 
