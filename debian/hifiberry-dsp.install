@@ -1,2 +1,3 @@
 systemd/sigmatcpserver.service usr/lib/systemd/system/
 debian/hifiberry-sigmatcp.nginx etc/nginx/hifiberry-api.d/
+auth/dsptoolkit.json etc/hifiberry/auth.d/

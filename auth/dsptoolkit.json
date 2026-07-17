@@ -1,0 +1,8 @@
+{ "service":"dsptoolkit", "match_prefix":"/api/dsptoolkit", "default_tier":"risky",
+  "comment":"DSP toolkit (SigmaTCP). Reads - hardware detect, metadata, memory/register reads, cache/profile/checksum/program info, stored filters - and the pure-math frequency-response calc are ok. All writes (memory/register write, biquad, deploy profile, store/delete filters, cache clear) fall through to risky.",
+  "rules":[
+  { "tier":"ok","methods":["GET"],"paths":[
+    "/hardware/dsp","/metadata","/memory/**","/register/**","/cache",
+    "/dspprofile","/profiles/metadata","/checksum","/program-info","/filters"] },
+  { "tier":"ok","methods":["POST"],"paths":["/frequency-response"] },
+  { "tier":"risky","methods":["*"],"paths":["/**"] } ]}

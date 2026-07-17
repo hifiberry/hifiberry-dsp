@@ -1,3 +1,15 @@
+hifiberry-dsp (1.3.12) stable; urgency=medium
+
+  * Ship an auth-gateway classification manifest (etc/hifiberry/auth.d/dsptoolkit.json).
+    The DSP toolkit API had no manifest, so every call defaulted to "risky" and
+    the DSP pages 401'd once the auth gateway is active. Reads (hardware detect,
+    metadata, memory/register reads, cache/profile/checksum/program info, stored
+    filters) and the pure-math frequency-response calc are "ok"; all DSP writes
+    (memory/register write, biquad, deploy profile, store/delete filters, cache
+    clear) stay risky.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 17 Jul 2026 16:00:00 +0000
+
 hifiberry-dsp (1.3.11) stable; urgency=medium
 
   * systemd: launch sigmatcpserver with --store --restore so DSP data
