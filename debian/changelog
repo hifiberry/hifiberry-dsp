@@ -1,3 +1,21 @@
+hifiberry-dsp (1.3.14) stable; urgency=medium
+
+  * settings store: writes are atomic and transactional again. save_store()
+    wrote through a fixed shared '<store>.tmp' and took its flock on that
+    temp file after open() had truncated it, so two Waitress worker threads
+    shared one inode: the first renamed it over dspsettings.json, the second
+    kept writing into what had become the live store and then failed its own
+    rename with ENOENT. Applying a 16-band Room EQ correction hit this on
+    nearly every write and left the left and right banks with different
+    filters. Writes now go through a uniquely named temp file and
+    os.replace(), under a lock held across the whole load-mutate-save cycle.
+  * restapi: new POST /filters/bank writes a complete filter bank in one
+    request instead of one round-trip per slot, and /biquad, /filters/bank
+    and the bank-bypass loop now serialise their DSP writes so concurrent
+    requests cannot interleave.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 07 Aug 2026 15:34:44 +0200
+
 hifiberry-dsp (1.3.13) stable; urgency=medium
 
   * sigmatcpserver: --disable-tcp no longer leaves port 8086 listening. The
