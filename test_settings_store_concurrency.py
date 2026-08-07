@@ -12,7 +12,6 @@ bare python3 -- importing hifiberrydsp.api pulls in Flask, which is not
 installed on a dev machine.
 """
 
-import glob
 import importlib.util
 import json
 import os
@@ -31,6 +30,21 @@ _spec.loader.exec_module(settings_store_module)
 SettingsStore = settings_store_module.SettingsStore
 
 CHECKSUM = "8B924F2C2210B903CB4226C12C56EE44"
+
+# Minimum _file_lock() entries each mutating method must produce: its own
+# transaction lock plus save_store()'s nested one. These are MEASURED values.
+# toggle_filter_bypass is 3 because it delegates to set_filter_bypass, which
+# locks as well -- a flat threshold of 2 would let its outer lock be removed
+# without the test noticing (see test_toggle_filter_bypass_outer_lock_is_detected).
+LOCK_ENTRY_MINIMUMS = {
+    "store_filter": 2,
+    "store_memory_setting": 2,
+    "set_filter_bypass": 2,
+    "toggle_filter_bypass": 3,
+    "set_filter_bank_bypass": 2,
+    "delete_filters": 2,
+    "clear_empty_profiles": 2,
+}
 
 
 def a_filter(freq):
@@ -120,15 +134,26 @@ class TestLockCoverage(unittest.TestCase):
     # One invocation per name in MUTATING_METHODS. Driven from the constant so a
     # new mutating method added without a lock cannot slip through unexercised.
     #
-    # DEVIATION FROM THE BRIEF: delete_filters's invocation originally read
-    # address="bankLeft". delete_filters(address=...) matches the literal
-    # filter key, not the bare address (see settings_store.py, filter_key =
-    # str(address)) -- stored keys are "bankLeft_<offset>", so "bankLeft"
-    # never matches and the method takes its early-return "not found" branch
-    # without ever calling save_store(). That made this invocation exercise
-    # nothing below delete_filters's own lock. Using "bankLeft_0" (the key
-    # setUp actually stores) makes it reach save_store() like every other
-    # invocation here.
+    # NOTE: delete_filters must be given the literal store key ("bankLeft_0"),
+    # not the address ("bankLeft"). delete_filters(address=...) matches the
+    # literal filter key (settings_store.py: filter_key = str(address)), and
+    # stored keys are "bankLeft_<offset>" -- with the bare address it matches
+    # nothing, returns "No filter found" before reaching save_store, and the
+    # lock count comes up short: a false failure reported as a missing lock.
+    #
+    # ORDERING COUPLING: this dict is only correct when run in
+    # MUTATING_METHODS order, which is how test_mutating_methods_take_the_lock
+    # iterates it. set_filter_bypass, set_filter_bank_bypass, and
+    # delete_filters all have early-return paths that skip save_store when
+    # their target filter/bank isn't found, and delete_filters here deletes
+    # "bankLeft_0" (the key set up below) which set_filter_bypass and
+    # set_filter_bank_bypass's invocations depend on still being present when
+    # they run. Reordering MUTATING_METHODS would run delete_filters before
+    # those two, and they'd then hit their own early-return paths -- reported
+    # as "did not open _file_lock itself", which is a misleading diagnostic
+    # for what's actually just a fixture-ordering dependency. Not restructured
+    # because MUTATING_METHODS' declared order already matches this and the
+    # coupling is now documented instead.
     def _invocations(self):
         return {
             "store_filter": lambda: self.store.store_filter(CHECKSUM, "bankLeft", 1, a_filter(200)),
@@ -144,30 +169,30 @@ class TestLockCoverage(unittest.TestCase):
         """
         Each mutating method must open the lock ITSELF, before its load_store().
 
-        DEVIATION FROM THE BRIEF: the brief's design counted only _file_lock()
-        entries made at "depth 0", attributing that single depth-0 entry to
-        "the outermost caller, i.e. the method under test". That attribution
-        is not sound: save_store() also opens _file_lock() unconditionally
-        (see save_store()), so exactly one depth-0 entry occurs on every call
-        into a mutating method whether or not the method takes its own lock --
-        if the method locks first, its own entry is the depth-0 one and
-        save_store()'s nested entry is skipped (depth > 0); if the method
-        doesn't lock, save_store()'s entry becomes the depth-0 one instead.
-        Either way the depth-0 count is invariantly 1, so
-        assertGreaterEqual(calls, 1) can never fail. Proven with the exact
-        mutation this file's own guard test performs (see
-        test_lock_coverage_test_can_actually_fail) and independently by
-        editing store_filter's `with self._file_lock():` to
-        `with contextlib.nullcontext():` in place and re-running this test --
-        it still passes.
+        Counting is total, not gated on nesting depth. Two earlier attempts at
+        this test could never fail, and it is worth recording why:
 
-        What actually distinguishes the two cases is the TOTAL number of
-        nested _file_lock() entries (gated by nothing): a correctly locked
-        method always produces at least 2 (its own entry, then save_store()'s
-        nested one -- toggle_filter_bypass produces 3, since it also nests
-        through set_filter_bypass's own lock). A method with no transaction
-        lock of its own, whose load-mutate-save reaches save_store() through
-        no other locked call, produces exactly 1 (save_store()'s alone).
+          * Counting every entry with a threshold of >= 1 passes trivially,
+            because save_store() opens the lock itself.
+          * Gating on depth == 0 is no better. If the method locks, the method
+            is the depth-0 entry and save_store nests below it: count 1. If the
+            method does NOT lock, save_store's own entry is the depth-0 one:
+            count 1 again. The value is invariant, so the assertion is
+            unfalsifiable. This was measured: 1 in every case, baseline and
+            mutants alike -- proven both by running the guard test as written
+            (it failed) and independently by editing store_filter's
+            `with self._file_lock():` to `with contextlib.nullcontext():` in
+            place and re-running this test -- it still passed.
+
+        What actually discriminates is the TOTAL number of entries, compared
+        against a per-method minimum, not a flat one. A flat minimum of 2 is
+        still not enough: toggle_filter_bypass delegates to set_filter_bypass,
+        which locks too, so removing just toggle_filter_bypass's own outer
+        lock still yields 2 entries (set_filter_bypass's own + save_store's),
+        clearing a flat threshold of 2 while the read and the write are no
+        longer one transaction (see
+        test_toggle_filter_bypass_outer_lock_is_detected). The minimums are
+        measured values, not guesses -- see LOCK_ENTRY_MINIMUMS.
         """
         calls = {"n": 0}
         real_lock = SettingsStore._file_lock
@@ -183,6 +208,8 @@ class TestLockCoverage(unittest.TestCase):
         invocations = self._invocations()
         missing = set(settings_store_module.MUTATING_METHODS) - set(invocations)
         self.assertEqual(missing, set(), f"no invocation defined for {missing}")
+        unpriced = set(settings_store_module.MUTATING_METHODS) - set(LOCK_ENTRY_MINIMUMS)
+        self.assertEqual(unpriced, set(), f"no lock-entry minimum defined for {unpriced}")
 
         SettingsStore._file_lock = counting_lock
         try:
@@ -190,19 +217,20 @@ class TestLockCoverage(unittest.TestCase):
                 calls["n"] = 0
                 invocations[name]()
                 self.assertGreaterEqual(
-                    calls["n"], 2,
-                    f"{name} did not open _file_lock itself — its load-mutate-save "
-                    f"is not transactional (only save_store()'s own internal lock "
-                    f"fired)")
+                    calls["n"], LOCK_ENTRY_MINIMUMS[name],
+                    f"{name} took {calls['n']} lock entries, expected at least "
+                    f"{LOCK_ENTRY_MINIMUMS[name]} — it did not open _file_lock itself, "
+                    f"so its load-mutate-save is not transactional")
         finally:
             SettingsStore._file_lock = real_lock
 
     def test_lock_coverage_test_can_actually_fail(self):
         """
-        Guard the guard: prove the total-entry counting above detects an
-        unlocked method. Without this, a regression in the counting logic
-        could silently turn test_mutating_methods_take_the_lock back into a
-        test that always passes.
+        Guard the guard: prove the counting above detects an unlocked method.
+
+        Without this, a regression in the counting logic quietly turns
+        test_mutating_methods_take_the_lock back into a test that always
+        passes -- which is exactly what happened twice while this was written.
         """
         import contextlib
 
@@ -218,10 +246,9 @@ class TestLockCoverage(unittest.TestCase):
         original = SettingsStore.store_filter
 
         def unlocked_store_filter(inner_self, checksum, address, offset, filter_data, bypassed=False):
-            # store_filter with its transaction lock removed; save_store still
-            # takes the lock internally, which is exactly the case that fooled
-            # the depth-0 counter this replaces (see test_mutating_methods_
-            # take_the_lock's docstring for the mechanical proof).
+            # store_filter with its transaction lock removed. save_store still
+            # locks internally, which is precisely the case that fooled both
+            # earlier versions of the counter.
             store = inner_self.load_store()
             store.setdefault(inner_self.normalize_checksum(checksum), {"filters": {}, "memory": {}})
             return inner_self.save_store(store)
@@ -231,13 +258,60 @@ class TestLockCoverage(unittest.TestCase):
         try:
             calls["n"] = 0
             self.store.store_filter(CHECKSUM, "bankLeft", 2, a_filter(300))
+            # Exactly 1: save_store's own entry, and nothing else. Asserting
+            # "< 2" would also accept 0, so a counter that stopped incrementing
+            # entirely would still pass this guard.
+            self.assertEqual(
+                calls["n"], 1,
+                f"expected exactly save_store's single lock entry, got {calls['n']} — "
+                f"the counter no longer distinguishes a locked method from an "
+                f"unlocked one, so test_mutating_methods_take_the_lock cannot fail")
             self.assertLess(
-                calls["n"], 2,
-                "the counter reached the transactional threshold of 2 for a "
-                "method that never took its own lock -- "
-                "test_mutating_methods_take_the_lock cannot fail")
+                calls["n"], LOCK_ENTRY_MINIMUMS["store_filter"],
+                "an unlocked store_filter still met its minimum")
         finally:
             SettingsStore.store_filter = original
+            SettingsStore._file_lock = real_lock
+
+    def test_toggle_filter_bypass_outer_lock_is_detected(self):
+        """
+        toggle_filter_bypass is the only mutating method that calls another
+        locking method (set_filter_bypass), so removing just its own outer
+        lock still yields 2 entries -- enough to clear a flat threshold of 2
+        while the read and the write are no longer one transaction. Its
+        minimum is 3 for that reason; this proves the distinction holds.
+        """
+        import contextlib
+
+        calls = {"n": 0}
+        real_lock = SettingsStore._file_lock
+
+        @contextlib.contextmanager
+        def counting_lock(inner_self):
+            calls["n"] += 1
+            with real_lock(inner_self):
+                yield
+
+        original = SettingsStore.toggle_filter_bypass
+
+        def unlocked_toggle(inner_self, checksum, address, offset):
+            # The outer transaction lock removed; the delegation still locks.
+            current = inner_self.get_filter_bypass_state(checksum, address, offset)
+            if current is None:
+                return False, "Filter not found"
+            return inner_self.set_filter_bypass(checksum, address, offset, not current)
+
+        SettingsStore._file_lock = counting_lock
+        SettingsStore.toggle_filter_bypass = unlocked_toggle
+        try:
+            calls["n"] = 0
+            self.store.toggle_filter_bypass(CHECKSUM, "bankLeft", 0)
+            self.assertLess(
+                calls["n"], LOCK_ENTRY_MINIMUMS["toggle_filter_bypass"],
+                f"toggle_filter_bypass reached {calls['n']} entries without its own "
+                f"lock — the per-method minimum is not catching it")
+        finally:
+            SettingsStore.toggle_filter_bypass = original
             SettingsStore._file_lock = real_lock
 
     def test_mutating_methods_constant_matches_reality(self):
