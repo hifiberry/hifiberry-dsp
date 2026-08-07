@@ -77,6 +77,8 @@ class SettingsStore:
     # a thread pool, so two requests really do run save_store() at the same
     # time. Class-level: every SettingsStore instance points at the same file.
     _process_lock = threading.RLock()
+    # Nesting depth of _file_lock, scoped to match _process_lock (see _file_lock).
+    _lock_depth = 0
 
     def __init__(self, profiles_dir="/usr/share/hifiberry/dspprofiles", store_file=None):
         """
@@ -108,17 +110,24 @@ class SettingsStore:
         only taken by the outermost holder.
         """
         with self._process_lock:
-            depth = getattr(self, "_lock_depth", 0)
-            self._lock_depth = depth + 1
+            # Class-level, matching the scope of _process_lock. A per-instance
+            # depth would read 0 when a thread already holding the lock on one
+            # SettingsStore enters _file_lock on a second instance of the same
+            # store: that instance would open a second fd and flock(LOCK_EX)
+            # against the fd the first still holds, deadlocking the process.
+            depth = SettingsStore._lock_depth
+            SettingsStore._lock_depth = depth + 1
             if depth > 0:
                 try:
                     yield
                 finally:
-                    self._lock_depth -= 1
+                    SettingsStore._lock_depth -= 1
                 return
 
             try:
-                os.makedirs(os.path.dirname(self.lock_file), exist_ok=True)
+                lock_dir = os.path.dirname(self.lock_file)
+                if lock_dir:
+                    os.makedirs(lock_dir, exist_ok=True)
                 with open(self.lock_file, 'a+') as lock_handle:
                     fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
                     try:
@@ -126,7 +135,7 @@ class SettingsStore:
                     finally:
                         fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
             finally:
-                self._lock_depth -= 1
+                SettingsStore._lock_depth -= 1
 
     def load_store(self):
         """
@@ -313,7 +322,8 @@ class SettingsStore:
         temp_path = None
         try:
             store_dir = os.path.dirname(self.store_file)
-            os.makedirs(store_dir, exist_ok=True)
+            if store_dir:
+                os.makedirs(store_dir, exist_ok=True)
 
             with self._file_lock():
                 # Validate JSON structure before touching the disk
@@ -328,7 +338,15 @@ class SettingsStore:
                 fd, temp_path = tempfile.mkstemp(
                     dir=store_dir, prefix='.dspsettings-', suffix='.tmp')
                 try:
-                    with os.fdopen(fd, 'w') as f:
+                    handle = os.fdopen(fd, 'w')
+                except BaseException:
+                    # fdopen failed, so the raw fd is still ours to close.
+                    os.close(fd)
+                    os.unlink(temp_path)
+                    raise
+
+                try:
+                    with handle as f:
                         f.write(json_content)
                         f.flush()
                         os.fsync(f.fileno())
