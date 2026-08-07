@@ -29,7 +29,8 @@ BASE_URL = "http://localhost:13141"
 CELLS_PER_SLOT = 5
 # 8.24 fixed point: LSB is ~5.96e-8, so anything above 1e-6 is a real mismatch.
 TOLERANCE = 1e-6
-TRANSPARENT = {"a0": 1.0, "a1": 0.0, "a2": 0.0, "b0": 1.0, "b1": 0.0, "b2": 0.0}
+# What an unwritten / pass-through slot reads back as, in ascending address order.
+TRANSPARENT_CELLS = [0.0, 0.0, 1.0, 0.0, 0.0]
 
 
 def request(method, path, payload=None, timeout=30):
@@ -65,7 +66,7 @@ def expected_cells(coefficients):
     """Server-reported coefficients -> the five cells, in ascending address order."""
     a0 = float(coefficients['a0'])
     if a0 == 0:
-        raise ValueError("a0 is zero, cannot normalise")
+        raise SystemExit("server reported a0 = 0, which cannot be normalised")
     return [
         float(coefficients['b2']) / a0,
         float(coefficients['b1']) / a0,
@@ -83,27 +84,41 @@ def read_slot(base_address, offset):
     return body['values']
 
 
-def a_filter(offset):
-    """A distinct filter per slot, so a swapped or skipped slot is detectable."""
-    return {"type": "PeakingEq", "f": 100 + offset * 137, "db": -3.0 - offset * 0.1, "q": 1.0}
+def a_filter(offset, writer=0):
+    """
+    A distinct filter per slot, and per concurrent writer.
+
+    The per-slot variation makes a swapped or skipped slot detectable. The
+    per-writer variation is what makes `soak` able to fail at all: if every
+    thread wrote identical coefficients, two threads tearing a write to the
+    same slot would still leave exactly the expected value behind, and the
+    race would be invisible. With distinct payloads, a slot holding cells
+    from two different writers is a detectable torn write.
+    """
+    return {
+        "type": "PeakingEq",
+        "f": 100 + offset * 137,
+        "db": -3.0 - offset * 0.1 - writer * 0.01,
+        "q": 1.0,
+    }
 
 
-def write_bank_individually(bank_key, base_address, slots, sample_rate):
+def write_bank_individually(bank_key, slots, sample_rate, writer=0):
     reported = {}
     for offset in range(slots):
         status, body = request('POST', '/biquad', {
             "address": bank_key, "offset": offset,
-            "sampleRate": sample_rate, "filter": a_filter(offset)})
+            "sampleRate": sample_rate, "filter": a_filter(offset, writer)})
         if status != 200:
             raise SystemExit(f"write failed at offset {offset}: HTTP {status} {body}")
         reported[offset] = body['coefficients']
     return reported
 
 
-def write_bank_bulk(bank_key, base_address, slots, sample_rate):
+def write_bank_bulk(bank_key, slots, sample_rate, writer=0):
     status, body = request('POST', '/filters/bank', {
         "address": bank_key, "sampleRate": sample_rate,
-        "filters": [{"offset": o, "filter": a_filter(o)} for o in range(slots)]})
+        "filters": [{"offset": o, "filter": a_filter(o, writer)} for o in range(slots)]})
     if status == 404:
         raise SystemExit("this device has no POST /filters/bank endpoint")
     if status != 200:
@@ -124,9 +139,52 @@ def verify(bank_key, base_address, slots, reported):
             if abs(got - want) > TOLERANCE:
                 failures.append(
                     f"offset {offset} cell {cell}: DSP has {got!r}, server wrote {want!r}")
-        if actual == [0.0, 0.0, 1.0, 0.0, 0.0] and wanted != [0.0, 0.0, 1.0, 0.0, 0.0]:
+        if actual == TRANSPARENT_CELLS and wanted != TRANSPARENT_CELLS:
             failures.append(f"offset {offset}: slot is still a transparent pass-through")
     return failures
+
+
+def verify_soak(base_address, slots, reported_by_writer):
+    """
+    Verify a bank that several writers raced on.
+
+    Whichever writer won a given slot, all five of that slot's cells must
+    come from that same writer. Cells from two different writers in one slot
+    is a torn write -- the register-level corruption `verify()` cannot see
+    when every writer sends the same bytes.
+    """
+    failures = []
+    winners = {}
+
+    for offset in range(slots):
+        actual = read_slot(base_address, offset)
+
+        if actual == TRANSPARENT_CELLS:
+            failures.append(f"offset {offset}: slot left transparent, no writer landed")
+            continue
+
+        matched = None
+        for writer, reported in sorted(reported_by_writer.items()):
+            if offset not in reported:
+                continue
+            wanted = expected_cells(reported[offset])
+            if all(abs(got - want) <= TOLERANCE for got, want in zip(actual, wanted)):
+                matched = writer
+                break
+
+        if matched is None:
+            per_writer = {
+                writer: expected_cells(reported[offset])
+                for writer, reported in sorted(reported_by_writer.items())
+                if offset in reported
+            }
+            failures.append(
+                f"offset {offset}: DSP has {actual!r}, which matches no single writer "
+                f"(writers wrote {per_writer!r}) -- torn write")
+        else:
+            winners[offset] = matched
+
+    return failures, winners
 
 
 def report(bank_key, slots, failures):
@@ -141,8 +199,8 @@ def report(bank_key, slots, failures):
 
 def cmd_fill(args):
     base_address, slots, sample_rate = bank_layout(args.bank)
-    writer = write_bank_bulk if args.bulk else write_bank_individually
-    reported = writer(args.bank, base_address, slots, sample_rate)
+    write = write_bank_bulk if args.bulk else write_bank_individually
+    reported = write(args.bank, slots, sample_rate)
     return report(args.bank, slots, verify(args.bank, base_address, slots, reported))
 
 
@@ -150,41 +208,49 @@ def cmd_read(args):
     base_address, slots, _ = bank_layout(args.bank)
     for offset in range(slots):
         values = read_slot(base_address, offset)
-        marker = "transparent" if values == [0.0, 0.0, 1.0, 0.0, 0.0] else ""
+        marker = "transparent" if values == TRANSPARENT_CELLS else ""
         print(f"{args.bank}[{offset:2d}] @ {base_address + offset * CELLS_PER_SLOT}: {values} {marker}")
     return 0
 
 
 def cmd_soak(args):
     base_address, slots, sample_rate = bank_layout(args.bank)
+    write = write_bank_bulk if args.bulk else write_bank_individually
+    reported_by_writer = {}
     errors = []
-    reported = {}
     lock = threading.Lock()
 
-    def worker():
+    def worker(writer):
         try:
-            written = (write_bank_bulk if args.bulk else write_bank_individually)(
-                args.bank, base_address, slots, sample_rate)
+            written = write(args.bank, slots, sample_rate, writer)
             with lock:
-                reported.update(written)
+                reported_by_writer[writer] = written
         except SystemExit as e:
             with lock:
-                errors.append(str(e))
+                errors.append(f"writer {writer}: {e}")
 
-    threads = [threading.Thread(target=worker) for _ in range(args.threads)]
+    threads = [threading.Thread(target=worker, args=(w,)) for w in range(args.threads)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
 
     if errors:
-        print(f"FAIL {args.bank}: {len(errors)} writer(s) errored")
-        for line in errors:
-            print(f"  {line}")
-        return 1
+        # A write that never completed is a transport/setup problem, not a data
+        # mismatch -- surface it as exit 2 like every other transport failure.
+        raise SystemExit(f"{len(errors)} writer(s) failed: " + "; ".join(errors))
 
-    # Every writer sends identical filters, so any surviving slot must match.
-    return report(args.bank, slots, verify(args.bank, base_address, slots, reported))
+    failures, winners = verify_soak(base_address, slots, reported_by_writer)
+    if not failures:
+        distinct = sorted(set(winners.values()))
+        print(f"OK   {args.bank}: all {slots} slots intact, "
+              f"winning writers {distinct}")
+        return 0
+
+    print(f"FAIL {args.bank}: {len(failures)} problem(s) across {slots} slots")
+    for line in failures:
+        print(f"  {line}")
+    return 1
 
 
 def cmd_compare(args):
@@ -215,7 +281,7 @@ def cmd_compare(args):
                 failures.append(
                     f"offset {offset} cell {cell}: {left_key}={l!r} but {right_key}={r!r}")
 
-    transparent = [o for o, cells in enumerate(left) if cells == [0.0, 0.0, 1.0, 0.0, 0.0]]
+    transparent = [o for o, cells in enumerate(left) if cells == TRANSPARENT_CELLS]
     filled = len(left) - len(transparent)
     if filled < args.expect_slots:
         failures.append(
