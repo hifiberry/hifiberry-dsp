@@ -94,11 +94,18 @@ def a_filter(offset, writer=0):
     same slot would still leave exactly the expected value behind, and the
     race would be invisible. With distinct payloads, a slot holding cells
     from two different writers is a detectable torn write.
+
+    The writer offsets are deliberately coarse. A small nudge (0.01 dB) puts
+    adjacent writers' b2/a0 within 1e-6 of each other at 96 kHz and above --
+    below TOLERANCE, so a single-cell tear between writers 1 apart would
+    still "match" and the check would be blind again in exactly the way it
+    is meant not to be. Shifting the centre frequency as well moves every
+    coefficient, so the separation holds at any sample rate.
     """
     return {
         "type": "PeakingEq",
-        "f": 100 + offset * 137,
-        "db": -3.0 - offset * 0.1 - writer * 0.01,
+        "f": 100 + offset * 137 + writer * 23,
+        "db": -3.0 - offset * 0.1 - writer * 1.0,
         "q": 1.0,
     }
 
