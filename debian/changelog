@@ -1,3 +1,14 @@
+hifiberry-dsp (1.3.13) stable; urgency=medium
+
+  * sigmatcpserver: --disable-tcp no longer leaves port 8086 listening. The
+    SigmaTCP socket was created unconditionally in SigmaTCPServerMain.__init__
+    while serve_forever() was only called when TCP was enabled, so with
+    --disable-tcp (what the shipped unit uses) the port bound but never
+    accepted: clients completed the TCP handshake, queued in the accept backlog
+    and hung until they timed out, instead of getting a connection refused.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 07 Aug 2026 16:00:00 +0200
+
 hifiberry-dsp (1.3.12) stable; urgency=medium
 
   * Ship an auth-gateway classification manifest (etc/hifiberry/auth.d/dsptoolkit.json).

@@ -1313,8 +1313,16 @@ class SigmaTCPServerMain():
         else:
             bind_host = "0.0.0.0"
 
-        logging.info(f"Starting SigmaTCP server on {bind_host}:{DEFAULT_PORT}")
-        self.server = SigmaTCPServer(server_address=(bind_host, DEFAULT_PORT))
+        if params.get("disable_tcp"):
+            # Don't bind at all. run() only calls serve_forever() when TCP is
+            # enabled, so binding here would leave the port listening but never
+            # accepted: clients complete the handshake, pile up in the accept
+            # queue and hang until they time out.
+            logging.info(f"SigmaTCP server disabled, not binding {bind_host}:{DEFAULT_PORT}")
+            self.server = None
+        else:
+            logging.info(f"Starting SigmaTCP server on {bind_host}:{DEFAULT_PORT}")
+            self.server = SigmaTCPServer(server_address=(bind_host, DEFAULT_PORT))
 
         if params["alsa"]:
             logging.info("initializing ALSA mixer control %s", alsa_mixer_name)
