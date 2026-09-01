@@ -177,6 +177,23 @@ class TestBankWrite(BankApiTestCase):
                                           "filter": TRANSPARENT})
         self.assertEqual(response.status_code, 400)
 
+    def test_biquad_refuses_a_write_it_cannot_record(self):
+        """
+        /biquad is what a bank write degrades into on a device without the bulk
+        endpoint -- sixteen of these per channel. It had the same falsy-checksum
+        hole the bank route just closed: the slot reaches the DSP, the settings
+        store is skipped, and the response is a plain 200 "success".
+        """
+        restapi.get_current_program_checksum_sha1 = lambda: None
+
+        response = self.client.post('/biquad',
+                                    json={"address": BANK_KEY, "offset": 0,
+                                          "filter": a_filter(100)})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.writes, [],
+                         "nothing may reach the DSP if it cannot be recorded")
+
     def test_an_undeterminable_checksum_refuses_the_write(self):
         """
         get_current_program_checksum_sha1() returns None both when the device

@@ -1376,7 +1376,10 @@ def _write_one_biquad(base_address, offset, filter_data, sample_rate, raw_addres
         filter_data (dict): Either direct coefficients (a0..b2) or a filter spec
         sample_rate (int): Sample rate used to calculate coefficients
         raw_address (str): The address as the client sent it, used as the store key
-        checksum (str): Profile checksum, or None to skip persisting
+        checksum (str): Profile checksum to file the write under. Both
+            callers refuse the request when they cannot determine one,
+            so this is never empty -- a slot that reaches the DSP is
+            always recorded.
 
     Returns:
         dict: {"offset", "address", "coefficients"}
@@ -1415,7 +1418,7 @@ def _write_one_biquad(base_address, offset, filter_data, sample_rate, raw_addres
 
         Adau145x.write_biquad(actual_address, bq)
 
-        if checksum and not settings_store.store_filter(checksum, raw_address, offset, filter_data):
+        if not settings_store.store_filter(checksum, raw_address, offset, filter_data):
             raise RuntimeError(
                 f"wrote offset {offset} to the DSP but failed to persist it to the settings store")
 
@@ -1483,6 +1486,15 @@ def set_biquad_filter():
             sample_rate = get_or_guess_samplerate()
         
         checksum = get_current_program_checksum_sha1()
+        if not checksum:
+            # Same refusal as /filters/bank: without a checksum the slot cannot
+            # be recorded in the settings store, and this route is what a bank
+            # write degrades into on a device without the bulk endpoint -- so
+            # sixteen 200s would report a bank that is gone at the next profile
+            # load. See the longer note in set_filter_bank().
+            return jsonify({
+                "error": "Could not determine the active profile checksum; "
+                         "refusing to write a filter that cannot be recorded"}), 503
 
         try:
             with _dsp_write_lock:
