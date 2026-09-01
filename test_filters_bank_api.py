@@ -159,10 +159,40 @@ class TestBankWrite(BankApiTestCase):
                                     json={"address": BANK_KEY, "filters": {"offset": 0}})
         self.assertEqual(response.status_code, 400)
 
-    def test_unknown_address_is_404(self):
+    def test_unknown_address_is_400_not_404(self):
+        """
+        404 is the client's feature-detection signal: hbos-ui reads any 404
+        from this route as "this device predates the bulk endpoint" and falls
+        back to per-slot /biquad writes. An unresolvable bank name is a bad
+        request, not a missing endpoint, and must not masquerade as one.
+        """
         response = self.client.post('/filters/bank',
                                     json={"address": "nosuchbank", "filters": []})
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 400)
+
+    def test_biquad_unknown_address_is_400_too(self):
+        """The fallback path must not reintroduce the same ambiguity."""
+        response = self.client.post('/biquad',
+                                    json={"address": "nosuchbank", "offset": 0,
+                                          "filter": TRANSPARENT})
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_undeterminable_checksum_refuses_the_write(self):
+        """
+        get_current_program_checksum_sha1() returns None both when the device
+        has no profile checksum and when reading it failed. Either way
+        _write_one_biquad() skips the settings store entirely -- and the client
+        does not persist on this path, because the endpoint is documented to do
+        it. Reporting success for a bank that reached the DSP but no disk is
+        the exact failure this endpoint exists to remove.
+        """
+        restapi.get_current_program_checksum_sha1 = lambda: None
+
+        response = self.client.post('/filters/bank', json=self.bank_body())
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.writes, [],
+                         "nothing may reach the DSP if it cannot be recorded")
 
     def test_duplicate_offsets_are_rejected_not_silently_collapsed(self):
         body = self.bank_body()

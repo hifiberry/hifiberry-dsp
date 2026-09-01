@@ -1460,7 +1460,11 @@ def set_biquad_filter():
             # Try to resolve from metadata
             base_address = resolve_address_from_metadata(raw_address)
             if base_address is None:
-                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 404
+                # 400, not 404: the client reads a 404 from these routes as
+                # "this device has no bulk endpoint" and falls back to
+                # per-slot writes. A bank name that does not resolve is a bad
+                # request, and must not masquerade as a missing endpoint.
+                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 400
                 
         # Process filter parameters
         filter_data = data['filter']
@@ -1662,7 +1666,11 @@ def set_filter_bank():
         else:
             base_address = resolve_address_from_metadata(raw_address)
             if base_address is None:
-                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 404
+                # 400, not 404: the client reads a 404 from these routes as
+                # "this device has no bulk endpoint" and falls back to
+                # per-slot writes. A bank name that does not resolve is a bad
+                # request, and must not masquerade as a missing endpoint.
+                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 400
 
         sample_rate = None
         if 'sampleRate' in data:
@@ -1674,6 +1682,20 @@ def set_filter_bank():
             sample_rate = get_or_guess_samplerate()
 
         checksum = data.get('checksum') or get_current_program_checksum_sha1()
+        if not checksum:
+            # get_current_program_checksum_sha1() returns None both when the
+            # device has no profile checksum and when reading it failed, and
+            # without one _write_one_biquad() skips the settings store
+            # entirely. The client does not persist on this path either --
+            # this endpoint is documented to do it for them -- so writing here
+            # would put the bank on the DSP and nowhere else, to be lost at the
+            # next profile load, behind a 200 saying "success".
+            #
+            # 503 rather than 400: the request is well formed, the device could
+            # not be identified right now, and retrying is the right answer.
+            return jsonify({
+                "error": "Could not determine the active profile checksum; "
+                         "refusing to write a bank that cannot be recorded"}), 503
 
         bank_cells = None
         bank_layout = resolve_bank_from_metadata(raw_address) if not isinstance(raw_address, (int, float)) else None

@@ -10,8 +10,8 @@ only check that catches a half-applied bank (hifiberry-os#626).
 Runs ON the device against localhost:13141 -- that listener has no auth
 gateway in front of it. Standard library only, so it needs nothing installed.
 
-    scp contrib/verify-filter-bank.py matuschd@beocreate.local:/tmp/
-    ssh matuschd@beocreate.local 'python3 /tmp/verify-filter-bank.py fill --bank customFilterRegisterBankLeft'
+    scp contrib/verify-filter-bank.py <user>@<device>:/tmp/
+    ssh <user>@<device> 'python3 /tmp/verify-filter-bank.py fill --bank customFilterRegisterBankLeft'
 
 Memory layout: write_biquad() writes from the highest address down, so the
 five ascending cells of a slot read back as [b2, b1, b0, -a2, -a1], all
@@ -127,6 +127,8 @@ def write_bank_bulk(bank_key, slots, sample_rate, writer=0):
         "address": bank_key, "sampleRate": sample_rate,
         "filters": [{"offset": o, "filter": a_filter(o, writer)} for o in range(slots)]})
     if status == 404:
+        # Only a missing route answers 404 now -- an unresolvable bank name
+        # comes back as a 400 and falls through to the message below.
         raise SystemExit("this device has no POST /filters/bank endpoint")
     if status != 200:
         raise SystemExit(f"bank write failed: HTTP {status} {body}")
