@@ -112,6 +112,38 @@ class TestAtomicSave(unittest.TestCase):
                      if name.startswith('.dspsettings-') and name.endswith('.tmp')]
         self.assertEqual(leftovers, [], f"temp files left behind: {leftovers}")
 
+    def test_a_brace_in_a_string_value_does_not_block_saving(self):
+        """
+        save_store() screened its own json.dumps() output by counting '{' and
+        '}'. dumps() cannot emit unbalanced JSON, so the count could only ever
+        be skewed by a brace inside a string value -- turning a valid save into
+        a silent refusal, which is the failure this whole change exists to stop.
+        """
+        payload = {CHECKSUM: {"filters": {}, "memory": {"profileName": "room{eq"}}}
+
+        self.assertTrue(self.store.save_store(payload),
+                        "a brace inside a string value must not block the save")
+
+        with open(self.store_path) as f:
+            self.assertEqual(json.load(f), payload)
+
+    def test_a_non_finite_coefficient_is_refused(self):
+        """
+        NaN and Infinity are not JSON. json.dumps() emits them by default, and
+        they pass a brace count untouched, so a bad coefficient could be written
+        into the store as text no strict reader will parse.
+        """
+        self.store.save_store({CHECKSUM: {"filters": {}, "memory": {}}})
+
+        self.assertFalse(
+            self.store.save_store({CHECKSUM: {"filters": {}, "memory": {"gain": float('nan')}}}),
+            "a non-finite value must be refused, not written as NaN")
+
+        # The previous good store must survive the refused write.
+        with open(self.store_path) as f:
+            surviving = json.load(f)
+        self.assertEqual(surviving, {CHECKSUM: {"filters": {}, "memory": {}}})
+
     def test_a_stale_temp_file_does_not_break_saving(self):
         with open(self.store_path + '.tmp', 'w') as f:
             f.write('{"garbage": ')

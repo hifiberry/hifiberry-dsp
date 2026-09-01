@@ -326,13 +326,21 @@ class SettingsStore:
                 os.makedirs(store_dir, exist_ok=True)
 
             with self._file_lock():
-                # Validate JSON structure before touching the disk
-                json_content = json.dumps(store_data, indent=2, ensure_ascii=False)
-
-                open_braces = json_content.count('{')
-                close_braces = json_content.count('}')
-                if close_braces != open_braces:
-                    logging.error(f"JSON brace mismatch detected: {open_braces} open vs {close_braces} close")
+                # Serialise before touching the disk, with allow_nan=False, so a
+                # non-finite coefficient is refused here instead of being written
+                # as NaN or Infinity. json.dumps() emits those by default and
+                # they are not JSON, so a strict reader could never load the
+                # store again.
+                #
+                # This replaces a '{' vs '}' count, which was backwards on both
+                # sides: json.dumps() cannot emit structurally invalid JSON, so
+                # the count caught nothing real, while a brace inside any string
+                # value skewed it and turned a valid save into a silent refusal.
+                try:
+                    json_content = json.dumps(
+                        store_data, indent=2, ensure_ascii=False, allow_nan=False)
+                except (ValueError, TypeError) as e:
+                    logging.error(f"Refusing to save a settings store that is not valid JSON: {e}")
                     return False
 
                 fd, temp_path = tempfile.mkstemp(

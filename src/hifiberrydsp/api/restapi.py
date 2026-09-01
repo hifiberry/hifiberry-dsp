@@ -1649,6 +1649,12 @@ def set_filter_bank():
 
         if isinstance(raw_address, (int, float)) or (isinstance(raw_address, str) and
                                                      (raw_address.startswith('0x') or raw_address.isdigit())):
+            if isinstance(raw_address, float) and not raw_address.is_integer():
+                # int() would truncate towards zero and write the whole bank a
+                # few words below where the caller meant, reporting success.
+                return jsonify({
+                    "error": f"Address must be a whole number, got {raw_address}"}), 400
+
             try:
                 base_address = int(raw_address, 0) if isinstance(raw_address, str) else int(raw_address)
             except ValueError:

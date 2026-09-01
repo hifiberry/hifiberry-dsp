@@ -189,6 +189,19 @@ class TestBankWrite(BankApiTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.writes, [])
 
+    def test_a_fractional_address_is_rejected_not_truncated(self):
+        """
+        A numeric address is written straight to DSP memory. int() would round
+        1234.7 down to 1234 and write a whole bank to the wrong place, with the
+        request reporting success -- so a client bug becomes silent corruption.
+        """
+        body = self.bank_body()
+        body["address"] = 1234.7
+        response = self.client.post('/filters/bank', json=body)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.writes, [])
+
     def test_a_failed_store_write_is_reported_not_swallowed(self):
         def failing_store_filter(*args, **kwargs):
             return False
