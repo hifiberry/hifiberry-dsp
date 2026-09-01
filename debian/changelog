@@ -1,3 +1,41 @@
+hifiberry-dsp (1.3.14) stable; urgency=medium
+
+  * settings store: writes are atomic and transactional again. save_store()
+    wrote through a fixed shared '<store>.tmp' and took its flock on that
+    temp file after open() had truncated it, so two Waitress worker threads
+    shared one inode: the first renamed it over dspsettings.json, the second
+    kept writing into what had become the live store and then failed its own
+    rename with ENOENT. Applying a 16-band Room EQ correction hit this on
+    nearly every write and left the left and right banks with different
+    filters. Writes now go through a uniquely named temp file and
+    os.replace(), under a lock held across the whole load-mutate-save cycle.
+  * restapi: new POST /filters/bank writes a complete filter bank in one
+    request instead of one round-trip per slot, and /biquad, /filters/bank
+    and the bank-bypass loop now serialise their DSP writes so concurrent
+    requests cannot interleave.
+  * settings store: a coefficient that is not a finite number is refused
+    rather than written to disk as NaN or Infinity, which are not JSON and
+    would leave the store unreadable to a strict parser.
+  * restapi: POST /filters/bank refuses a fractional numeric address instead
+    of truncating it and writing the bank a few words below where the caller
+    meant, while reporting success.
+  * restapi: /filters/bank and /biquad answer an unresolvable bank name with
+    400 rather than 404. The web UI reads a 404 from these routes as "this
+    device predates the bulk endpoint" and falls back to per-slot writes, so a
+    mistyped bank name was reported to the user as old firmware and then
+    failed a second time on the fallback path.
+  * restapi: /filters/bank refuses the write, with 503, when the active
+    profile checksum cannot be determined. Without it the slots are never
+    recorded in the settings store, and since the web UI does not persist on
+    this path either, the bank reached the DSP and nowhere else and was lost
+    at the next profile load -- behind a 200 reporting success.
+  * restapi: /biquad refuses a write it cannot record, the same as
+    /filters/bank. It had the identical hole, on the route a bank write falls
+    back to when the device has no bulk endpoint -- so sixteen slots reached
+    the DSP, none were recorded, and each reported success.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 07 Aug 2026 15:34:44 +0200
+
 hifiberry-dsp (1.3.13) stable; urgency=medium
 
   * sigmatcpserver: --disable-tcp no longer leaves port 8086 listening. The

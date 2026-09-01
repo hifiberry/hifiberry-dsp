@@ -18,3 +18,4 @@ debian/CONTENTS/
 beocreate-universal-10.xml
 update-clock
 .vscode/settings.json
+.venv-test/

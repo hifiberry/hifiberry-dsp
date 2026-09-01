@@ -20,11 +20,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+import contextlib
 import logging
 import os
 import json
+import tempfile
+import threading
 import time
 import fcntl
+
+
+# Methods that perform a load-mutate-save cycle and therefore MUST run inside
+# SettingsStore._file_lock(). Kept as data so the tests can assert coverage.
+MUTATING_METHODS = (
+    "store_filter",
+    "store_memory_setting",
+    "set_filter_bypass",
+    "toggle_filter_bypass",
+    "set_filter_bank_bypass",
+    "delete_filters",
+    "clear_empty_profiles",
+)
 
 
 class SettingsStore:
@@ -57,16 +73,70 @@ class SettingsStore:
     }
     """
     
-    def __init__(self, profiles_dir="/usr/share/hifiberry/dspprofiles"):
+    # Serialises writers inside this process. Waitress serves the REST API with
+    # a thread pool, so two requests really do run save_store() at the same
+    # time. Class-level: every SettingsStore instance points at the same file.
+    _process_lock = threading.RLock()
+    # Nesting depth of _file_lock, scoped to match _process_lock (see _file_lock).
+    _lock_depth = 0
+
+    def __init__(self, profiles_dir="/usr/share/hifiberry/dspprofiles", store_file=None):
         """
         Initialize the SettingsStore
-        
+
         Args:
             profiles_dir (str): Directory where DSP profiles are stored (kept for compatibility)
+            store_file (str): Path to the settings store JSON file. Defaults to
+                              /var/lib/hifiberry/dspsettings.json. Overridable for tests.
         """
         self.profiles_dir = profiles_dir
-        self.store_file = "/var/lib/hifiberry/dspsettings.json"
-    
+        self.store_file = store_file or "/var/lib/hifiberry/dspsettings.json"
+        self.lock_file = self.store_file + ".lock"
+
+    @contextlib.contextmanager
+    def _file_lock(self):
+        """
+        Hold an exclusive lock for the whole duration of a read-modify-write.
+
+        Two layers, because both failure modes are real:
+          * _process_lock serialises the Waitress worker threads of one
+            sigmatcpserver, which is where the corruption in #626 came from;
+          * an flock on a *separate* lock file serialises other processes
+            (dsptoolkit CLI, repair scripts). It must not be taken on the
+            store file or the temp file: save_store() replaces the store
+            inode, which would drop the lock along with it.
+
+        Reentrant within a thread: _process_lock is an RLock and the flock is
+        only taken by the outermost holder.
+        """
+        with self._process_lock:
+            # Class-level, matching the scope of _process_lock. A per-instance
+            # depth would read 0 when a thread already holding the lock on one
+            # SettingsStore enters _file_lock on a second instance of the same
+            # store: that instance would open a second fd and flock(LOCK_EX)
+            # against the fd the first still holds, deadlocking the process.
+            depth = SettingsStore._lock_depth
+            SettingsStore._lock_depth = depth + 1
+            if depth > 0:
+                try:
+                    yield
+                finally:
+                    SettingsStore._lock_depth -= 1
+                return
+
+            try:
+                lock_dir = os.path.dirname(self.lock_file)
+                if lock_dir:
+                    os.makedirs(lock_dir, exist_ok=True)
+                with open(self.lock_file, 'a+') as lock_handle:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+                    try:
+                        yield
+                    finally:
+                        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                SettingsStore._lock_depth -= 1
+
     def load_store(self):
         """
         Load the settings store from disk
@@ -235,57 +305,74 @@ class SettingsStore:
     
     def save_store(self, store_data):
         """
-        Save the settings store to disk atomically with file locking
-        
+        Save the settings store to disk atomically
+
+        Writes to a uniquely named temporary file in the target directory and
+        moves it into place with os.replace(). A fixed shared temp name (the
+        pre-#626 behaviour) let one writer rename another writer's file away,
+        which both corrupted the live store and made the second rename fail
+        with ENOENT.
+
         Args:
             store_data (dict): The settings store data to save
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
+        temp_path = None
         try:
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(self.store_file), exist_ok=True)
-            
-            # Write to a temporary file first for atomic operation
-            temp_file = self.store_file + '.tmp'
-            
-            # Use file locking to prevent concurrent writes
-            with open(temp_file, 'w') as f:
-                # Apply exclusive lock (blocks until available)
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                
+            store_dir = os.path.dirname(self.store_file)
+            if store_dir:
+                os.makedirs(store_dir, exist_ok=True)
+
+            with self._file_lock():
+                # Serialise before touching the disk, with allow_nan=False, so a
+                # non-finite coefficient is refused here instead of being written
+                # as NaN or Infinity. json.dumps() emits those by default and
+                # they are not JSON, so a strict reader could never load the
+                # store again.
+                #
+                # This replaces a '{' vs '}' count, which was backwards on both
+                # sides: json.dumps() cannot emit structurally invalid JSON, so
+                # the count caught nothing real, while a brace inside any string
+                # value skewed it and turned a valid save into a silent refusal.
                 try:
-                    # Validate JSON structure before writing
-                    json_content = json.dumps(store_data, indent=2, ensure_ascii=False)
-                    
-                    # Double-check for corruption patterns
-                    open_braces = json_content.count('{')
-                    close_braces = json_content.count('}')
-                    if close_braces != open_braces:
-                        logging.error(f"JSON brace mismatch detected: {open_braces} open vs {close_braces} close")
-                        return False
-                    
-                    # Write the content
-                    f.write(json_content)
-                    f.flush()
-                    os.fsync(f.fileno())  # Ensure data is written to disk
-                    
-                finally:
-                    # Release lock (automatically released when file closes, but explicit is better)
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            
-            # Atomically move the temp file to the final location
-            os.rename(temp_file, self.store_file)
-            return True
+                    json_content = json.dumps(
+                        store_data, indent=2, ensure_ascii=False, allow_nan=False)
+                except (ValueError, TypeError) as e:
+                    logging.error(f"Refusing to save a settings store that is not valid JSON: {e}")
+                    return False
+
+                fd, temp_path = tempfile.mkstemp(
+                    dir=store_dir, prefix='.dspsettings-', suffix='.tmp')
+                try:
+                    handle = os.fdopen(fd, 'w')
+                except BaseException:
+                    # fdopen failed, so the raw fd is still ours to close.
+                    os.close(fd)
+                    os.unlink(temp_path)
+                    raise
+
+                try:
+                    with handle as f:
+                        f.write(json_content)
+                        f.flush()
+                        os.fsync(f.fileno())
+                except BaseException:
+                    os.unlink(temp_path)
+                    raise
+
+                os.chmod(temp_path, 0o644)
+                os.replace(temp_path, self.store_file)
+                temp_path = None
+                return True
         except Exception as e:
             logging.error(f"Error saving settings store: {str(e)}")
-            # Clean up temp file if it exists
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            except OSError:
-                pass
+            if temp_path:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
             return False
     
     def load_filters(self, checksum):
@@ -335,39 +422,39 @@ class SettingsStore:
         try:
             # Normalize checksum to uppercase to prevent duplicates
             checksum = self.normalize_checksum(checksum)
-            
-            store = self.load_store()
-            
-            # Initialize checksum section if it doesn't exist
-            if checksum not in store:
-                store[checksum] = {"filters": {}, "memory": {}}
-            
-            # Ensure filters section exists
-            if "filters" not in store[checksum]:
-                store[checksum]["filters"] = {}
-            
-            # Create a unique key for this filter location
-            # Always include offset suffix for consistency
-            filter_key = f"{address}_{offset}"
-            
-            # Store the filter with timestamp and bypass state
-            filter_entry = {
-                "address": address,
-                "offset": offset,
-                "filter": filter_data,
-                "timestamp": time.time(),
-                "bypassed": bypassed
-            }
-            
-            # If this filter already exists, preserve bypass state unless explicitly overridden
-            if filter_key in store[checksum]["filters"] and "bypassed" in store[checksum]["filters"][filter_key]:
-                # Preserve existing bypass state if not explicitly set
-                existing_bypass = store[checksum]["filters"][filter_key].get("bypassed", False)
-                filter_entry["bypassed"] = existing_bypass
-            
-            store[checksum]["filters"][filter_key] = filter_entry
-            
-            return self.save_store(store)
+
+            with self._file_lock():
+                store = self.load_store()
+
+                # Initialize checksum section if it doesn't exist
+                if checksum not in store:
+                    store[checksum] = {"filters": {}, "memory": {}}
+
+                # Ensure filters section exists
+                if "filters" not in store[checksum]:
+                    store[checksum]["filters"] = {}
+
+                # Create a unique key for this filter location
+                # Always include offset suffix for consistency
+                filter_key = f"{address}_{offset}"
+
+                # Store the filter with timestamp and bypass state
+                filter_entry = {
+                    "address": address,
+                    "offset": offset,
+                    "filter": filter_data,
+                    "timestamp": time.time(),
+                    "bypassed": bypassed
+                }
+
+                # If this filter already exists, preserve bypass state unless explicitly overridden
+                if filter_key in store[checksum]["filters"] and "bypassed" in store[checksum]["filters"][filter_key]:
+                    existing_bypass = store[checksum]["filters"][filter_key].get("bypassed", False)
+                    filter_entry["bypassed"] = existing_bypass
+
+                store[checksum]["filters"][filter_key] = filter_entry
+
+                return self.save_store(store)
         except Exception as e:
             logging.error(f"Error storing filter: {str(e)}")
             return False
@@ -387,27 +474,28 @@ class SettingsStore:
         try:
             # Normalize checksum to uppercase to prevent duplicates
             checksum = self.normalize_checksum(checksum)
-            
-            store = self.load_store()
-            
-            # Initialize checksum section if it doesn't exist
-            if checksum not in store:
-                store[checksum] = {"filters": {}, "memory": {}}
-            
-            # Ensure memory section exists
-            if "memory" not in store[checksum]:
-                store[checksum]["memory"] = {}
-            
-            # Store the memory setting with timestamp
-            memory_entry = {
-                "address": address,
-                "values": values,
-                "timestamp": time.time()
-            }
-            
-            store[checksum]["memory"][address] = memory_entry
-            
-            return self.save_store(store)
+
+            with self._file_lock():
+                store = self.load_store()
+
+                # Initialize checksum section if it doesn't exist
+                if checksum not in store:
+                    store[checksum] = {"filters": {}, "memory": {}}
+
+                # Ensure memory section exists
+                if "memory" not in store[checksum]:
+                    store[checksum]["memory"] = {}
+
+                # Store the memory setting with timestamp
+                memory_entry = {
+                    "address": address,
+                    "values": values,
+                    "timestamp": time.time()
+                }
+
+                store[checksum]["memory"][address] = memory_entry
+
+                return self.save_store(store)
         except Exception as e:
             logging.error(f"Error storing memory setting: {str(e)}")
             return False
@@ -523,53 +611,54 @@ class SettingsStore:
             tuple: (success: bool, message: str)
         """
         try:
-            if all_profiles:
-                # Delete all filters for all profiles, but keep memory settings
-                store = self.load_store()
-                for checksum in store:
-                    if "filters" in store[checksum]:
+            with self._file_lock():
+                if all_profiles:
+                    # Delete all filters for all profiles, but keep memory settings
+                    store = self.load_store()
+                    for checksum in store:
+                        if "filters" in store[checksum]:
+                            store[checksum]["filters"] = {}
+
+                    if self.save_store(store):
+                        return True, "All filters deleted"
+                    else:
+                        return False, "Failed to delete filters"
+
+                elif checksum:
+                    # Normalize checksum to uppercase
+                    checksum = self.normalize_checksum(checksum)
+
+                    store = self.load_store()
+
+                    if checksum not in store:
+                        return False, f"No settings found for profile checksum '{checksum}'"
+
+                    # Ensure filters section exists
+                    if "filters" not in store[checksum]:
                         store[checksum]["filters"] = {}
-                
-                if self.save_store(store):
-                    return True, "All filters deleted"
-                else:
-                    return False, "Failed to delete filters"
-            
-            elif checksum:
-                # Normalize checksum to uppercase
-                checksum = self.normalize_checksum(checksum)
-                
-                store = self.load_store()
-                
-                if checksum not in store:
-                    return False, f"No settings found for profile checksum '{checksum}'"
-                
-                # Ensure filters section exists
-                if "filters" not in store[checksum]:
-                    store[checksum]["filters"] = {}
-                
-                if address:
-                    # Delete specific filter
-                    filter_key = str(address)
-                    if filter_key in store[checksum]["filters"]:
-                        del store[checksum]["filters"][filter_key]
+
+                    if address:
+                        # Delete specific filter
+                        filter_key = str(address)
+                        if filter_key in store[checksum]["filters"]:
+                            del store[checksum]["filters"][filter_key]
+                            if self.save_store(store):
+                                return True, f"Filter at {address} deleted from profile checksum '{checksum}'"
+                            else:
+                                return False, "Failed to save changes"
+                        else:
+                            return False, f"No filter found at address '{address}' for profile checksum '{checksum}'"
+                    else:
+                        # Delete all filters for the profile checksum, but keep memory settings
+                        store[checksum]["filters"] = {}
                         if self.save_store(store):
-                            return True, f"Filter at {address} deleted from profile checksum '{checksum}'"
+                            return True, f"All filters deleted for profile checksum '{checksum}'"
                         else:
                             return False, "Failed to save changes"
-                    else:
-                        return False, f"No filter found at address '{address}' for profile checksum '{checksum}'"
+
                 else:
-                    # Delete all filters for the profile checksum, but keep memory settings
-                    store[checksum]["filters"] = {}
-                    if self.save_store(store):
-                        return True, f"All filters deleted for profile checksum '{checksum}'"
-                    else:
-                        return False, "Failed to save changes"
-            
-            else:
-                return False, "Either 'checksum' or 'all_profiles=True' is required"
-                
+                    return False, "Either 'checksum' or 'all_profiles=True' is required"
+
         except Exception as e:
             logging.error(f"Error deleting filters: {str(e)}")
             return False, str(e)
@@ -634,25 +723,26 @@ class SettingsStore:
             tuple: (success: bool, removed_count: int)
         """
         try:
-            store = self.load_store()
-            original_count = len(store)
-            
-            # Remove empty profile sections
-            cleaned_store = {}
-            for checksum, profile_data in store.items():
-                # Check if profile has any filters or memory settings
-                has_filters = bool(profile_data.get("filters", {}))
-                has_memory = bool(profile_data.get("memory", {}))
-                
-                if has_filters or has_memory:
-                    cleaned_store[checksum] = profile_data
-            
-            if self.save_store(cleaned_store):
-                removed_count = original_count - len(cleaned_store)
-                return True, removed_count
-            else:
-                return False, 0
-                
+            with self._file_lock():
+                store = self.load_store()
+                original_count = len(store)
+
+                # Remove empty profile sections
+                cleaned_store = {}
+                for checksum, profile_data in store.items():
+                    # Check if profile has any filters or memory settings
+                    has_filters = bool(profile_data.get("filters", {}))
+                    has_memory = bool(profile_data.get("memory", {}))
+
+                    if has_filters or has_memory:
+                        cleaned_store[checksum] = profile_data
+
+                if self.save_store(cleaned_store):
+                    removed_count = original_count - len(cleaned_store)
+                    return True, removed_count
+                else:
+                    return False, 0
+
         except Exception as e:
             logging.error(f"Error clearing empty profiles: {str(e)}")
             return False, 0
@@ -673,30 +763,31 @@ class SettingsStore:
         try:
             # Normalize checksum to uppercase
             checksum = self.normalize_checksum(checksum)
-            
-            store = self.load_store()
-            
-            if checksum not in store:
-                return False, f"No settings found for profile checksum '{checksum}'"
-            
-            if "filters" not in store[checksum]:
-                store[checksum]["filters"] = {}
-            
-            filter_key = f"{address}_{offset}"
-            
-            if filter_key not in store[checksum]["filters"]:
-                return False, f"No filter found at address '{address}' with offset {offset}"
-            
-            # Update bypass state
-            store[checksum]["filters"][filter_key]["bypassed"] = bypassed
-            store[checksum]["filters"][filter_key]["timestamp"] = time.time()
-            
-            if self.save_store(store):
-                state = "bypassed" if bypassed else "enabled"
-                return True, f"Filter at {address}+{offset} {state}"
-            else:
-                return False, "Failed to save bypass state"
-                
+
+            with self._file_lock():
+                store = self.load_store()
+
+                if checksum not in store:
+                    return False, f"No settings found for profile checksum '{checksum}'"
+
+                if "filters" not in store[checksum]:
+                    store[checksum]["filters"] = {}
+
+                filter_key = f"{address}_{offset}"
+
+                if filter_key not in store[checksum]["filters"]:
+                    return False, f"No filter found at address '{address}' with offset {offset}"
+
+                # Update bypass state
+                store[checksum]["filters"][filter_key]["bypassed"] = bypassed
+                store[checksum]["filters"][filter_key]["timestamp"] = time.time()
+
+                if self.save_store(store):
+                    state = "bypassed" if bypassed else "enabled"
+                    return True, f"Filter at {address}+{offset} {state}"
+                else:
+                    return False, "Failed to save bypass state"
+
         except Exception as e:
             logging.error(f"Error setting filter bypass: {str(e)}")
             return False, str(e)
@@ -751,17 +842,18 @@ class SettingsStore:
         try:
             # Normalize checksum to uppercase
             checksum = checksum.upper()
-            
-            current_state = self.get_filter_bypass_state(checksum, address, offset)
-            
-            if current_state is None:
-                return False, False, f"Filter not found at {address}+{offset}"
-            
-            new_state = not current_state
-            success, message = self.set_filter_bypass(checksum, address, offset, new_state)
-            
-            return success, new_state, message
-            
+
+            with self._file_lock():
+                current_state = self.get_filter_bypass_state(checksum, address, offset)
+
+                if current_state is None:
+                    return False, False, f"Filter not found at {address}+{offset}"
+
+                new_state = not current_state
+                success, message = self.set_filter_bypass(checksum, address, offset, new_state)
+
+                return success, new_state, message
+
         except Exception as e:
             logging.error(f"Error toggling filter bypass: {str(e)}")
             return False, False, str(e)
@@ -781,37 +873,38 @@ class SettingsStore:
         try:
             # Normalize checksum to uppercase
             checksum = self.normalize_checksum(checksum)
-            
-            store = self.load_store()
-            
-            if checksum not in store:
-                return 0, 0, f"No settings found for profile checksum '{checksum}'"
-            
-            if "filters" not in store[checksum]:
-                store[checksum]["filters"] = {}
-            
-            # Find all filters with the same address
-            bank_filters = []
-            for filter_key, filter_data in store[checksum]["filters"].items():
-                if filter_data.get("address") == address:
-                    bank_filters.append(filter_key)
-            
-            if not bank_filters:
-                return 0, 0, f"No filters found for address '{address}'"
-            
-            # Update bypass state for all filters in the bank
-            success_count = 0
-            for filter_key in bank_filters:
-                store[checksum]["filters"][filter_key]["bypassed"] = bypassed
-                store[checksum]["filters"][filter_key]["timestamp"] = time.time()
-                success_count += 1
-            
-            if self.save_store(store):
-                state = "bypassed" if bypassed else "enabled"
-                return success_count, len(bank_filters), f"Filter bank at {address} {state} ({success_count} filters)"
-            else:
-                return 0, len(bank_filters), "Failed to save bypass state"
-                
+
+            with self._file_lock():
+                store = self.load_store()
+
+                if checksum not in store:
+                    return 0, 0, f"No settings found for profile checksum '{checksum}'"
+
+                if "filters" not in store[checksum]:
+                    store[checksum]["filters"] = {}
+
+                # Find all filters with the same address
+                bank_filters = []
+                for filter_key, filter_data in store[checksum]["filters"].items():
+                    if filter_data.get("address") == address:
+                        bank_filters.append(filter_key)
+
+                if not bank_filters:
+                    return 0, 0, f"No filters found for address '{address}'"
+
+                # Update bypass state for all filters in the bank
+                success_count = 0
+                for filter_key in bank_filters:
+                    store[checksum]["filters"][filter_key]["bypassed"] = bypassed
+                    store[checksum]["filters"][filter_key]["timestamp"] = time.time()
+                    success_count += 1
+
+                if self.save_store(store):
+                    state = "bypassed" if bypassed else "enabled"
+                    return success_count, len(bank_filters), f"Filter bank at {address} {state} ({success_count} filters)"
+                else:
+                    return 0, len(bank_filters), "Failed to save bypass state"
+
         except Exception as e:
             logging.error(f"Error setting filter bank bypass: {str(e)}")
             return 0, 0, str(e)

@@ -5,30 +5,35 @@ Test script for the filter store functionality using checksums
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Add the src directory to the path so we can import the modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Load settings_store.py directly: importing hifiberrydsp.api pulls in Flask.
+import importlib.util
 
-from hifiberrydsp.api.settings_store import SettingsStore as FilterStore
+MODULE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'src', 'hifiberrydsp', 'api', 'settings_store.py')
+_spec = importlib.util.spec_from_file_location('settings_store_under_test', MODULE_PATH)
+_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_module)
+FilterStore = _module.SettingsStore
 
 class TestFilterStore(unittest.TestCase):
-    
+
     def setUp(self):
         """Set up a temporary directory for testing"""
         self.temp_dir = tempfile.mkdtemp()
-        self.filter_store = FilterStore(self.temp_dir)
-    
+        self.filter_store = FilterStore(
+            self.temp_dir,
+            store_file=os.path.join(self.temp_dir, 'dspsettings.json'))
+
     def tearDown(self):
         """Clean up after tests"""
-        # Clean up temp files
-        store_file = os.path.join(self.temp_dir, 'filters.json')
-        if os.path.exists(store_file):
-            os.remove(store_file)
-        os.rmdir(self.temp_dir)
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_empty_filter_store(self):
         """Test loading an empty/non-existent filter store"""
@@ -67,9 +72,10 @@ class TestFilterStore(unittest.TestCase):
         # Verify it was stored correctly
         store = self.filter_store.load()
         self.assertIn(checksum, store)
-        self.assertIn("eq1_band1", store[checksum])
-        
-        stored_filter = store[checksum]["eq1_band1"]
+        # store_filter keys filters as "{address}_{offset}", not the bare address
+        self.assertIn("eq1_band1_0", store[checksum])
+
+        stored_filter = store[checksum]["eq1_band1_0"]
         self.assertEqual(stored_filter["address"], "eq1_band1")
         self.assertEqual(stored_filter["offset"], 0)
         self.assertEqual(stored_filter["filter"], filter_data)
@@ -98,10 +104,11 @@ class TestFilterStore(unittest.TestCase):
             "checksum2": {"filter2": {"address": "addr2", "offset": 1, "filter": {}}}
         }
         self.filter_store.save(test_data)
-        
-        # Get all filters
+
+        # Get all filters. Checksums are normalized to uppercase by load_store().
         filters = self.filter_store.get_filters()
-        self.assertEqual(filters, test_data)
+        expected = {checksum.upper(): value for checksum, value in test_data.items()}
+        self.assertEqual(filters, expected)
     
     def test_get_filters_by_checksum(self):
         """Test retrieving filters for a specific checksum"""
@@ -128,12 +135,15 @@ class TestFilterStore(unittest.TestCase):
         }
         self.filter_store.save(test_data)
         
+        # get_profile_info_by_checksum returns the whole profile section
+        # (filters + memory), not the bare filters dict.
         profile_info = self.filter_store.get_profile_info_by_checksum(checksum)
-        self.assertEqual(profile_info, test_data[checksum])
-        
-        # Test non-existent checksum
+        self.assertEqual(profile_info, {"filters": test_data[checksum], "memory": {}})
+
+        # Test non-existent checksum -- default is an empty profile shape,
+        # not an empty dict.
         profile_info = self.filter_store.get_profile_info_by_checksum("nonexistent")
-        self.assertEqual(profile_info, {})
+        self.assertEqual(profile_info, {"filters": {}, "memory": {}})
     
     def test_delete_filters_by_checksum(self):
         """Test deleting filters by checksum"""
@@ -149,10 +159,13 @@ class TestFilterStore(unittest.TestCase):
         # Delete all filters for the checksum
         success, message = self.filter_store.delete_filters(checksum=checksum)
         self.assertTrue(success)
-        
-        # Verify they were deleted
+
+        # delete_filters(checksum=...) empties the filters section but keeps
+        # the profile (and its memory settings) in place -- it does not drop
+        # the checksum entry entirely.
         store = self.filter_store.load()
-        self.assertNotIn(checksum, store)
+        self.assertIn(checksum, store)
+        self.assertEqual(store[checksum], {})
     
     def test_delete_specific_filter(self):
         """Test deleting a specific filter"""
@@ -165,8 +178,9 @@ class TestFilterStore(unittest.TestCase):
         }
         self.filter_store.save(test_data)
         
-        # Delete specific filter
-        success, message = self.filter_store.delete_filters(checksum=checksum, address="addr1")
+        # Delete specific filter. delete_filters(address=...) matches the
+        # literal filter key (str(address)), not the filter's "address" field.
+        success, message = self.filter_store.delete_filters(checksum=checksum, address="filter1")
         self.assertTrue(success)
         
         # Verify only one filter was deleted

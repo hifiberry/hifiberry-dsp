@@ -25,6 +25,7 @@ import os
 import json
 import binascii
 import time
+import threading
 import requests
 from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
@@ -42,6 +43,12 @@ PROFILES_DIR = "/usr/share/hifiberry/dspprofiles"
 
 # Initialize filter store
 settings_store = SettingsStore(PROFILES_DIR)
+
+# Serialises "write the DSP register, then record it in the settings store".
+# Waitress serves this API from a thread pool, so without it two clients (or
+# one client's overlapping requests) interleave their register writes and each
+# one's store update races the other's -- see hifiberry-os#626.
+_dsp_write_lock = threading.RLock()
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
@@ -1328,11 +1335,105 @@ def resolve_address_from_metadata(key):
         return None
 
 
+def resolve_bank_from_metadata(key):
+    """
+    Resolve a bank metadata key to (base_address, cell_count).
+
+    resolve_address_from_metadata() discards the length half of the 'addr/len'
+    metadata value, which left the bank endpoint unable to tell a valid offset
+    from one that runs off the end of the bank into neighbouring DSP memory.
+
+    Returns:
+        tuple or None: (base_address, cell_count), or None if unresolvable
+    """
+    metadata = get_profile_metadata()
+    if not metadata or key not in metadata:
+        return None
+
+    value = str(metadata[key])
+    if '/' not in value:
+        return None
+
+    address_part, _, length_part = value.partition('/')
+    try:
+        return int(address_part), int(length_part)
+    except ValueError:
+        return None
+
+
+def _write_one_biquad(base_address, offset, filter_data, sample_rate, raw_address, checksum):
+    """
+    Write a single biquad to DSP memory and record it in the settings store.
+
+    Acquires _dsp_write_lock itself. It is an RLock, so this is free for
+    callers that already hold it (both /biquad and /filters/bank do) -- that
+    makes the locking contract self-enforcing instead of a comment callers
+    have to remember to honour.
+
+    Args:
+        base_address (int): Resolved base address of the filter bank
+        offset (int): Slot within the bank (each slot is 5 words)
+        filter_data (dict): Either direct coefficients (a0..b2) or a filter spec
+        sample_rate (int): Sample rate used to calculate coefficients
+        raw_address (str): The address as the client sent it, used as the store key
+        checksum (str): Profile checksum to file the write under. Both
+            callers refuse the request when they cannot determine one,
+            so this is never empty -- a slot that reaches the DSP is
+            always recorded.
+
+    Returns:
+        dict: {"offset", "address", "coefficients"}
+
+    Raises:
+        ValueError: invalid address range or unrecognised filter format
+        RuntimeError: the DSP write succeeded but persisting it to the
+            settings store failed -- the caller must not report this slot
+            as a plain success
+    """
+    with _dsp_write_lock:
+        actual_address = base_address + (offset * 5)
+
+        if not Adau145x.is_valid_memory_address(actual_address) or \
+                not Adau145x.is_valid_memory_address(actual_address + 4):
+            raise ValueError(f"Invalid memory address range: {hex(actual_address)} to {hex(actual_address + 4)}")
+
+        if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
+            a0 = float(filter_data['a0'])
+            a1 = float(filter_data['a1'])
+            a2 = float(filter_data['a2'])
+            b0 = float(filter_data['b0'])
+            b1 = float(filter_data['b1'])
+            b2 = float(filter_data['b2'])
+            bq = Biquad(a0, a1, a2, b0, b1, b2, "Custom biquad")
+        elif isinstance(filter_data, dict) and 'type' in filter_data:
+            filter_obj = Filter.fromJSON(json.dumps(filter_data))
+            coeffs = filter_obj.biquadCoefficients(sample_rate)
+            if not coeffs or len(coeffs) != 6:
+                raise ValueError("Invalid coefficients returned from filter")
+            b0, b1, b2, a0, a1, a2 = coeffs
+            description = f"{filter_data.get('type', 'Filter')} at {filter_data.get('f', '')}Hz"
+            bq = Biquad(a0, a1, a2, b0, b1, b2, description)
+        else:
+            raise ValueError("Invalid filter format. Expected direct coefficients or filter specification")
+
+        Adau145x.write_biquad(actual_address, bq)
+
+        if not settings_store.store_filter(checksum, raw_address, offset, filter_data):
+            raise RuntimeError(
+                f"wrote offset {offset} to the DSP but failed to persist it to the settings store")
+
+        return {
+            "offset": offset,
+            "address": hex(actual_address),
+            "coefficients": {"a0": a0, "a1": a1, "a2": a2, "b0": b0, "b1": b1, "b2": b2},
+        }
+
+
 @app.route('/biquad', methods=['POST'])
 def set_biquad_filter():
     """
     API endpoint to set a biquad filter at the specified address
-    
+
     The request body should contain:
     - address: Memory address or metadata key
     - offset: Offset (will be multiplied by 5)
@@ -1362,15 +1463,12 @@ def set_biquad_filter():
             # Try to resolve from metadata
             base_address = resolve_address_from_metadata(raw_address)
             if base_address is None:
-                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 404
+                # 400, not 404: the client reads a 404 from these routes as
+                # "this device has no bulk endpoint" and falls back to
+                # per-slot writes. A bank name that does not resolve is a bad
+                # request, and must not masquerade as a missing endpoint.
+                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 400
                 
-        # Calculate actual address with offset
-        actual_address = base_address + (offset * 5)
-        
-        # Check if address is valid
-        if not Adau145x.is_valid_memory_address(actual_address) or not Adau145x.is_valid_memory_address(actual_address + 4):
-            return jsonify({"error": f"Invalid memory address range: {hex(actual_address)} to {hex(actual_address + 4)}"}), 400
-            
         # Process filter parameters
         filter_data = data['filter']
         
@@ -1387,78 +1485,38 @@ def set_biquad_filter():
         if not sample_rate:
             sample_rate = get_or_guess_samplerate()
         
+        checksum = get_current_program_checksum_sha1()
+        if not checksum:
+            # Same refusal as /filters/bank: without a checksum the slot cannot
+            # be recorded in the settings store, and this route is what a bank
+            # write degrades into on a device without the bulk endpoint -- so
+            # sixteen 200s would report a bank that is gone at the next profile
+            # load. See the longer note in set_filter_bank().
+            return jsonify({
+                "error": "Could not determine the active profile checksum; "
+                         "refusing to write a filter that cannot be recorded"}), 503
+
         try:
-            if isinstance(filter_data, dict) and all(k in filter_data for k in ['a0', 'a1', 'a2', 'b0', 'b1', 'b2']):
-                # Direct coefficients provided
-                a0 = float(filter_data['a0'])
-                a1 = float(filter_data['a1'])
-                a2 = float(filter_data['a2'])
-                b0 = float(filter_data['b0'])
-                b1 = float(filter_data['b1'])
-                b2 = float(filter_data['b2'])
-                
-                # Create a Biquad object and write it to DSP memory
-                bq = Biquad(a0, a1, a2, b0, b1, b2, "Custom biquad")
-                Adau145x.write_biquad(actual_address, bq)
-                
-                # Store the filter in the filter store using checksum
-                checksum = get_current_program_checksum_sha1()
-                if checksum:
-                    settings_store.store_filter(checksum, raw_address, offset, filter_data)
-                
-                return jsonify({
-                    "status": "success", 
-                    "address": hex(actual_address),
-                    "sampleRate": sample_rate,
-                    "coefficients": {
-                        "a0": a0, "a1": a1, "a2": a2,
-                        "b0": b0, "b1": b1, "b2": b2
-                    }
-                })
-                
-            elif isinstance(filter_data, dict) and 'type' in filter_data:
-                # This is a filter specification, create a Filter object
-                filter_json = json.dumps(filter_data)
-                filter_obj = Filter.fromJSON(filter_json)
-                
-                # Calculate biquad coefficients
-                coeffs = filter_obj.biquadCoefficients(sample_rate)
-                
-                if not coeffs or len(coeffs) != 6:
-                    return jsonify({"error": "Invalid coefficients returned from filter"}), 500
-                
-                # Extract coefficients
-                b0, b1, b2, a0, a1, a2 = coeffs
-                
-                # Create a Biquad object
-                description = f"{filter_data.get('type', 'Filter')} at {filter_data.get('f', '')}Hz"
-                bq = Biquad(a0, a1, a2, b0, b1, b2, description)
-                
-                # Write the biquad to DSP memory
-                Adau145x.write_biquad(actual_address, bq)
-                
-                # Store the filter in the filter store using checksum
-                checksum = get_current_program_checksum_sha1()
-                if checksum:
-                    settings_store.store_filter(checksum, raw_address, offset, filter_data)
-                
-                return jsonify({
-                    "status": "success", 
-                    "address": hex(actual_address),
-                    "sampleRate": sample_rate,
-                    "filter": filter_data,
-                    "coefficients": {
-                        "a0": a0, "a1": a1, "a2": a2,
-                        "b0": b0, "b1": b1, "b2": b2
-                    }
-                })
-            else:
-                return jsonify({"error": "Invalid filter format. Expected direct coefficients or filter specification"}), 400
-                
+            with _dsp_write_lock:
+                written = _write_one_biquad(
+                    base_address, offset, filter_data, sample_rate, raw_address, checksum)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logging.error(f"Error processing filter parameters: {str(e)}")
             return jsonify({"error": f"Error processing filter: {str(e)}"}), 500
-                
+
+        response = {
+            "status": "success",
+            "address": written["address"],
+            "sampleRate": sample_rate,
+            "coefficients": written["coefficients"],
+        }
+        if isinstance(filter_data, dict) and 'type' in filter_data:
+            response["filter"] = filter_data
+
+        return jsonify(response)
+
     except Exception as e:
         logging.error(f"Error setting biquad filter: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -1573,6 +1631,147 @@ def set_filters():
         
     except Exception as e:
         logging.error(f"Error storing filters: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/filters/bank', methods=['POST'])
+def set_filter_bank():
+    """
+    API endpoint to write a complete filter bank in a single request
+
+    Writing a bank one POST /biquad at a time meant a 16-band correction was
+    136 sequential round-trips per channel, any one of which could be dropped
+    and leave the bank half applied. This writes every slot the caller sends
+    under one lock, so the bank is applied as a unit.
+
+    The request body should contain:
+    - address: Memory address or metadata key of the bank
+    - filters: Array of {offset, filter} entries. `filter` is either direct
+      coefficients (a0..b2) or a filter specification ({"type": ...}). The
+      caller is expected to send every slot of the bank, using a transparent
+      biquad ({"a0":1,"a1":0,"a2":0,"b0":1,"b1":0,"b2":0}) for unused slots.
+    - sampleRate: (optional) Override the sample rate for filter calculation
+    - checksum: (optional) Profile checksum, defaults to the active profile
+    """
+    try:
+        data = request.json
+        if not data or 'address' not in data:
+            return jsonify({"error": "Address is required in the request body"}), 400
+
+        if 'filters' not in data or not isinstance(data['filters'], list):
+            return jsonify({"error": "Filters must be an array"}), 400
+
+        raw_address = data['address']
+
+        if isinstance(raw_address, (int, float)) or (isinstance(raw_address, str) and
+                                                     (raw_address.startswith('0x') or raw_address.isdigit())):
+            if isinstance(raw_address, float) and not raw_address.is_integer():
+                # int() would truncate towards zero and write the whole bank a
+                # few words below where the caller meant, reporting success.
+                return jsonify({
+                    "error": f"Address must be a whole number, got {raw_address}"}), 400
+
+            try:
+                base_address = int(raw_address, 0) if isinstance(raw_address, str) else int(raw_address)
+            except ValueError:
+                return jsonify({"error": f"Invalid address format: {raw_address}"}), 400
+        else:
+            base_address = resolve_address_from_metadata(raw_address)
+            if base_address is None:
+                # 400, not 404: the client reads a 404 from these routes as
+                # "this device has no bulk endpoint" and falls back to
+                # per-slot writes. A bank name that does not resolve is a bad
+                # request, and must not masquerade as a missing endpoint.
+                return jsonify({"error": f"Could not resolve address from metadata key: {raw_address}"}), 400
+
+        sample_rate = None
+        if 'sampleRate' in data:
+            try:
+                sample_rate = int(data['sampleRate'])
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid sample rate value"}), 400
+        if not sample_rate:
+            sample_rate = get_or_guess_samplerate()
+
+        checksum = data.get('checksum') or get_current_program_checksum_sha1()
+        if not checksum:
+            # get_current_program_checksum_sha1() returns None both when the
+            # device has no profile checksum and when reading it failed, and
+            # without one _write_one_biquad() skips the settings store
+            # entirely. The client does not persist on this path either --
+            # this endpoint is documented to do it for them -- so writing here
+            # would put the bank on the DSP and nowhere else, to be lost at the
+            # next profile load, behind a 200 saying "success".
+            #
+            # 503 rather than 400: the request is well formed, the device could
+            # not be identified right now, and retrying is the right answer.
+            return jsonify({
+                "error": "Could not determine the active profile checksum; "
+                         "refusing to write a bank that cannot be recorded"}), 503
+
+        bank_cells = None
+        bank_layout = resolve_bank_from_metadata(raw_address) if not isinstance(raw_address, (int, float)) else None
+        if bank_layout:
+            _, bank_cells = bank_layout
+
+        seen_offsets = set()
+        validated = []
+        for index, entry in enumerate(data['filters']):
+            if not isinstance(entry, dict) or 'filter' not in entry:
+                return jsonify({"error": f"Entry {index}: 'filter' is required"}), 400
+
+            try:
+                offset = int(entry.get('offset', index))
+            except (ValueError, TypeError):
+                return jsonify({"error": f"Entry {index}: offset must be an integer"}), 400
+
+            if offset < 0:
+                return jsonify({"error": f"Entry {index}: offset {offset} is negative"}), 400
+
+            if bank_cells is not None and (offset + 1) * 5 > bank_cells:
+                return jsonify({
+                    "error": f"Entry {index}: offset {offset} is past the end of bank "
+                             f"'{raw_address}' ({bank_cells // 5} slots)"}), 400
+
+            if offset in seen_offsets:
+                return jsonify({
+                    "error": f"Entry {index}: duplicate offset {offset} — the request would "
+                             f"report a full bank write while leaving other slots untouched"}), 400
+            seen_offsets.add(offset)
+
+            validated.append((offset, entry['filter']))
+
+        results = []
+        errors = []
+
+        with _dsp_write_lock:
+            for offset, filter_data in validated:
+                try:
+                    results.append(_write_one_biquad(
+                        base_address, offset, filter_data,
+                        sample_rate, raw_address, checksum))
+                except Exception as e:
+                    logging.error(f"Error writing filter at offset {offset}: {str(e)}")
+                    errors.append(f"offset {offset}: {str(e)}")
+
+        response = {
+            "status": "partial" if errors else "success",
+            "address": raw_address,
+            "checksum": checksum,
+            "sampleRate": sample_rate,
+            "written": len(results),
+            "total": len(data['filters']),
+            "results": results,
+        }
+
+        if errors:
+            response["errors"] = errors
+            return jsonify(response), 207
+
+        return jsonify(response)
+
+    except Exception as e:
+        logging.error(f"Error writing filter bank: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1749,25 +1948,26 @@ def set_filter_bypass():
             success_count = 0
             failed_filters = []
             
-            for filter_info in bank_filters:
-                filter_offset = filter_info["offset"]
-                
-                # Update bypass state in store
-                success, message = settings_store.set_filter_bypass(checksum, address, filter_offset, bypassed)
-                
-                if success:
-                    # Apply the change to the DSP
-                    try:
-                        dsp_success = apply_filter_bypass_to_dsp(checksum, address, filter_offset, bypassed)
-                        if dsp_success:
-                            success_count += 1
-                        else:
-                            failed_filters.append(f"offset {filter_offset} (DSP write failed)")
-                    except Exception as e:
-                        logging.error(f"Error applying bypass to DSP for offset {filter_offset}: {str(e)}")
-                        failed_filters.append(f"offset {filter_offset} ({str(e)})")
-                else:
-                    failed_filters.append(f"offset {filter_offset} (store update failed)")
+            with _dsp_write_lock:
+                for filter_info in bank_filters:
+                    filter_offset = filter_info["offset"]
+
+                    # Update bypass state in store
+                    success, message = settings_store.set_filter_bypass(checksum, address, filter_offset, bypassed)
+
+                    if success:
+                        # Apply the change to the DSP
+                        try:
+                            dsp_success = apply_filter_bypass_to_dsp(checksum, address, filter_offset, bypassed)
+                            if dsp_success:
+                                success_count += 1
+                            else:
+                                failed_filters.append(f"offset {filter_offset} (DSP write failed)")
+                        except Exception as e:
+                            logging.error(f"Error applying bypass to DSP for offset {filter_offset}: {str(e)}")
+                            failed_filters.append(f"offset {filter_offset} ({str(e)})")
+                    else:
+                        failed_filters.append(f"offset {filter_offset} (store update failed)")
             
             result = {
                 "status": "success" if success_count > 0 else "error",
@@ -1790,21 +1990,22 @@ def set_filter_bypass():
         
         else:
             # Set bypass state for single filter
-            # Update bypass state in store
-            success, message = settings_store.set_filter_bypass(checksum, address, offset, bypassed)
-            
-            if not success:
-                return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
-            
-            # Apply the change to the DSP
-            try:
-                success = apply_filter_bypass_to_dsp(checksum, address, offset, bypassed)
+            with _dsp_write_lock:
+                # Update bypass state in store
+                success, message = settings_store.set_filter_bypass(checksum, address, offset, bypassed)
+
                 if not success:
-                    return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
-            except Exception as e:
-                logging.error(f"Error applying bypass to DSP: {str(e)}")
-                return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
-            
+                    return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+
+                # Apply the change to the DSP
+                try:
+                    success = apply_filter_bypass_to_dsp(checksum, address, offset, bypassed)
+                    if not success:
+                        return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
+                except Exception as e:
+                    logging.error(f"Error applying bypass to DSP: {str(e)}")
+                    return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
+
             return jsonify({
                 "status": "success",
                 "message": message,
@@ -1882,25 +2083,26 @@ def toggle_filter_bypass():
             success_count = 0
             failed_filters = []
             
-            for filter_info in bank_filters:
-                filter_offset = filter_info["offset"]
-                
-                # Update bypass state in store
-                success, message = settings_store.set_filter_bypass(checksum, address, filter_offset, new_state)
-                
-                if success:
-                    # Apply the change to the DSP
-                    try:
-                        dsp_success = apply_filter_bypass_to_dsp(checksum, address, filter_offset, new_state)
-                        if dsp_success:
-                            success_count += 1
-                        else:
-                            failed_filters.append(f"offset {filter_offset} (DSP write failed)")
-                    except Exception as e:
-                        logging.error(f"Error applying bypass to DSP for offset {filter_offset}: {str(e)}")
-                        failed_filters.append(f"offset {filter_offset} ({str(e)})")
-                else:
-                    failed_filters.append(f"offset {filter_offset} (store update failed)")
+            with _dsp_write_lock:
+                for filter_info in bank_filters:
+                    filter_offset = filter_info["offset"]
+
+                    # Update bypass state in store
+                    success, message = settings_store.set_filter_bypass(checksum, address, filter_offset, new_state)
+
+                    if success:
+                        # Apply the change to the DSP
+                        try:
+                            dsp_success = apply_filter_bypass_to_dsp(checksum, address, filter_offset, new_state)
+                            if dsp_success:
+                                success_count += 1
+                            else:
+                                failed_filters.append(f"offset {filter_offset} (DSP write failed)")
+                        except Exception as e:
+                            logging.error(f"Error applying bypass to DSP for offset {filter_offset}: {str(e)}")
+                            failed_filters.append(f"offset {filter_offset} ({str(e)})")
+                    else:
+                        failed_filters.append(f"offset {filter_offset} (store update failed)")
             
             result = {
                 "status": "success" if success_count > 0 else "error",
@@ -1923,20 +2125,21 @@ def toggle_filter_bypass():
         
         else:
             # Toggle bypass state for single filter
-            success, new_state, message = settings_store.toggle_filter_bypass(checksum, address, offset)
-            
-            if not success:
-                return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
-            
-            # Apply the change to the DSP
-            try:
-                success = apply_filter_bypass_to_dsp(checksum, address, offset, new_state)
+            with _dsp_write_lock:
+                success, new_state, message = settings_store.toggle_filter_bypass(checksum, address, offset)
+
                 if not success:
-                    return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
-            except Exception as e:
-                logging.error(f"Error applying bypass to DSP: {str(e)}")
-                return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
-            
+                    return jsonify({"error": message}), 400 if "not found" in message.lower() else 500
+
+                # Apply the change to the DSP
+                try:
+                    success = apply_filter_bypass_to_dsp(checksum, address, offset, new_state)
+                    if not success:
+                        return jsonify({"error": "Failed to apply bypass state to DSP"}), 500
+                except Exception as e:
+                    logging.error(f"Error applying bypass to DSP: {str(e)}")
+                    return jsonify({"error": f"Failed to apply bypass to DSP: {str(e)}"}), 500
+
             return jsonify({
                 "status": "success",
                 "message": message,
