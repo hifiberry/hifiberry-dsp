@@ -2263,6 +2263,12 @@ def get_speaker_preset(preset_id):
 
     payload = dict(preset)
     payload["readOnly"] = read_only
+    # The same per-channel counts the listing carries. A client typed against
+    # the listing entry reads this field here too, and it is cheap to compute
+    # from a document already in hand.
+    payload["filterCounts"] = {
+        c: len(preset["channels"][c]["filters"])
+        for c in speaker_presets.CHANNELS}
     payload["compatible"] = reason is None
     payload["incompatibleReason"] = reason
     return jsonify(payload)

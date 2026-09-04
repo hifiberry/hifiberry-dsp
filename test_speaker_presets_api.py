@@ -174,6 +174,25 @@ class TestGetPreset(PresetApiTestCase):
         self.assertEqual(len(payload["channels"]["a"]["filters"]), 2)
         self.assertTrue(payload["compatible"])
 
+    def test_carries_the_filter_counts_the_listing_carries(self):
+        """The detail view is what a client fetches before applying, and it
+        has to answer the same 'how many filters per channel' the listing
+        answers -- otherwise a client typed against the listing entry reads a
+        field that is simply absent here."""
+        self.install(a_preset(filters=3))
+        payload = self.client.get('/presets/beovox-s35').get_json()
+        self.assertEqual(payload["filterCounts"],
+                         {"a": 3, "b": 3, "c": 3, "d": 3})
+
+    def test_filter_counts_are_per_channel_not_one_number(self):
+        preset = a_preset()
+        preset["channels"]["c"]["filters"] = preset["channels"]["c"]["filters"][:1]
+        preset["channels"]["d"]["filters"] = []
+        self.install(preset)
+        payload = self.client.get('/presets/beovox-s35').get_json()
+        self.assertEqual(payload["filterCounts"],
+                         {"a": 2, "b": 2, "c": 1, "d": 0})
+
     def test_unknown_preset_is_404(self):
         self.assertEqual(self.client.get('/presets/nosuch').status_code, 404)
 
