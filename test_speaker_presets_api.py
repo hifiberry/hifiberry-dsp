@@ -86,7 +86,6 @@ class PresetApiTestCase(unittest.TestCase):
             'write_biquad': restapi.Adau145x.write_biquad,
             'write_memory': restapi.Adau145x.write_memory,
             'metadata': restapi.get_profile_metadata,
-            'resolve_bank': restapi.resolve_bank_from_metadata,
             'checksum': restapi.get_current_program_checksum_sha1,
             'samplerate': restapi.get_or_guess_samplerate,
             'system_dir': speaker_presets.SYSTEM_DIR,
@@ -105,7 +104,6 @@ class PresetApiTestCase(unittest.TestCase):
             lambda address, data: self.memory_writes.append(
                 (address, int.from_bytes(data, 'big'))))
         restapi.get_profile_metadata = lambda: dict(self.metadata)
-        restapi.resolve_bank_from_metadata = lambda key: BANKS.get(key)
         restapi.get_current_program_checksum_sha1 = lambda: CHECKSUM
         restapi.get_or_guess_samplerate = lambda: 48000
 
@@ -118,7 +116,6 @@ class PresetApiTestCase(unittest.TestCase):
         restapi.Adau145x.write_biquad = self._saved['write_biquad']
         restapi.Adau145x.write_memory = self._saved['write_memory']
         restapi.get_profile_metadata = self._saved['metadata']
-        restapi.resolve_bank_from_metadata = self._saved['resolve_bank']
         restapi.get_current_program_checksum_sha1 = self._saved['checksum']
         restapi.get_or_guess_samplerate = self._saved['samplerate']
         speaker_presets.SYSTEM_DIR = self._saved['system_dir']
@@ -298,6 +295,59 @@ class TestApplyPreset(PresetApiTestCase):
         self.install(a_preset(preset_id="mine", name="Mine"), self.user_dir)
         self.assertEqual(
             self.client.post('/presets/mine/apply').status_code, 200)
+
+    def test_role_the_profile_cannot_express_is_409_and_writes_nothing(self):
+        """incompatibility_reason() does not check roles -- only
+        channel_register_writes() knows whether the profile can express one.
+        Regression for a route that used to raise this mid-loop, after
+        channel A's bank was already on the DSP, behind a 409 that claimed
+        nothing had been written."""
+        # self.metadata is a shallow copy of the module-level METADATA, so
+        # the nested "_attributes" dict must be replaced rather than mutated
+        # in place -- mutating it would leak into every other test.
+        attrs = dict(self.metadata["_attributes"])
+        attrs["channelSelectARegister"] = dict(
+            attrs["channelSelectARegister"], channels="left,right,side")
+        self.metadata["_attributes"] = attrs
+        self.install(a_preset(role="mono"))
+
+        response = self.client.post('/presets/beovox-s35/apply')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("mono", response.get_json()["incompatibleReason"])
+        self.assertEqual(self.biquad_writes, [])
+        self.assertEqual(self.memory_writes, [])
+
+    def test_unparsable_bank_metadata_is_409_naming_the_bank_not_a_500(self):
+        self.metadata["IIR_A"] = "0x2000/80"
+        self.install(a_preset())
+
+        response = self.client.post('/presets/beovox-s35/apply')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("IIR_A", response.get_json()["incompatibleReason"])
+        self.assertEqual(self.biquad_writes, [])
+
+    def test_failed_selection_store_is_500_not_success(self):
+        self.install(a_preset())
+        restapi.settings_store.store_speaker_preset = \
+            lambda checksum, preset_id: False
+
+        response = self.client.post('/presets/beovox-s35/apply')
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json()["status"], "partial")
+
+    def test_persisted_level_register_keeps_its_float_type(self):
+        """The half that decides whether the level comes back after a
+        reboot: a level stored as int 1 would be silence at full scale."""
+        self.install(a_preset())
+        self.client.post('/presets/beovox-s35/apply')
+
+        with open(self.store_path) as handle:
+            stored = json.load(handle)[CHECKSUM]["memory"]["781"]["values"]
+        self.assertEqual(stored, [1.0])
+        self.assertIsInstance(stored[0], float)
 
 
 if __name__ == "__main__":

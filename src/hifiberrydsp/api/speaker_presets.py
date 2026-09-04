@@ -203,6 +203,28 @@ def get_preset(preset_id):
     return load_preset_file(path, preset_id), read_only
 
 
+def bank_geometry(bank_value):
+    '''
+    (base_address, slot_count) from a bank's 'address/cells' metadata value.
+
+    The one place that interprets that string. Both halves must be plain
+    decimal: a looser reading that only validated the cells half would let a
+    bank value with a hex address (or any other address that its actual
+    consumer cannot parse) pass here and then fail downstream in a way that
+    looks like a bug rather than an incompatible profile.
+
+    Returns:
+        tuple or None: (base_address, slots), or None when unparsable
+    '''
+    if not bank_value or "/" not in str(bank_value):
+        return None
+    address_part, _, cells_part = str(bank_value).partition("/")
+    try:
+        return int(address_part), int(cells_part) // 5
+    except ValueError:
+        return None
+
+
 def bank_slots(bank_value):
     '''
     Number of biquad slots in a bank, from its 'address/cells' metadata value.
@@ -210,12 +232,8 @@ def bank_slots(bank_value):
     Returns:
         int or None: None when the value is not a bank
     '''
-    if not bank_value or "/" not in str(bank_value):
-        return None
-    try:
-        return int(str(bank_value).split("/")[1]) // 5
-    except (ValueError, IndexError):
-        return None
+    geometry = bank_geometry(bank_value)
+    return geometry[1] if geometry else None
 
 
 def incompatibility_reason(preset, metadata):

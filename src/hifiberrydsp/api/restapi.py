@@ -2300,18 +2300,45 @@ def apply_speaker_preset(preset_id):
                      "refusing to apply a preset that cannot be recorded"}), 503
 
     sample_rate = preset["sampleRate"]
+
+    # Decide everything before touching hardware. incompatibility_reason()
+    # above does not check whether the profile can express each channel's
+    # role -- channel_register_writes() is the only thing that knows that --
+    # so it has to be called here, for every channel, before the first write.
+    # Raising PresetInvalid mid-loop (as a straight per-channel call would)
+    # would leave earlier channels already written behind a 409 that claims
+    # nothing happened. Bank geometry is read from the metadata already
+    # captured above rather than re-resolved inside the loop: re-resolving
+    # would re-read get_profile_metadata(), which a concurrent profile change
+    # can repopulate between validation and writing -- _dsp_write_lock does
+    # not cover profile loading -- so coefficients validated against the old
+    # profile could be written against banks resolved from a new one.
+    plan = []
+    try:
+        for channel in speaker_presets.CHANNELS:
+            settings = preset["channels"][channel]
+            bank_key = "IIR_" + channel.upper()
+
+            geometry = speaker_presets.bank_geometry(metadata.get(bank_key))
+            if geometry is None:
+                raise speaker_presets.PresetInvalid(
+                    f"Loaded profile has no usable filter bank {bank_key}")
+            base_address, slots = geometry
+
+            register_writes = speaker_presets.channel_register_writes(
+                channel, settings, metadata, sample_rate)
+
+            plan.append((bank_key, base_address, slots, settings["filters"],
+                        register_writes))
+    except speaker_presets.PresetInvalid as e:
+        reason = str(e)
+        return jsonify({"error": reason, "incompatibleReason": reason}), 409
+
     banks = filters_written = registers = 0
 
     try:
         with _dsp_write_lock:
-            for channel in speaker_presets.CHANNELS:
-                settings = preset["channels"][channel]
-                bank_key = "IIR_" + channel.upper()
-
-                base_address, cells = resolve_bank_from_metadata(bank_key)
-                slots = cells // 5
-                channel_filters = settings["filters"]
-
+            for bank_key, base_address, slots, channel_filters, register_writes in plan:
                 # Write the bank whole. Slots the preset does not fill get a
                 # transparent biquad, so nothing survives from whatever was
                 # applied before.
@@ -2324,15 +2351,15 @@ def apply_speaker_preset(preset_id):
                     filters_written += 1
                 banks += 1
 
-                for address, value in speaker_presets.channel_register_writes(
-                        channel, settings, metadata, sample_rate):
+                for address, value in register_writes:
                     _write_register(address, value, checksum)
                     registers += 1
 
-            settings_store.store_speaker_preset(checksum, preset_id)
+            if not settings_store.store_speaker_preset(checksum, preset_id):
+                raise RuntimeError(
+                    f"wrote preset {preset_id} to the DSP but failed to "
+                    "persist the selection")
 
-    except speaker_presets.PresetInvalid as e:
-        return jsonify({"error": str(e)}), 409
     except Exception as e:
         logging.error(f"Error applying speaker preset {preset_id}: {str(e)}")
         return jsonify({
