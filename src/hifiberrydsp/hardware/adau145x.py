@@ -689,8 +689,13 @@ class Adau145x():
         Safeload is an option of the SigmaStudio project, not a property of
         the chip, so the answer can change with the program. Call this
         whenever a different program is loaded.
+
+        Takes the bus lock, because the probe holds it while it reads and
+        writes this: a reset landing mid-probe would otherwise be undone by
+        the answer for the program that has just been replaced.
         '''
-        Adau145x._safeload_supported = None
+        with SpiHandler.lock:
+            Adau145x._safeload_supported = None
 
     @staticmethod
     def core_is_running():

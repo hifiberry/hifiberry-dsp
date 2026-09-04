@@ -848,6 +848,75 @@ class SigmaTCPHandler(BaseRequestHandler):
         SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr)
 
     @staticmethod
+    def recover_legacy_filter_keys(settings_store, checksum_hex):
+        """
+        Bring filters filed under an older checksum of this same program
+        under the checksum the restore looks up.
+
+        Filters used to be stored under the signature-based checksum while
+        the restore has always used the length-based SHA-1, so a store
+        written by an older version holds them where nothing looks. Both
+        checksums describe the same loaded program, so re-keying them is
+        safe and is what makes those filters come back after a reboot.
+
+        Args:
+            settings_store (SettingsStore): store to migrate in place
+            checksum_hex (str): length-based SHA-1 of the running program
+        """
+        # Once the canonical checksum has an entry of its own there is
+        # nothing to recover and migrate_checksum would refuse anyway, so
+        # returning here keeps the steady state free -- no legacy checksums
+        # computed, no store rewritten -- and silent, instead of logging a
+        # refusal on every start and after every program update.
+        canonical = settings_store.normalize_checksum(checksum_hex)
+        store_data = settings_store.load_store()
+        if canonical in store_data:
+            return
+
+        # Nothing under any other checksum means there is nothing this could
+        # find, and working that out from the store costs one read. Computing
+        # the legacy checksums does not: a signature-mode digest is taken
+        # over program memory, which stops the core to read it, and a device
+        # that has never stored a filter would pay that on every start and
+        # after every profile install.
+        if not any(other != canonical for other in store_data):
+            return
+
+        legacy_checksums = []
+        try:
+            signature = adau145x.Adau145x.calculate_program_checksums(
+                mode="signature", algorithms=["sha1"], cached=True)
+            if signature and "sha1" in signature:
+                legacy_checksums.append(signature["sha1"])
+        except Exception as e:
+            logging.warning("Could not get signature SHA-1 checksum, settings filed under it cannot be recovered: %s", e)
+
+        try:
+            md5_bytes = adau145x.Adau145x.calculate_program_checksum(cached=True)
+            if md5_bytes:
+                legacy_checksums.append(
+                    binascii.hexlify(md5_bytes).decode("utf-8").upper())
+        except Exception as e:
+            logging.warning("Could not get signature MD5 checksum, settings filed under it cannot be recovered: %s", e)
+
+        # The first match wins, and any other legacy entry stays where it is
+        # for good: once the canonical checksum has an entry the check above
+        # returns before reaching this loop again. Only one profile can hold
+        # that checksum, and nothing here can tell which of two older entries
+        # holds the newer settings, so the SHA-1 one -- written by the
+        # version this recovers from -- is preferred and the other is left
+        # in the store rather than merged into it or deleted.
+        for legacy in legacy_checksums:
+            try:
+                if settings_store.migrate_checksum(legacy, checksum_hex):
+                    logging.info(
+                        "Recovered stored filters that were filed under an "
+                        "older checksum of this profile")
+                    return
+            except Exception as e:
+                logging.error("Could not migrate settings from %s: %s", legacy, e)
+
+    @staticmethod
     def load_and_apply_filters(type="sha1"):
         """
         Automatically load and apply stored filters for the current DSP profile checksum
@@ -881,7 +950,11 @@ class SigmaTCPHandler(BaseRequestHandler):
             
             # Initialize settings store for direct access
             settings_store = SettingsStore()
-            
+
+            if type == "sha1":
+                SigmaTCPHandler.recover_legacy_filter_keys(
+                    settings_store, checksum_hex)
+
             # Get stored filters and memory settings for this checksum
             filters = settings_store.load_filters(checksum_hex)
             memory_settings = settings_store.load_memory_settings(checksum_hex)
