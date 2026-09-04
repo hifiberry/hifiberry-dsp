@@ -1171,8 +1171,11 @@ def get_cache_status():
         # Add metadata key count if available
         if _xml_profile_cache["metadata"] is not None:
             try:
-                # Count non-system metadata keys
-                meta_count = len(_xml_profile_cache["metadata"]) - (1 if "_system" in _xml_profile_cache["metadata"] else 0)
+                # Count the profile's own metadata keys. "_system" and
+                # "_attributes" are both synthesised by get_profile_metadata()
+                # and are not keys the profile declares, so neither counts.
+                meta_count = len([key for key in _xml_profile_cache["metadata"]
+                                  if key not in ("_system", "_attributes")])
                 cache_info["metadata"]["keyCount"] = meta_count
 
                 # Add system metadata if available
