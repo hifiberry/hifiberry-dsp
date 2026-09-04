@@ -31,6 +31,7 @@ from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
 from hifiberrydsp.api.settings_store import SettingsStore
+from hifiberrydsp.api import speaker_presets
 from hifiberrydsp import __version__
 from waitress import serve
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -2185,6 +2186,54 @@ def toggle_filter_bypass():
     except Exception as e:
         logging.error(f"Error toggling filter bypass: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/presets', methods=['GET'])
+def list_speaker_presets():
+    """
+    API endpoint listing the installed speaker presets.
+
+    Compatibility is evaluated here rather than left to the client: whether a
+    preset can be applied depends on the loaded DSP profile, which the server
+    is the one holding.
+    """
+    try:
+        metadata = get_profile_metadata()
+        presets = speaker_presets.list_presets()
+
+        current = None
+        checksum = get_current_program_checksum_sha1()
+        if checksum:
+            current = settings_store.get_speaker_preset(checksum)
+
+        return jsonify({
+            "presets": [speaker_presets.summary(preset, read_only, metadata)
+                        for _, (preset, read_only) in sorted(presets.items())],
+            "current": current,
+        })
+    except Exception as e:
+        logging.error(f"Error listing speaker presets: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/presets/<preset_id>', methods=['GET'])
+def get_speaker_preset(preset_id):
+    """API endpoint returning one speaker preset in full."""
+    try:
+        preset, read_only = speaker_presets.get_preset(preset_id)
+    except speaker_presets.PresetNotFound as e:
+        return jsonify({"error": str(e)}), 404
+    except speaker_presets.PresetInvalid as e:
+        return jsonify({"error": str(e)}), 500
+
+    metadata = get_profile_metadata()
+    reason = speaker_presets.incompatibility_reason(preset, metadata)
+
+    payload = dict(preset)
+    payload["readOnly"] = read_only
+    payload["compatible"] = reason is None
+    payload["incompatibleReason"] = reason
+    return jsonify(payload)
 
 
 def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):
