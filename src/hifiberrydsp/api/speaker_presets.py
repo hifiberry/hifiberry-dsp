@@ -99,6 +99,28 @@ def validate(preset, preset_id):
             raise PresetInvalid(f"Missing settings for channel {channel!r}")
         if not settings.get("role"):
             raise PresetInvalid(f"Channel {channel!r} has no role")
+
+        # These fields are optional -- channel_register_writes() already
+        # defaults them, and other-speaker.json genuinely omits some -- but
+        # when present they must be usable, or a hand-edited user preset
+        # would pass here and only blow up with a bare ValueError the first
+        # time something applies it.
+        for field in ("level", "delayMs"):
+            value = settings.get(field)
+            if value is not None:
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise PresetInvalid(
+                        f"Channel {channel!r} {field!r} must be a number")
+                if value < 0:
+                    raise PresetInvalid(
+                        f"Channel {channel!r} {field!r} must not be negative")
+
+        for field in ("invert", "enabled"):
+            value = settings.get(field)
+            if value is not None and not isinstance(value, bool):
+                raise PresetInvalid(
+                    f"Channel {channel!r} {field!r} must be a boolean")
+
         if not isinstance(settings.get("filters"), list):
             raise PresetInvalid(f"Channel {channel!r} has no filter list")
         for index, filter_data in enumerate(settings["filters"]):
@@ -281,7 +303,7 @@ def channel_register_writes(channel, settings, metadata, sample_rate):
             max_delay = int(attributes.get(key, {}).get("maxDelay", samples))
         except (TypeError, ValueError):
             max_delay = samples
-        writes.append((int(metadata[key]), min(samples, max_delay)))
+        writes.append((int(metadata[key]), max(0, min(samples, max_delay))))
 
     key = "invert%sRegister" % upper
     if key in metadata:

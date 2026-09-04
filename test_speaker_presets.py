@@ -142,6 +142,37 @@ class TestValidation(PresetDirTestCase):
         self.write(self.system_dir, "test-speaker", preset)
         self.assertNotIn("test-speaker", speaker_presets.list_presets())
 
+    def test_non_numeric_delay_is_rejected(self):
+        preset = a_preset()
+        preset["channels"]["a"]["delayMs"] = "bad"
+        self.write(self.system_dir, "test-speaker", preset)
+        self.assertNotIn("test-speaker", speaker_presets.list_presets())
+
+    def test_negative_delay_is_rejected(self):
+        preset = a_preset()
+        preset["channels"]["a"]["delayMs"] = -1.0
+        self.write(self.system_dir, "test-speaker", preset)
+        self.assertNotIn("test-speaker", speaker_presets.list_presets())
+
+    def test_non_numeric_level_is_rejected(self):
+        preset = a_preset()
+        preset["channels"]["a"]["level"] = "loud"
+        self.write(self.system_dir, "test-speaker", preset)
+        self.assertNotIn("test-speaker", speaker_presets.list_presets())
+
+    def test_non_boolean_invert_is_rejected(self):
+        preset = a_preset()
+        preset["channels"]["a"]["invert"] = "yes"
+        self.write(self.system_dir, "test-speaker", preset)
+        self.assertNotIn("test-speaker", speaker_presets.list_presets())
+
+    def test_a_channel_omitting_the_optional_fields_is_still_accepted(self):
+        preset = a_preset()
+        for field in ("level", "delayMs", "invert", "enabled"):
+            del preset["channels"]["a"][field]
+        self.write(self.system_dir, "test-speaker", preset)
+        self.assertIn("test-speaker", speaker_presets.list_presets())
+
 
 class TestBankSlots(unittest.TestCase):
 
@@ -240,6 +271,15 @@ class TestChannelRegisterWrites(unittest.TestCase):
         _, value = [w for w in self.writes(invert=True) if w[0] == 4867][0]
         self.assertEqual(value, 1)
         self.assertIsInstance(value, int)
+
+    def test_delay_never_goes_below_zero(self):
+        """channel_register_writes() does not itself call validate(), so a
+        negative delay that reached it some other way must still clamp to
+        zero rather than reach a register write negative."""
+        writes = speaker_presets.channel_register_writes(
+            "a", a_channel(delay_ms=-10.0), METADATA, 48000)
+        _, value = [w for w in writes if w[0] == 786][0]
+        self.assertEqual(value, 0)
 
     def test_registers_the_profile_lacks_are_skipped(self):
         metadata = dict(METADATA)
