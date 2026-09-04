@@ -1,3 +1,38 @@
+hifiberry-dsp (1.5.0) stable; urgency=medium
+
+  * Add speaker presets: GET /presets, GET /presets/<id> and
+    POST /presets/<id>/apply. A preset describes a loudspeaker as four DSP
+    channels and is applied as a unit -- four biquad banks and sixteen
+    per-channel registers under one lock, recorded in the settings store so
+    it survives a reboot and a profile reload. Presets are read from
+    /usr/share/hifiberry/speaker-presets and
+    /var/lib/hifiberry/speaker-presets, a local preset shadowing a shipped
+    one of the same name.
+  * Applying validates the loaded profile and every channel's role before
+    writing anything: program id, version, sample rate, bank sizes, and
+    whether the profile can express each channel's requested role. Any
+    mismatch is a 409 that writes nothing. The role check used to run inside
+    the write loop, so a role the profile could not express left the
+    amplifier crossed over for two different speakers behind a response that
+    claimed nothing had happened; it is now decided up front, for every
+    channel, before the first write. The sample rate check matters because
+    preset coefficients are computed for one rate and cannot be moved to
+    another by writing them somewhere else.
+  * A preset apply that reaches the DSP but fails to record which preset is
+    now active reports a 500 instead of a silent 200.
+  * GET /presets/<id> now tells a missing preset (404) apart from one that
+    exists but fails validation (500), so a hand-written preset with a typo
+    reports its own error instead of vanishing from the listing.
+  * Preset files are validated when read: a non-numeric or negative
+    level/delayMs, or a non-boolean invert/enabled, is rejected up front
+    instead of failing later with an untyped error. Fields left out of a
+    channel remain legal.
+  * GET /metadata now reports an _attributes map, exposing XML attributes
+    that were previously unreachable -- the role ordering on
+    channelSelect*Register and the clamp on delay*Register.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 12:37:30 +0000
+
 hifiberry-dsp (1.4.1) stable; urgency=medium
 
   * restapi: filters are stored under the checksum the daemon restores

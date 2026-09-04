@@ -1,5 +1,5 @@
 """
 HiFiBerry DSP toolkit
 """
-__version__ = "1.4.1"
+__version__ = "1.5.0"
 _called_from_test = False
