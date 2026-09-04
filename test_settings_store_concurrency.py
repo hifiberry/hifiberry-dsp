@@ -39,6 +39,7 @@ CHECKSUM = "8B924F2C2210B903CB4226C12C56EE44"
 LOCK_ENTRY_MINIMUMS = {
     "store_filter": 2,
     "store_memory_setting": 2,
+    "store_speaker_preset": 2,
     "set_filter_bypass": 2,
     "toggle_filter_bypass": 3,
     "set_filter_bank_bypass": 2,
@@ -198,6 +199,7 @@ class TestLockCoverage(unittest.TestCase):
         return {
             "store_filter": lambda: self.store.store_filter(CHECKSUM, "bankLeft", 1, a_filter(200)),
             "store_memory_setting": lambda: self.store.store_memory_setting(CHECKSUM, "4744", [1.0]),
+            "store_speaker_preset": lambda: self.store.store_speaker_preset(CHECKSUM, "beovox-s35"),
             "set_filter_bypass": lambda: self.store.set_filter_bypass(CHECKSUM, "bankLeft", 0, True),
             "toggle_filter_bypass": lambda: self.store.toggle_filter_bypass(CHECKSUM, "bankLeft", 0),
             "set_filter_bank_bypass": lambda: self.store.set_filter_bank_bypass(CHECKSUM, "bankLeft", False),

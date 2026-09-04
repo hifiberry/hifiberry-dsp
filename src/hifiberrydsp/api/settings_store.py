@@ -35,6 +35,7 @@ import fcntl
 MUTATING_METHODS = (
     "store_filter",
     "store_memory_setting",
+    "store_speaker_preset",
     "set_filter_bypass",
     "toggle_filter_bypass",
     "set_filter_bank_bypass",
