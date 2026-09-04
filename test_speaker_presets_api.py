@@ -79,6 +79,7 @@ class PresetApiTestCase(unittest.TestCase):
         os.makedirs(self.user_dir)
 
         self.biquad_writes = []     # [address]
+        self.biquads = {}           # {address: Biquad}
         self.memory_writes = []     # [(address, int_value)]
 
         self._saved = {
@@ -98,8 +99,7 @@ class PresetApiTestCase(unittest.TestCase):
         self.store_path = os.path.join(self.temp_dir, 'dspsettings.json')
         restapi.settings_store = SettingsStore(store_file=self.store_path)
 
-        restapi.Adau145x.write_biquad = staticmethod(
-            lambda address, bq: self.biquad_writes.append(address))
+        restapi.Adau145x.write_biquad = staticmethod(self.record_biquad)
         restapi.Adau145x.write_memory = staticmethod(
             lambda address, data: self.memory_writes.append(
                 (address, int.from_bytes(data, 'big'))))
@@ -121,6 +121,10 @@ class PresetApiTestCase(unittest.TestCase):
         speaker_presets.SYSTEM_DIR = self._saved['system_dir']
         speaker_presets.USER_DIR = self._saved['user_dir']
         shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def record_biquad(self, address, bq):
+        self.biquad_writes.append(address)
+        self.biquads[address] = bq
 
     def install(self, preset, directory=None):
         directory = directory or self.system_dir
@@ -225,6 +229,40 @@ class TestApplyPreset(PresetApiTestCase):
             base, _ = BANKS[key]
             expected.extend(base + i * 5 for i in range(16))
         self.assertEqual(self.biquad_writes, expected)
+
+    def test_denominator_signs_reach_the_hardware_layer_unnegated(self):
+        """Adau145x.write_biquad() is what negates the denominator: the slot
+        holds b2, b1, b0, -a2, -a1, and that negation happens exactly once.
+        So the Biquad handed to it must carry the preset's coefficients with
+        their signs untouched. A second negation anywhere on the way -- a
+        helper that "already" flipped them, a coefficient order swapped in a
+        refactor -- would produce filters that look entirely plausible and are
+        silently the wrong ones: on a real amplifier, a crossover that
+        measures wrong rather than an error anybody sees. The address-only
+        assertion above cannot catch that, so the coefficients are pinned
+        where the two conventions meet."""
+        preset = a_preset(filters=2)
+        self.install(preset)
+
+        self.client.post('/presets/beovox-s35/apply')
+
+        for channel, bank in zip(("a", "b", "c", "d"),
+                                 ("IIR_A", "IIR_B", "IIR_C", "IIR_D")):
+            base, _ = BANKS[bank]
+            for offset, coefficients in enumerate(
+                    preset["channels"][channel]["filters"]):
+                written = self.biquads[base + offset * 5]
+                where = f"{bank} slot {offset}"
+                self.assertEqual(written.a0, coefficients["a0"], where)
+                self.assertEqual(written.a1, coefficients["a1"], where)
+                self.assertEqual(written.a2, coefficients["a2"], where)
+                self.assertEqual(written.b0, coefficients["b0"], where)
+                self.assertEqual(written.b1, coefficients["b1"], where)
+                self.assertEqual(written.b2, coefficients["b2"], where)
+
+        # The fixture has to be able to tell a sign flip from a match.
+        self.assertLess(preset["channels"]["a"]["filters"][0]["a1"], 0)
+        self.assertGreater(preset["channels"]["a"]["filters"][0]["a2"], 0)
 
     def test_persists_the_filters(self):
         self.install(a_preset(filters=2))
