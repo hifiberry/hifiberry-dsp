@@ -348,6 +348,35 @@ class TestBiquadWrites(SafeloadTestCase):
                          untouched)
 
 
+class TestForgettingTheAnswer(SafeloadTestCase):
+
+    def test_takes_the_bus_lock(self):
+        # The probe reads and writes the recorded answer under the bus lock,
+        # and spans several transactions plus the poll. A reset that does not
+        # take the lock can land in the middle of one, after which the probe
+        # writes the answer for the program that has just been replaced back
+        # over it -- and a stale "supported" is the dangerous way round,
+        # since that path neither verifies nor restores the window.
+        entries = []
+        real_lock = SpiHandler.lock
+
+        class CountingLock:
+            def __enter__(self):
+                entries.append(1)
+                return real_lock.__enter__()
+
+            def __exit__(self, *exc):
+                return real_lock.__exit__(*exc)
+
+        SpiHandler.lock = CountingLock()
+        try:
+            Adau145x.reset_safeload_detection()
+        finally:
+            SpiHandler.lock = real_lock
+
+        self.assertEqual(len(entries), 1)
+
+
 class TestConcurrentSafeload(SafeloadTestCase):
 
     def test_concurrent_requests_do_not_overwrite_each_other(self):

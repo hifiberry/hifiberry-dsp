@@ -40,6 +40,7 @@ MUTATING_METHODS = (
     "set_filter_bank_bypass",
     "delete_filters",
     "clear_empty_profiles",
+    "migrate_checksum",
 )
 
 
@@ -375,6 +376,62 @@ class SettingsStore:
                     pass
             return False
     
+    def migrate_checksum(self, legacy_checksum, canonical_checksum):
+        """
+        Move the settings recorded under legacy_checksum to canonical_checksum.
+
+        Filters used to be filed under the signature-based checksum of the
+        program while the daemon restored them by the length-based one, so
+        a store written by an older version holds settings under a key
+        nothing looks up. Moving them is what makes those filters come back.
+
+        Nothing is overwritten: if the canonical checksum already holds
+        settings, they win and the legacy entry is left where it is.
+
+        Args:
+            legacy_checksum (str): checksum the settings are filed under
+            canonical_checksum (str): checksum they belong under
+
+        Returns:
+            bool: True if settings were moved
+        """
+        legacy = self.normalize_checksum(legacy_checksum)
+        canonical = self.normalize_checksum(canonical_checksum)
+        if legacy == canonical:
+            return False
+
+        with self._file_lock():
+            store_data = self.load_store()
+
+            legacy_profile = store_data.get(legacy, {})
+            if not (legacy_profile.get("filters") or legacy_profile.get("memory")):
+                return False
+
+            # Any entry at all, even an empty one, belongs to the canonical
+            # checksum. delete_filters() empties a profile but keeps its key,
+            # and that emptiness is a decision somebody made -- migrating over
+            # it would bring the deleted filters back at the next start.
+            if canonical in store_data:
+                logging.info(
+                    "Not migrating settings from %s: %s has its own entry",
+                    legacy, canonical)
+                return False
+
+            store_data[canonical] = legacy_profile
+            del store_data[legacy]
+
+            if not self.save_store(store_data):
+                logging.error(
+                    "Could not write the settings store, leaving %s where it is",
+                    legacy)
+                return False
+
+            logging.info(
+                "Moved %s filters and %s memory settings from checksum %s to %s",
+                len(legacy_profile.get("filters", {})),
+                len(legacy_profile.get("memory", {})), legacy, canonical)
+            return True
+
     def load_filters(self, checksum):
         """
         Load all filters for the specified DSP profile checksum.

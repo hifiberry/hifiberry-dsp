@@ -44,7 +44,14 @@ LOCK_ENTRY_MINIMUMS = {
     "set_filter_bank_bypass": 2,
     "delete_filters": 2,
     "clear_empty_profiles": 2,
+    "migrate_checksum": 2,
 }
+
+
+# Only migrate_checksum uses these: a profile to move and somewhere to move
+# it that nothing else in this file writes to.
+LEGACY_CHECKSUM = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+MIGRATION_TARGET = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
 
 
 def a_filter(freq):
@@ -159,6 +166,7 @@ class TestLockCoverage(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.store = SettingsStore(store_file=os.path.join(self.temp_dir, 'dspsettings.json'))
         self.store.store_filter(CHECKSUM, "bankLeft", 0, a_filter(100))
+        self.store.store_filter(LEGACY_CHECKSUM, "bankLeft", 0, a_filter(300))
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -195,6 +203,11 @@ class TestLockCoverage(unittest.TestCase):
             "set_filter_bank_bypass": lambda: self.store.set_filter_bank_bypass(CHECKSUM, "bankLeft", False),
             "delete_filters": lambda: self.store.delete_filters(checksum=CHECKSUM, address="bankLeft_0"),
             "clear_empty_profiles": lambda: self.store.clear_empty_profiles(),
+            # Self-contained: its own legacy source, seeded in setUp, and a
+            # destination no other invocation touches, so it does not depend
+            # on what the earlier entries left behind.
+            "migrate_checksum": lambda: self.store.migrate_checksum(
+                LEGACY_CHECKSUM, MIGRATION_TARGET),
         }
 
     def test_mutating_methods_take_the_lock(self):

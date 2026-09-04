@@ -412,7 +412,10 @@ def get_current_program_checksum_sha1():
         logging.debug("Using cached SHA-1 checksum")
         return _checksum_cache["sha1"]
     
-    # Clear invalid cache
+    # Clear invalid cache. A cache holding nothing yet is not the same as
+    # one holding the wrong program: only the latter means the digest
+    # underneath is stale.
+    previous_length = _checksum_cache["program_length"]
     if not is_checksum_cache_valid():
         logging.debug("Cache invalidated due to program length change")
         clear_checksum_cache()
@@ -420,9 +423,29 @@ def get_current_program_checksum_sha1():
     try:
         # Get current program length for cache validation
         program_length = Adau145x.get_program_len()
+        program_changed = (previous_length is not None
+                           and previous_length != program_length)
         
-        # Calculate SHA-1 checksum (length-based)
-        checksums = Adau145x.calculate_program_checksums(cached=True)
+        # Calculate SHA-1 checksum (length-based). The mode matters: this
+        # is the key filters are stored under, and the daemon restores them
+        # at startup by the length-based SHA-1. Leaving the mode to default
+        # filed them under the signature-based one, where nothing looked.
+        #
+        # Ask for a fresh digest when the program changed under us.
+        # Clearing the cache above only clears this module's; the one inside
+        # Adau145x still holds the previous program's, and a filter stored
+        # under that would belong to a program that is no longer loaded.
+        #
+        # Only for a change, not for a cold cache: an uncached read stops
+        # the DSP core to read program memory, about a third of a second of
+        # silence, and a cache that has simply never been filled says
+        # nothing about the program being stale.
+        #
+        # The length comparison is a backstop, not the main guard: a
+        # replacement program of the same length leaves this cache valid.
+        # The upload paths clear both caches through prepare_update().
+        checksums = Adau145x.calculate_program_checksums(
+            mode="length", algorithms=["sha1"], cached=not program_changed)
         if checksums and "sha1" in checksums:
             checksum_hex = checksums["sha1"]
             _checksum_cache["sha1"] = checksum_hex
