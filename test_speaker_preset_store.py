@@ -62,6 +62,32 @@ class TestSpeakerPresetStore(unittest.TestCase):
         self.assertIn("IIR_A_0", data[CHECKSUM]["filters"])
         self.assertEqual(data[CHECKSUM]["speakerPreset"]["id"], "beovox-s35")
 
+    def test_clear_removes_the_recorded_preset(self):
+        self.store.store_speaker_preset(CHECKSUM, "beovox-s35")
+        self.assertTrue(self.store.clear_speaker_preset(CHECKSUM))
+        self.assertIsNone(self.store.get_speaker_preset(CHECKSUM))
+
+    def test_clear_of_an_unset_profile_is_not_an_error(self):
+        self.assertTrue(self.store.clear_speaker_preset(CHECKSUM))
+        self.assertIsNone(self.store.get_speaker_preset(CHECKSUM))
+
+    def test_clear_does_not_disturb_stored_filters(self):
+        self.store.store_filter(CHECKSUM, "IIR_A", 0, {"type": "Volume"})
+        self.store.store_speaker_preset(CHECKSUM, "beovox-s35")
+        self.store.clear_speaker_preset(CHECKSUM)
+        with open(self.store.store_file) as handle:
+            data = json.load(handle)
+        self.assertIn("IIR_A_0", data[CHECKSUM]["filters"])
+        self.assertNotIn("speakerPreset", data[CHECKSUM])
+
+    def test_clear_is_scoped_per_profile(self):
+        self.store.store_speaker_preset(CHECKSUM, "beovox-s35")
+        self.store.store_speaker_preset(OTHER_CHECKSUM, "beovox-cx100")
+        self.store.clear_speaker_preset(CHECKSUM)
+        self.assertIsNone(self.store.get_speaker_preset(CHECKSUM))
+        self.assertEqual(
+            self.store.get_speaker_preset(OTHER_CHECKSUM), "beovox-cx100")
+
     def test_survives_the_duplicate_checksum_merge(self):
         """load_store() merges entries that differ only in case, and used to
         carry only 'filters' and 'memory' across -- silently dropping anything

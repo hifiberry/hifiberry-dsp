@@ -36,6 +36,7 @@ MUTATING_METHODS = (
     "store_filter",
     "store_memory_setting",
     "store_speaker_preset",
+    "clear_speaker_preset",
     "set_filter_bypass",
     "toggle_filter_bypass",
     "set_filter_bank_bypass",
@@ -617,6 +618,35 @@ class SettingsStore:
         except Exception as e:
             logging.error(f"Error reading speaker preset: {str(e)}")
             return None
+
+    def clear_speaker_preset(self, checksum):
+        """
+        Forget which speaker preset (if any) is applied to a profile.
+
+        Companion to store_speaker_preset: removes the 'speakerPreset' key
+        when present. A profile with no recorded selection is left as-is
+        rather than treated as an error -- the caller decides whether
+        "nothing to clear" is worth a distinct response.
+
+        Args:
+            checksum (str): DSP profile checksum
+
+        Returns:
+            bool: True if the store was saved successfully
+        """
+        try:
+            checksum = self.normalize_checksum(checksum)
+
+            with self._file_lock():
+                store = self.load_store()
+
+                if checksum in store:
+                    store[checksum].pop("speakerPreset", None)
+
+                return self.save_store(store)
+        except Exception as e:
+            logging.error(f"Error clearing speaker preset: {str(e)}")
+            return False
 
     def get_filters(self, checksum=None, group_by_bank=False):
         """
