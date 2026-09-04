@@ -172,13 +172,35 @@ def get_preset(preset_id):
     '''
     One preset as (preset, read_only).
 
+    list_presets() only ever returns presets that validated -- a malformed
+    file is logged and left out of the listing, deliberately, so one bad
+    hand-edited file cannot hide the bundled ones. Fetching that id directly
+    is a different question: the id has a file, but it doesn't pass, and the
+    person who dropped it into the user directory deserves to be told what's
+    wrong with it rather than a bare "not found".
+
     Raises:
-        PresetNotFound: no such id
+        PresetNotFound: no file with that id in either directory
+        PresetInvalid: a file with that id exists but fails validation
     '''
     presets = list_presets()
-    if preset_id not in presets:
+    if preset_id in presets:
+        return presets[preset_id]
+
+    # Not in the listing -- either there's no such file, or it's the file
+    # that got skipped. Walk the same directories, in the same shadowing
+    # order as preset_dirs()/list_presets(), to find out which.
+    match = None
+    for directory, read_only in preset_dirs():
+        path = os.path.join(directory, preset_id + ".json")
+        if os.path.isfile(path):
+            match = (path, read_only)
+
+    if match is None:
         raise PresetNotFound(f"No such speaker preset: {preset_id}")
-    return presets[preset_id]
+
+    path, read_only = match
+    return load_preset_file(path, preset_id), read_only
 
 
 def bank_slots(bank_value):

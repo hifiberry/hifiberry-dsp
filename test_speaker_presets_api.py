@@ -180,6 +180,13 @@ class TestGetPreset(PresetApiTestCase):
     def test_unknown_preset_is_404(self):
         self.assertEqual(self.client.get('/presets/nosuch').status_code, 404)
 
+    def test_malformed_preset_file_is_500_with_a_message(self):
+        with open(os.path.join(self.system_dir, "broken.json"), "w") as handle:
+            handle.write("{not json")
+        response = self.client.get('/presets/broken')
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("error", response.get_json())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -117,6 +117,21 @@ class TestDiscovery(PresetDirTestCase):
         with self.assertRaises(speaker_presets.PresetNotFound):
             speaker_presets.get_preset("nosuch")
 
+    def test_get_preset_on_a_malformed_file_raises_invalid_not_not_found(self):
+        # Skipped from the listing (test_an_invalid_file_is_skipped_not_fatal
+        # above must keep passing unchanged), but a direct fetch of that id
+        # should explain what's wrong rather than claim it doesn't exist.
+        with open(os.path.join(self.system_dir, "broken.json"), "w") as handle:
+            handle.write("{not json")
+        self.assertNotIn("broken", speaker_presets.list_presets())
+        with self.assertRaises(speaker_presets.PresetInvalid):
+            speaker_presets.get_preset("broken")
+
+    def test_get_preset_with_no_file_at_all_is_still_not_found(self):
+        self.write(self.system_dir, "good", a_preset("good"))
+        with self.assertRaises(speaker_presets.PresetNotFound):
+            speaker_presets.get_preset("nosuch-either")
+
 
 class TestValidation(PresetDirTestCase):
 
