@@ -1,3 +1,78 @@
+hifiberry-dsp (1.4.0) stable; urgency=medium
+
+  * adau145x: filter coefficients written through Adau145x.write_biquad()
+    are applied using SigmaStudio software safeload. That covers the REST
+    API and the daemon's own filter restore; the raw memory writes of the
+    TCP protocol still go cell by cell, and dsptoolkit's set-filters with
+    them. A biquad is five consecutive cells, and writing them one at a
+    time while the core runs lets a frame execute against a slot holding
+    part of the new filter and part of the old one -- a response that is
+    neither, audible as a click on an EQ change and as a moment of wrong
+    slope on a crossover. The five words now go into the staging window at
+    the start of DM1 together with their target address and a word count,
+    and the core copies them out between two frames. Posting the request is
+    a single SPI burst of seven words, so it costs no more than the five
+    individual writes it replaces.
+  * adau145x: safeload is detected rather than assumed, because it is an
+    option of the SigmaStudio project and not a property of the chip. The
+    first filter write after a program is loaded doubles as the probe: the
+    staging window is read, the request posted, and the count cell polled
+    for up to 10ms. A program that does not answer gets its seven cells put
+    back untouched and is never probed again until a different program is
+    loaded, and its filters are written directly as before. The Beocreate
+    Universal profile is verified to support it; the other shipped profiles
+    have not been checked on hardware, which is what the probe is for.
+  * adau145x: the probe proves the transfer instead of trusting the
+    handshake. On a program without safeload the staging window is ordinary
+    data belonging to that program, and the cell being polled can hold zero
+    for reasons of its own; reading the count as an answer would then post
+    every later filter into a window nobody reads, and report success each
+    time. The words are now read back from the slot before safeload is
+    believed, compared as they go on the wire rather than as Python values
+    -- decimal_repr() can return 2**32 for a coefficient just below zero,
+    which int_data() writes as four zero bytes. The window is restored on
+    every path that does not end in a proven transfer, an error
+    mid-handshake included, since coefficients left behind would be what
+    the next probe takes for the program's own data and writes back over
+    it.
+  * adau145x: a probe that cannot prove anything is skipped rather than
+    attempted. Re-applying a filter that is already in the slot is common
+    -- restoring stored filters and bypassing to unity both do it -- and
+    the readback would find the words there whether safeload ran or not.
+    Concluding from that would enable safeload on a program without it,
+    after which every filter write posts into a window nobody reads and
+    stalls holding the bus.
+  * adau145x: the core's state is read from the chip before probing and
+    before a failure is recorded, rather than tracked in the process.
+    Several operations stop the core to get a consistent read and start it
+    again after, with the bus free in between, and a TCP client can stop it
+    by writing the registers directly -- which a tracked flag would miss,
+    sending a probe against a dead core and filing the timeout as the
+    program's answer, so a capable profile would fall back to the
+    non-atomic writes for the life of the process. Stopping and starting
+    the core now also holds the bus for its whole register sequence, so no
+    other thread meets the core half stopped.
+  * adau145x: the safeload timeout is 10ms, measured on the monotonic
+    clock rather than the wall clock -- these boards have no RTC, and an NTP
+    step backwards during the poll would hold the bus for the size of the
+    step. The core answers within one
+    audio frame, about 21us at 48kHz, so the wait is ample margin either
+    way -- and on a program without safeload it is also how long the
+    probe's words sit in that program's live memory.
+  * adau145x: safeload_write() refuses a word that does not fit a 32-bit
+    cell instead of letting int_data() truncate it into four plausible
+    bytes.
+  * spi: SPI access is serialised with a reentrant lock on SpiHandler. The
+    module previously assumed the underlying library was thread-safe and
+    took no lock of its own, so the REST API workers, the ALSA volume sync
+    and the TCP server could interleave. That is a correctness requirement
+    for safeload rather than a refinement: the staging window is one shared
+    resource, and a request posted before the core has consumed the
+    previous one replaces it silently, so that filter is never applied.
+    The lock is held across the write and the polling reads that follow.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 08:51:21 +0000
+
 hifiberry-dsp (1.3.14) stable; urgency=medium
 
   * settings store: writes are atomic and transactional again. save_store()

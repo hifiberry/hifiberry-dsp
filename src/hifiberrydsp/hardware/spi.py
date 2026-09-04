@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 import logging
+import threading
+
 import hifiberrydsp
 
 def init_spi():        
@@ -42,71 +44,79 @@ class SpiHandler():
     '''
     Implements access to the SPI bus. Can be used by multiple threads.
 
-    We assume that the SPI library is thread-safe and do not use 
-    additional locking here.
+    Bus access is serialised with a reentrant lock. Several threads talk to
+    the DSP at the same time - the REST API workers, the ALSA volume sync
+    and the TCP server - and a compound operation such as a safeload
+    handshake has to keep the bus across a write and the reads that follow
+    it. Callers that need such a sequence to be indivisible take this lock
+    themselves; it is reentrant, so the nested read and write calls below
+    are free to take it again.
 
     Data is passed in bytearrays, not string or lists
     '''
 
     spi = init_spi()
+    lock = threading.RLock()
 
     @staticmethod
     def read(addr, length):
-        spi_request = []
-        a0 = addr & 0xff
-        a1 = (addr >> 8) & 0xff
+        with SpiHandler.lock:
+            spi_request = []
+            a0 = addr & 0xff
+            a1 = (addr >> 8) & 0xff
 
-        spi_request.append(1)
-        spi_request.append(a1)
-        spi_request.append(a0)
+            spi_request.append(1)
+            spi_request.append(a1)
+            spi_request.append(a0)
 
-        for _i in range(0, length):
-            spi_request.append(0)
+            for _i in range(0, length):
+                spi_request.append(0)
 
-        spi_response = SpiHandler.spi.xfer(spi_request)  # SPI read
-        logging.debug("spi read %s bytes from %s", len(spi_request), addr)
-        return bytearray(spi_response[3:])
+            spi_response = SpiHandler.spi.xfer(spi_request)  # SPI read
+            logging.debug("spi read %s bytes from %s", len(spi_request), addr)
+            return bytearray(spi_response[3:])
 
     @staticmethod
     def write(addr, data):
-        logging.debug("spi write %s bytes to %s", len(data), addr)
+        with SpiHandler.lock:
+            logging.debug("spi write %s bytes to %s", len(data), addr)
 
-        a0 = addr & 0xff
-        a1 = (addr >> 8) & 0xff
+            a0 = addr & 0xff
+            a1 = (addr >> 8) & 0xff
 
-        spi_request = []
-        spi_request.append(0)
-        spi_request.append(a1)
-        spi_request.append(a0)
+            spi_request = []
+            spi_request.append(0)
+            spi_request.append(a1)
+            spi_request.append(a0)
 
-        for d in data:
-            spi_request.append(d)
+            for d in data:
+                spi_request.append(d)
 
-        if len(spi_request) < 4096:
-            logging.debug(f"spi write {len(spi_request) - 3} bytes: {spi_request}")
-            SpiHandler.spi.xfer(spi_request)
-        else:
-            finished = False
-            while not finished:
-                if len(spi_request) < 4096:
-                    SpiHandler.spi.xfer(spi_request)
-                    logging.debug("spi write %s bytes", len(spi_request) - 3)
-                    finished = True
-                else:
-                    short_request = spi_request[:4003]
-                    SpiHandler.spi.xfer(short_request)
-                    logging.debug("spi write %s bytes", len(short_request) - 3)
+            if len(spi_request) < 4096:
+                logging.debug(f"spi write {len(spi_request) - 3} bytes: {spi_request}")
+                SpiHandler.spi.xfer(spi_request)
+            else:
+                finished = False
+                while not finished:
+                    if len(spi_request) < 4096:
+                        SpiHandler.spi.xfer(spi_request)
+                        logging.debug("spi write %s bytes", len(spi_request) - 3)
+                        finished = True
+                    else:
+                        short_request = spi_request[:4003]
+                        SpiHandler.spi.xfer(short_request)
+                        logging.debug("spi write %s bytes", len(short_request) - 3)
 
-                    # skip forward 1000 cells
-                    addr = addr + 1000  # each memory cell is 4 bytes long
-                    a0 = addr & 0xff
-                    a1 = (addr >> 8) & 0xff
-                    new_request = []
-                    new_request.append(0)
-                    new_request.append(a1)
-                    new_request.append(a0)
-                    new_request.extend(spi_request[4003:])
+                        # skip forward 1000 cells
+                        addr = addr + 1000  # each memory cell is 4 bytes long
+                        a0 = addr & 0xff
+                        a1 = (addr >> 8) & 0xff
+                        new_request = []
+                        new_request.append(0)
+                        new_request.append(a1)
+                        new_request.append(a0)
+                        new_request.extend(spi_request[4003:])
 
-                    spi_request = new_request
+                        spi_request = new_request
 
-        return data
+            return data
