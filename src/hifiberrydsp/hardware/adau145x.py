@@ -90,6 +90,27 @@ class Adau145x():
         "PM": 0xc000,
         "REG": 0xf000,
     }
+
+    # SigmaStudio software safeload. The staging window sits at the start of
+    # DM1: five data words, the address they belong at, then the number of
+    # words. Writing the count asks the core to perform the copy, and the
+    # core zeroes the count again once it has, which makes the handshake
+    # observable. The copy happens between two audio frames, so a
+    # multi-word parameter such as a biquad is never half applied.
+    SAFELOAD_DATA_ADDR = 0x6000
+    SAFELOAD_TARGET_ADDR = 0x6005
+    SAFELOAD_COUNT_ADDR = 0x6006
+    SAFELOAD_MAX_WORDS = 5
+    SAFELOAD_WINDOW_WORDS = 7
+    # A request is consumed within one audio frame (~21us at 48kHz), so
+    # 10ms is already some 480 frames of margin. It is kept short because
+    # the wait is also how long a probe's words sit in the memory of a
+    # program that turns out not to implement safeload.
+    SAFELOAD_TIMEOUT = 0.01
+    SAFELOAD_POLL_INTERVAL = 0.001
+
+    # None = not probed yet, True/False = what the last probe found
+    _safeload_supported = None
     
     # Cache for program checksums - structure: {mode: {algorithm: digest}}
     _checksum_cache = {
@@ -222,15 +243,18 @@ class Adau145x():
         '''
         logging.debug("killing DSP core")
         spi = SpiHandler()
-        
-        spi.write(Adau145x.HIBERNATE_REGISTER, 
-                  Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(Adau145x.KILLCORE_REGISTER, 
-                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(Adau145x.KILLCORE_REGISTER, 
-                  Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
+
+        # The three writes are one operation: hold the bus so no other
+        # thread meets the core half stopped.
+        with SpiHandler.lock:
+            spi.write(Adau145x.HIBERNATE_REGISTER,
+                      Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
+            time.sleep(0.0001)
+            spi.write(Adau145x.KILLCORE_REGISTER,
+                      Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+            time.sleep(0.0001)
+            spi.write(Adau145x.KILLCORE_REGISTER,
+                      Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
 
     @staticmethod
     def start_dsp():
@@ -240,17 +264,18 @@ class Adau145x():
         logging.debug("starting DSP core")
         spi = SpiHandler()
 
-        spi.write(Adau145x.KILLCORE_REGISTER, 
-                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(Adau145x.STARTCORE_REGISTER, 
-                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(Adau145x.STARTCORE_REGISTER, 
-                  Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
-        time.sleep(0.0001)
-        spi.write(Adau145x.HIBERNATE_REGISTER, 
-                  Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+        with SpiHandler.lock:
+            spi.write(Adau145x.KILLCORE_REGISTER,
+                      Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+            time.sleep(0.0001)
+            spi.write(Adau145x.STARTCORE_REGISTER,
+                      Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
+            time.sleep(0.0001)
+            spi.write(Adau145x.STARTCORE_REGISTER,
+                      Adau145x.int_data(1, Adau145x.REGISTER_WORD_LENGTH))
+            time.sleep(0.0001)
+            spi.write(Adau145x.HIBERNATE_REGISTER,
+                      Adau145x.int_data(0, Adau145x.REGISTER_WORD_LENGTH))
     
     @staticmethod
     def read_memory(addr, length):
@@ -587,6 +612,7 @@ class Adau145x():
             "signature": None,
             "length": None
         }
+        Adau145x.reset_safeload_detection()
         logging.debug("Cleared all checksum and memory caches")
         
     @staticmethod
@@ -628,30 +654,201 @@ class Adau145x():
     def write_biquad(start_addr, bq):
         '''
         Write biquad filter coefficients to DSP memory.
-        
+
+        The five words go through safeload where the loaded program supports
+        it, so the core swaps the whole filter in between two audio frames
+        instead of running a frame on a half-written slot. A program without
+        safeload falls back to writing the cells one at a time, highest
+        address first, which is what this did before.
+
         Args:
             start_addr: Starting address for the biquad coefficients
             bq: Biquad filter object with a1, a2, b0, b1, b2 coefficients
         '''
         # Normalize the biquad coefficients
         bqn = bq.normalized()
-        
-        # Create array of parameters in the order they should be written
-        bq_params = []
-        bq_params.append(-bqn.a1)  # Negative a1
-        bq_params.append(-bqn.a2)  # Negative a2
-        bq_params.append(bqn.b0)   # b0
-        bq_params.append(bqn.b1)   # b1
-        bq_params.append(bqn.b2)   # b2
-        
-        # Write params to registers starting from highest address
-        reg = start_addr + 4
-        for i, param in enumerate(bq_params):
-            data = Adau145x.int_data(Adau145x.decimal_repr(param), Adau145x.DECIMAL_LEN)
-            Adau145x.write_memory(reg, data)
-            reg = reg - 1
-        
+
+        # The slot holds, ascending from start_addr: b2, b1, b0, -a2, -a1
+        coefficients = [bqn.b2, bqn.b1, bqn.b0, -bqn.a2, -bqn.a1]
+        words = [Adau145x.decimal_repr(c) for c in coefficients]
+
+        if not Adau145x._write_biquad_safeload(start_addr, words):
+            with SpiHandler.lock:
+                for offset in reversed(range(len(words))):
+                    Adau145x.write_memory(
+                        start_addr + offset,
+                        Adau145x.int_data(words[offset], Adau145x.DECIMAL_LEN))
+
         logging.debug(f"Wrote biquad to address {start_addr}: a1={-bqn.a1}, a2={-bqn.a2}, b0={bqn.b0}, b1={bqn.b1}, b2={bqn.b2}")
+
+    @staticmethod
+    def reset_safeload_detection():
+        '''
+        Forget whether the loaded program answers safeload requests.
+
+        Safeload is an option of the SigmaStudio project, not a property of
+        the chip, so the answer can change with the program. Call this
+        whenever a different program is loaded.
+        '''
+        Adau145x._safeload_supported = None
+
+    @staticmethod
+    def core_is_running():
+        '''
+        Ask the chip whether the core is running.
+
+        Asking beats remembering: the core is also stopped by a TCP client
+        writing these registers directly, and a flag that missed that would
+        send a probe against a dead core and file the timeout as the
+        program's answer. Both registers read back what was written,
+        verified on a Beocreate 4-Channel Amplifier.
+        '''
+        for register in (Adau145x.HIBERNATE_REGISTER, Adau145x.KILLCORE_REGISTER):
+            value = Adau145x.read_memory(register, Adau145x.REGISTER_WORD_LENGTH)
+            if int.from_bytes(value, byteorder="big") != 0:
+                return False
+        return True
+
+    @staticmethod
+    def _write_biquad_safeload(addr, words):
+        '''
+        Try to apply filter coefficients through safeload.
+
+        The first write after a program is loaded doubles as the capability
+        probe, and the probe has to prove the transfer rather than trust the
+        handshake. On a program without safeload the staging window is
+        ordinary data belonging to the running program, and the cell being
+        polled may read zero for reasons of its own. So the words are read
+        back from the slot before safeload is believed.
+
+        Two answers are refused rather than recorded, because neither says
+        anything about the program: one from a slot that already held the
+        words, where the readback would succeed either way, and one from a
+        core that is or goes down during the probe.
+
+        Returns:
+            bool: True if the coefficients reached the slot
+        '''
+        with SpiHandler.lock:
+            if Adau145x._safeload_supported is False:
+                return False
+
+            if Adau145x._safeload_supported:
+                return Adau145x.safeload_write(addr, words)
+
+            wanted = Adau145x._wire_words(words)
+
+            if not Adau145x.core_is_running():
+                return False
+
+            if Adau145x._read_words(addr, len(words)) == wanted:
+                # the readback could not tell a transfer from what is
+                # already there, so this write cannot settle the question
+                return False
+
+            window = Adau145x.read_memory(
+                Adau145x.SAFELOAD_DATA_ADDR,
+                Adau145x.SAFELOAD_WINDOW_WORDS * Adau145x.WORD_LENGTH)
+            applied = False
+            try:
+                applied = (Adau145x.safeload_write(addr, words)
+                           and Adau145x._read_words(addr, len(words)) == wanted)
+            finally:
+                if not applied:
+                    Adau145x.write_memory(Adau145x.SAFELOAD_DATA_ADDR, window)
+
+            if not applied and not Adau145x.core_is_running():
+                # the core went down while we were asking
+                return False
+
+            Adau145x._safeload_supported = applied
+            if applied:
+                logging.info("DSP program supports safeload, "
+                             "applying filters atomically")
+            else:
+                logging.info("DSP program does not answer safeload "
+                             "requests, writing coefficients directly")
+            return applied
+
+    @staticmethod
+    def _wire_words(words):
+        '''
+        The values as they will exist in DSP memory. decimal_repr() can
+        return 2**32, which int_data() puts on the wire as four zero bytes,
+        so a comparison against the Python value would not match.
+        '''
+        return [int.from_bytes(Adau145x.int_data(word, Adau145x.WORD_LENGTH),
+                               byteorder="big")
+                for word in words]
+
+    @staticmethod
+    def _read_words(addr, count):
+        '''
+        Read count consecutive 32-bit cells as integers.
+        '''
+        data = Adau145x.read_memory(addr, count * Adau145x.WORD_LENGTH)
+        return [int.from_bytes(data[i * Adau145x.WORD_LENGTH:
+                                    (i + 1) * Adau145x.WORD_LENGTH],
+                               byteorder="big")
+                for i in range(count)]
+
+    @staticmethod
+    def safeload_write(addr, words):
+        '''
+        Write up to SAFELOAD_MAX_WORDS words to consecutive cells starting at
+        addr using SigmaStudio software safeload, so the DSP applies them all
+        at a frame boundary.
+
+        The bus is held for the whole handshake: the staging window is a
+        single shared resource, and a second request posted before the core
+        has consumed the first would replace it.
+
+        Args:
+            addr: target address of the first word
+            words: 1..SAFELOAD_MAX_WORDS integers in the DSP's own format
+
+        Returns:
+            bool: True if the DSP consumed the request, False if it did not
+                  answer in time - a program without safeload support, or a
+                  stopped core
+        '''
+        if not 1 <= len(words) <= Adau145x.SAFELOAD_MAX_WORDS:
+            raise ValueError(
+                "safeload takes 1 to {} words, got {}".format(
+                    Adau145x.SAFELOAD_MAX_WORDS, len(words)))
+
+        # int_data() truncates silently, so a value that does not fit a cell
+        # would otherwise be posted as four plausible bytes. 2**32 is allowed:
+        # decimal_repr() returns it for a coefficient just below zero.
+        for word in words:
+            if not 0 <= word <= 1 << (Adau145x.WORD_LENGTH * 8):
+                raise ValueError(
+                    "safeload word {} does not fit a {}-byte cell".format(
+                        word, Adau145x.WORD_LENGTH))
+
+        padded = list(words) + [0] * (Adau145x.SAFELOAD_MAX_WORDS - len(words))
+        payload = bytearray()
+        for word in padded + [addr, len(words)]:
+            payload += Adau145x.int_data(word, Adau145x.WORD_LENGTH)
+
+        with SpiHandler.lock:
+            Adau145x.write_memory(Adau145x.SAFELOAD_DATA_ADDR, payload)
+
+            # monotonic, not wall clock: these boards have no RTC, and an NTP
+            # step backwards during the poll would hold the bus for the size
+            # of the step
+            deadline = time.monotonic() + Adau145x.SAFELOAD_TIMEOUT
+            while True:
+                pending = Adau145x.read_memory(Adau145x.SAFELOAD_COUNT_ADDR,
+                                               Adau145x.WORD_LENGTH)
+                if int.from_bytes(pending, byteorder="big") == 0:
+                    return True
+                if time.monotonic() >= deadline:
+                    logging.debug(
+                        "safeload request for address %s was not consumed "
+                        "within %ss", addr, Adau145x.SAFELOAD_TIMEOUT)
+                    return False
+                time.sleep(Adau145x.SAFELOAD_POLL_INTERVAL)
     
     @staticmethod
     def write_biquad_direct(start_addr, a0, a1, a2, b0, b1, b2):
