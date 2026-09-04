@@ -70,7 +70,10 @@ discovered partway through the write. The coefficients are computed for one
 sample rate, which is why a rate mismatch is refused rather than rescaled.
 A successful apply is recorded so the preset survives a reboot and a profile
 reload; if that record can't be written, the request reports a 500 rather
-than a silent 200.
+than a silent 200. If the active profile's checksum cannot be read at all the
+apply is refused with a 503 before anything is written, because writes that
+cannot be filed under a profile would be lost at the next profile load behind
+a 200 -- the request is fine and retrying is the answer.
 
 ## Command line utility (Deprecated)
 
