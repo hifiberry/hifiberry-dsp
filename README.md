@@ -39,6 +39,39 @@ Read the detailed documentation in [doc/restapi.md](/doc/restapi.md).
 
 **Note:** The REST API is the recommended interface for all new development. It provides a more modern, flexible, and powerful way to interact with the DSP.
 
+### Speaker presets
+
+A speaker preset describes one loudspeaker as four DSP channels -- a biquad
+bank, a role, a level, a delay and a polarity each. Applying one turns a bare
+four-channel amplifier into an active crossover for that speaker.
+
+Presets are read from `/usr/share/hifiberry/speaker-presets` (shipped by
+`hifiberry-dspprofiles`) and `/var/lib/hifiberry/speaker-presets` (local); a
+local preset shadows a shipped one of the same name. A preset is validated
+when it is read: a non-numeric or negative `level`/`delayMs`, or a
+non-boolean `invert`/`enabled`, is rejected there rather than surfacing later
+as an untyped error out of an apply. Fields that are simply absent stay
+legal.
+
+- `GET /presets` -- installed presets with compatibility against the loaded
+  profile, plus `current`, the applied preset for this profile
+- `GET /presets/<id>` -- one preset in full. 404 when no file has that id;
+  500 when a file exists but fails validation, so a hand-edited preset with
+  a typo reports its own error instead of quietly disappearing from the list.
+- `POST /presets/<id>/apply` -- write it to the DSP
+
+Applying validates everything before writing anything: the loaded profile
+must be the one the preset names, at least the version it names, at the same
+sample rate, with filter banks at least as large as the preset needs, and
+every channel's role must be one the loaded profile can express. Any of
+these failing is a 409 and writes nothing -- in particular, a role the
+profile has no name for is caught before the first bank is touched, not
+discovered partway through the write. The coefficients are computed for one
+sample rate, which is why a rate mismatch is refused rather than rescaled.
+A successful apply is recorded so the preset survives a reboot and a profile
+reload; if that record can't be written, the request reports a 500 rather
+than a silent 200.
+
 ## Command line utility (Deprecated)
 
 > **DEPRECATED:** The dsptoolkit command line interface is now considered deprecated. For new development, please use the REST API instead, which provides more functionality and better integration options.
