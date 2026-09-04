@@ -1,3 +1,19 @@
+hifiberry-dsp (1.5.2) stable; urgency=medium
+
+  * Add DELETE /presets/current: returns the four preset banks to genuinely
+    empty (a transparent biquad in every slot, bypass cleared) and forgets
+    the recorded selection, so the presets page stops showing the profile as
+    "Applied" and the crossover/EQ pages stop treating the banks as
+    preset-owned. Backs the WebUI's "Clear preset and edit freely" action.
+    Per-channel registers -- role, level, delay, invert -- are left alone:
+    clearing filters is not the same as re-routing the amplifier. Clearing
+    when nothing is applied is a 200 with cleared: null, not an error; a
+    missing profile checksum is a 503, same as apply; a selection that
+    cannot be forgotten in the settings store is a 500, not a silent
+    success.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 14:16:53 +0000
+
 hifiberry-dsp (1.5.1) stable; urgency=medium
 
   * Applying a speaker preset now clears the bypass state of the four
