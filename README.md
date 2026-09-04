@@ -59,6 +59,8 @@ legal.
   500 when a file exists but fails validation, so a hand-edited preset with
   a typo reports its own error instead of quietly disappearing from the list.
 - `POST /presets/<id>/apply` -- write it to the DSP
+- `DELETE /presets/current` -- return the four preset banks to genuinely
+  empty and forget the selection
 
 Applying validates everything before writing anything: the loaded profile
 must be the one the preset names, at least the version it names, at the same
@@ -74,6 +76,21 @@ than a silent 200. If the active profile's checksum cannot be read at all the
 apply is refused with a 503 before anything is written, because writes that
 cannot be filed under a profile would be lost at the next profile load behind
 a 200 -- the request is fine and retrying is the answer.
+
+Clearing writes a transparent biquad into every slot of all four `IIR_<A-D>`
+banks and clears each bank's bypass state -- the same whole-bank write an
+apply makes, minus the per-channel registers, which a clear does not touch
+at all: role, level, delay and invert are not filters, and resetting them as
+a side effect of "clear the filters" would silently re-route the amplifier,
+which is a worse surprise than leaving the channels as they were. It also
+forgets the recorded selection, so the presets page stops showing the
+profile as "Applied" and the crossover/EQ pages stop treating the (now
+transparent) banks as preset-owned and read-only. Clearing when no preset is
+recorded is not an error -- it answers `{"status": "success", "cleared":
+null}`, so a client can call it optimistically. As with apply, if the active
+profile's checksum cannot be read the request is refused with a 503 before
+anything is written, and a successful clear whose selection cannot be
+forgotten in the settings store reports a 500 rather than a silent 200.
 
 ## Command line utility (Deprecated)
 
