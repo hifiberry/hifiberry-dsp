@@ -2339,6 +2339,19 @@ def apply_speaker_preset(preset_id):
     try:
         with _dsp_write_lock:
             for bank_key, base_address, slots, channel_filters, register_writes in plan:
+                # store_filter() preserves an existing bypass flag rather than
+                # taking the caller's value, which is what /filters/bypass
+                # wants but not what an apply wants: a bank left bypassed by an
+                # A/B compare whose restore never landed would keep that flag
+                # through the apply, and the restore path would put a unity
+                # biquad in every slot of it at the next boot -- one channel
+                # flat and full-range into whatever driver it feeds while the
+                # others stay crossed over, appearing only after a reboot.
+                # Clearing the bank first is what makes the padding below true:
+                # nothing survives from whatever was applied before, bypass
+                # state included.
+                settings_store.set_filter_bank_bypass(checksum, bank_key, False)
+
                 # Write the bank whole. Slots the preset does not fill get a
                 # transparent biquad, so nothing survives from whatever was
                 # applied before.

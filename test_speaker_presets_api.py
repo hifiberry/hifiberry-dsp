@@ -216,6 +216,34 @@ class TestApplyPreset(PresetApiTestCase):
         self.assertIn("IIR_A_0", stored)
         self.assertIn("IIR_D_15", stored)
 
+    def test_clears_a_stale_bypass_flag_on_the_banks_it_writes(self):
+        """A/B compare bypasses IIR_A..D as whole banks and restores them
+        afterwards. If that restore never lands -- a dropped request, a tab
+        closed mid-press -- the store keeps 'bypassed': true for those slots.
+        store_filter() deliberately preserves an existing bypass flag, so
+        applying a preset would write the crossover to the DSP and leave the
+        stale flag in place: the speaker sounds right until the next boot,
+        when the restore path reads the flag and puts a unity biquad in every
+        slot of that bank. Channel A goes flat and full-range into whatever
+        driver it feeds while B, C and D stay crossed over."""
+        self.install(a_preset())
+        # A first apply is what puts the slots in the store at all; the
+        # bypass API only touches filters it can already see.
+        self.client.post('/presets/beovox-s35/apply')
+        for bank in ("IIR_A", "IIR_B", "IIR_C", "IIR_D"):
+            restapi.settings_store.set_filter_bank_bypass(CHECKSUM, bank, True)
+
+        response = self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(response.status_code, 200)
+
+        with open(self.store_path) as handle:
+            stored = json.load(handle)[CHECKSUM]["filters"]
+        # Every slot of every bank is recorded, not merely absent...
+        self.assertEqual(len(stored), 64)
+        # ...and none of them still carries the stale flag.
+        for key, entry in stored.items():
+            self.assertIs(entry["bypassed"], False, key)
+
     def test_writes_the_channel_registers(self):
         self.install(a_preset(role="mono"))
         response = self.client.post('/presets/beovox-s35/apply')
