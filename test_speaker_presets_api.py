@@ -435,5 +435,113 @@ class TestApplyPreset(PresetApiTestCase):
         self.assertIsInstance(stored[0], float)
 
 
+class TestClearPreset(PresetApiTestCase):
+
+    def test_clears_every_slot_of_every_bank_and_forgets_the_selection(self):
+        """A clear writes transparent to every slot of all four banks -- the
+        same whole-bank-at-a-time shape apply uses -- and forgets which
+        preset (if any) was applied."""
+        self.install(a_preset(filters=2))
+        self.client.post('/presets/beovox-s35/apply')
+        self.biquad_writes.clear()
+        self.biquads.clear()
+
+        response = self.client.delete('/presets/current')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["cleared"], "beovox-s35")
+        self.assertEqual(payload["banksCleared"], 4)
+        self.assertEqual(payload["filtersCleared"], 64)
+
+        expected = []
+        for key in ("IIR_A", "IIR_B", "IIR_C", "IIR_D"):
+            base, _ = BANKS[key]
+            expected.extend(base + i * 5 for i in range(16))
+        self.assertEqual(self.biquad_writes, expected)
+
+        for address in expected:
+            bq = self.biquads[address]
+            self.assertEqual(bq.a0, 1.0)
+            self.assertEqual(bq.a1, 0.0)
+            self.assertEqual(bq.a2, 0.0)
+            self.assertEqual(bq.b0, 1.0)
+            self.assertEqual(bq.b1, 0.0)
+            self.assertEqual(bq.b2, 0.0)
+
+        self.assertIsNone(restapi.settings_store.get_speaker_preset(CHECKSUM))
+
+    def test_the_stored_filters_read_back_as_transparent(self):
+        self.install(a_preset(filters=2))
+        self.client.post('/presets/beovox-s35/apply')
+
+        self.client.delete('/presets/current')
+
+        with open(self.store_path) as handle:
+            stored = json.load(handle)[CHECKSUM]["filters"]
+        self.assertEqual(len(stored), 64)
+        for key in ("IIR_A_0", "IIR_D_15"):
+            self.assertEqual(stored[key]["filter"], speaker_presets.TRANSPARENT)
+
+    def test_nothing_applied_is_success_with_a_null_cleared_and_writes_nothing(self):
+        """Clearing nothing is not an error -- the UI may call this
+        optimistically, without first checking whether a preset is applied."""
+        response = self.client.delete('/presets/current')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(),
+                         {"status": "success", "cleared": None})
+        self.assertEqual(self.biquad_writes, [])
+
+    def test_no_checksum_is_503_and_writes_nothing(self):
+        """Without a checksum the cleared selection cannot be recorded, so
+        the writes would be lost at the next profile load behind a 200."""
+        restapi.get_current_program_checksum_sha1 = lambda: None
+
+        response = self.client.delete('/presets/current')
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.biquad_writes, [])
+
+    def test_failed_selection_clear_is_500_not_a_false_success(self):
+        self.install(a_preset())
+        self.client.post('/presets/beovox-s35/apply')
+        restapi.settings_store.clear_speaker_preset = lambda checksum: False
+
+        response = self.client.delete('/presets/current')
+
+        self.assertEqual(response.status_code, 500)
+        self.assertNotEqual(response.get_json().get("status"), "success")
+
+    def test_leaves_the_channel_registers_alone(self):
+        """Clearing filters is not the same as re-routing the amplifier --
+        role, level, delay and invert must survive a clear untouched."""
+        self.install(a_preset(role="mono"))
+        self.client.post('/presets/beovox-s35/apply')
+        self.memory_writes.clear()
+
+        response = self.client.delete('/presets/current')
+
+        # Pinned so this test cannot pass vacuously by the route simply not
+        # existing yet (a 404/405 also writes no registers).
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.memory_writes, [])
+
+    def test_unparsable_bank_metadata_is_409_naming_the_bank_and_writes_nothing(self):
+        self.install(a_preset())
+        self.client.post('/presets/beovox-s35/apply')
+        self.biquad_writes.clear()
+        self.metadata["IIR_A"] = "0x2000/80"
+
+        response = self.client.delete('/presets/current')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("IIR_A", response.get_json()["error"])
+        self.assertEqual(self.biquad_writes, [])
+        self.assertEqual(
+            restapi.settings_store.get_speaker_preset(CHECKSUM), "beovox-s35")
+
+
 if __name__ == "__main__":
     unittest.main()

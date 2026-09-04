@@ -2396,6 +2396,92 @@ def apply_speaker_preset(preset_id):
         "registersWritten": registers})
 
 
+@app.route('/presets/current', methods=['DELETE'])
+def clear_speaker_preset():
+    """
+    API endpoint returning the four preset banks to genuinely empty.
+
+    Writes a transparent biquad into every slot of all four IIR_<A-D> banks
+    and clears each bank's bypass state -- the same whole-bank write apply
+    makes, minus the per-channel registers, which this route does not touch
+    at all. Deliberately: role, level, delay and invert are not filters, and
+    silently re-routing someone's amplifier as a side effect of "clear the
+    filters" would be a worse surprise than leaving the channels exactly as
+    they were.
+
+    Also forgets the recorded selection, so the presets page stops showing
+    this profile as "Applied" and the crossover/EQ pages stop treating the
+    (now transparent) banks as preset-owned and read-only.
+    """
+    checksum = get_current_program_checksum_sha1()
+    if not checksum:
+        # Same reasoning as apply: without a checksum the cleared selection
+        # cannot be recorded, so retrying is the right answer, not a 200
+        # that silently leaves the old selection in the store.
+        return jsonify({
+            "error": "Could not determine the active profile checksum; "
+                     "refusing to clear a preset that cannot be recorded"}), 503
+
+    current = settings_store.get_speaker_preset(checksum)
+    if not current:
+        # Clearing nothing is not an error -- the UI may call this
+        # optimistically, without first checking whether a preset is applied.
+        return jsonify({"status": "success", "cleared": None})
+
+    metadata = get_profile_metadata()
+
+    # Resolve every bank's geometry from the metadata snapshot taken above,
+    # before the lock, and decide everything before the first write -- same
+    # ordering discipline as apply, and for the same reason: re-resolving
+    # bank_geometry() from a fresh get_profile_metadata() call inside the
+    # lock could see a profile that changed between validation and writing,
+    # since _dsp_write_lock does not cover profile loading.
+    plan = []
+    for channel in speaker_presets.CHANNELS:
+        bank_key = "IIR_" + channel.upper()
+        geometry = speaker_presets.bank_geometry(metadata.get(bank_key))
+        if geometry is None:
+            return jsonify({
+                "error": f"Loaded profile has no usable filter bank {bank_key}"
+            }), 409
+        base_address, slots = geometry
+        plan.append((bank_key, base_address, slots))
+
+    sample_rate = get_or_guess_samplerate()
+    banks = filters_cleared = 0
+
+    try:
+        with _dsp_write_lock:
+            for bank_key, base_address, slots in plan:
+                # Clear a stale bypass flag first, same as apply: otherwise a
+                # bank left bypassed by an A/B compare whose restore never
+                # landed would keep that flag through the clear.
+                settings_store.set_filter_bank_bypass(checksum, bank_key, False)
+
+                for offset in range(slots):
+                    _write_one_biquad(base_address, offset,
+                                      speaker_presets.TRANSPARENT,
+                                      sample_rate, bank_key, checksum)
+                    filters_cleared += 1
+                banks += 1
+
+            if not settings_store.clear_speaker_preset(checksum):
+                # A selection that cannot be recorded is not a success --
+                # same rule apply follows for store_speaker_preset.
+                raise RuntimeError(
+                    f"cleared preset {current} from the DSP but failed to "
+                    "forget the selection")
+
+    except Exception as e:
+        logging.error(f"Error clearing speaker preset {current}: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+    logging.info("Cleared speaker preset %s", current)
+    return jsonify({
+        "status": "success", "cleared": current,
+        "banksCleared": banks, "filtersCleared": filters_cleared})
+
+
 def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):
     """
     Apply filter bypass state to the DSP hardware
