@@ -1,3 +1,24 @@
+hifiberry-dsp (1.5.1) stable; urgency=medium
+
+  * Applying a speaker preset now clears the bypass state of the four
+    filter banks it writes. The settings store deliberately preserves an
+    existing bypass flag when a filter is stored, which is what the A/B
+    compare on the crossover page needs but not what an apply needs: a bank
+    left bypassed by a compare whose restore never landed kept that flag
+    through the apply. The DSP was written correctly and the speaker sounded
+    right, but at the next boot the restore path read the stale flag and put
+    a unity biquad in every slot of that bank -- one channel flat and
+    full-range into its driver while the other three stayed crossed over,
+    appearing only after a reboot.
+  * GET /presets/<id> now carries filterCounts, the same per-channel filter
+    counts GET /presets carries, so a client does not have to fetch the
+    listing to learn what the document it already holds contains.
+  * GET /cache no longer counts _attributes as one of the profile's own
+    metadata keys; like _system it is synthesised rather than declared by
+    the profile.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 13:23:59 +0000
+
 hifiberry-dsp (1.5.0) stable; urgency=medium
 
   * Add speaker presets: GET /presets, GET /presets/<id> and
