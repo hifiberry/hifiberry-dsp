@@ -1462,6 +1462,38 @@ def _write_one_biquad(base_address, offset, filter_data, sample_rate, raw_addres
         }
 
 
+def _write_register(address, value, checksum):
+    """
+    Write one register and record it, matching POST /memory's value semantics.
+
+    The Python type of the value is what decides the encoding: a float is
+    converted to fixed point, an int is written as a raw memory word. A level
+    arriving as int 1 would be memory word 1 -- silence at full scale.
+
+    Args:
+        address (int): Memory address
+        value (float or int): The value, typed as above
+        checksum (str): Profile checksum to file the write under
+
+    Raises:
+        RuntimeError: the write reached the DSP but could not be recorded
+    """
+    with _dsp_write_lock:
+        if not Adau145x.is_valid_memory_address(address):
+            raise ValueError(f"Invalid memory address: {hex(address)}")
+
+        if isinstance(value, float):
+            int_value = Adau145x.decimal_repr(value)
+        else:
+            int_value = int(value)
+
+        Adau145x.write_memory(address, Adau145x.int_data(int_value, 4))
+
+        if not settings_store.store_memory_setting(checksum, str(address), [value]):
+            raise RuntimeError(
+                f"wrote register {address} to the DSP but failed to persist it")
+
+
 @app.route('/biquad', methods=['POST'])
 def set_biquad_filter():
     """
@@ -2234,6 +2266,85 @@ def get_speaker_preset(preset_id):
     payload["compatible"] = reason is None
     payload["incompatibleReason"] = reason
     return jsonify(payload)
+
+
+@app.route('/presets/<preset_id>/apply', methods=['POST'])
+def apply_speaker_preset(preset_id):
+    """
+    API endpoint applying a speaker preset to the loaded DSP profile.
+
+    Writes four biquad banks and sixteen per-channel registers under one lock.
+    Everything is validated before the first write, so an incompatible preset
+    costs nothing; an I/O failure part-way through still leaves the DSP partly
+    applied, and the response says how far it got.
+    """
+    try:
+        preset, _ = speaker_presets.get_preset(preset_id)
+    except speaker_presets.PresetNotFound as e:
+        return jsonify({"error": str(e)}), 404
+    except speaker_presets.PresetInvalid as e:
+        return jsonify({"error": str(e)}), 500
+
+    metadata = get_profile_metadata()
+    reason = speaker_presets.incompatibility_reason(preset, metadata)
+    if reason:
+        return jsonify({"error": reason, "incompatibleReason": reason}), 409
+
+    checksum = get_current_program_checksum_sha1()
+    if not checksum:
+        # Same reasoning as /filters/bank: without a checksum the writes go on
+        # the DSP and nowhere else, to be lost at the next profile load behind
+        # a 200. 503, because the request is fine and retrying is the answer.
+        return jsonify({
+            "error": "Could not determine the active profile checksum; "
+                     "refusing to apply a preset that cannot be recorded"}), 503
+
+    sample_rate = preset["sampleRate"]
+    banks = filters_written = registers = 0
+
+    try:
+        with _dsp_write_lock:
+            for channel in speaker_presets.CHANNELS:
+                settings = preset["channels"][channel]
+                bank_key = "IIR_" + channel.upper()
+
+                base_address, cells = resolve_bank_from_metadata(bank_key)
+                slots = cells // 5
+                channel_filters = settings["filters"]
+
+                # Write the bank whole. Slots the preset does not fill get a
+                # transparent biquad, so nothing survives from whatever was
+                # applied before.
+                for offset in range(slots):
+                    filter_data = (channel_filters[offset]
+                                   if offset < len(channel_filters)
+                                   else speaker_presets.TRANSPARENT)
+                    _write_one_biquad(base_address, offset, filter_data,
+                                      sample_rate, bank_key, checksum)
+                    filters_written += 1
+                banks += 1
+
+                for address, value in speaker_presets.channel_register_writes(
+                        channel, settings, metadata, sample_rate):
+                    _write_register(address, value, checksum)
+                    registers += 1
+
+            settings_store.store_speaker_preset(checksum, preset_id)
+
+    except speaker_presets.PresetInvalid as e:
+        return jsonify({"error": str(e)}), 409
+    except Exception as e:
+        logging.error(f"Error applying speaker preset {preset_id}: {str(e)}")
+        return jsonify({
+            "status": "partial", "error": str(e), "preset": preset_id,
+            "banksWritten": banks, "filtersWritten": filters_written,
+            "registersWritten": registers}), 500
+
+    logging.info("Applied speaker preset %s (%s)", preset_id, preset["name"])
+    return jsonify({
+        "status": "success", "preset": preset_id,
+        "banksWritten": banks, "filtersWritten": filters_written,
+        "registersWritten": registers})
 
 
 def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):

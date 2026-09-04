@@ -188,5 +188,117 @@ class TestGetPreset(PresetApiTestCase):
         self.assertIn("error", response.get_json())
 
 
+class TestApplyPreset(PresetApiTestCase):
+
+    def test_writes_every_slot_of_every_bank(self):
+        """A 16-slot bank is written whole -- the preset's filters, then
+        transparent biquads -- so no slot keeps a filter from the preset that
+        was applied before this one."""
+        self.install(a_preset(filters=2))
+
+        response = self.client.post('/presets/beovox-s35/apply')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["banksWritten"], 4)
+        self.assertEqual(payload["filtersWritten"], 64)
+
+        expected = []
+        for key in ("IIR_A", "IIR_B", "IIR_C", "IIR_D"):
+            base, _ = BANKS[key]
+            expected.extend(base + i * 5 for i in range(16))
+        self.assertEqual(self.biquad_writes, expected)
+
+    def test_persists_the_filters(self):
+        self.install(a_preset(filters=2))
+        self.client.post('/presets/beovox-s35/apply')
+
+        with open(self.store_path) as handle:
+            stored = json.load(handle)[CHECKSUM]["filters"]
+        self.assertIn("IIR_A_0", stored)
+        self.assertIn("IIR_D_15", stored)
+
+    def test_writes_the_channel_registers(self):
+        self.install(a_preset(role="mono"))
+        response = self.client.post('/presets/beovox-s35/apply')
+
+        self.assertEqual(response.get_json()["registersWritten"], 16)
+        addresses = [address for address, _ in self.memory_writes]
+        self.assertEqual(addresses[:4], [4861, 781, 786, 4867])
+
+    def test_role_reaches_the_register_as_the_profiles_own_index(self):
+        self.install(a_preset(role="mono"))
+        self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(
+            [value for address, value in self.memory_writes if address == 4861],
+            [2])
+
+    def test_unity_level_is_written_as_fixed_point_not_a_raw_word(self):
+        """An int 1 would be memory word 1 -- effectively silence. A level
+        must reach decimal_repr()."""
+        self.install(a_preset())
+        self.client.post('/presets/beovox-s35/apply')
+        level = [value for address, value in self.memory_writes if address == 781][0]
+        self.assertEqual(level, restapi.Adau145x.decimal_repr(1.0))
+        self.assertNotEqual(level, 1)
+
+    def test_records_the_selection(self):
+        self.install(a_preset())
+        self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(
+            restapi.settings_store.get_speaker_preset(CHECKSUM), "beovox-s35")
+
+    def test_unknown_preset_is_404(self):
+        self.assertEqual(
+            self.client.post('/presets/nosuch/apply').status_code, 404)
+
+    def test_incompatible_preset_is_409_and_writes_nothing(self):
+        self.install(a_preset(sample_rate=96000))
+        response = self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("96000", response.get_json()["incompatibleReason"])
+        self.assertEqual(self.biquad_writes, [])
+        self.assertEqual(self.memory_writes, [])
+
+    def test_wrong_profile_is_409(self):
+        self.metadata["programID"] = "dacdsp"
+        self.install(a_preset())
+        response = self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.biquad_writes, [])
+
+    def test_no_checksum_is_503_and_writes_nothing(self):
+        """Without a checksum the writes cannot be recorded, so they would be
+        lost at the next profile load behind a 200."""
+        self.install(a_preset())
+        restapi.get_current_program_checksum_sha1 = lambda: None
+        response = self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.biquad_writes, [])
+
+    def test_a_failed_write_reports_what_was_written(self):
+        self.install(a_preset())
+
+        def failing_write(address, bq):
+            self.biquad_writes.append(address)
+            if len(self.biquad_writes) > 20:
+                raise IOError("simulated SPI failure")
+
+        restapi.Adau145x.write_biquad = staticmethod(failing_write)
+
+        response = self.client.post('/presets/beovox-s35/apply')
+        self.assertEqual(response.status_code, 500)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["banksWritten"], 1)
+        self.assertIn("simulated SPI failure", payload["error"])
+
+    def test_a_user_preset_can_be_applied(self):
+        self.install(a_preset(preset_id="mine", name="Mine"), self.user_dir)
+        self.assertEqual(
+            self.client.post('/presets/mine/apply').status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()
