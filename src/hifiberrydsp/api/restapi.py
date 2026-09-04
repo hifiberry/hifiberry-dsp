@@ -237,10 +237,19 @@ def get_profile_metadata():
             return {"error": "DSP profile file not found or invalid"}
         
         # Extract metadata from XML
+        attributes = {}
         for k in xml_profile.get_meta_keys():
             logging.debug("Meta key: %s", k)
             metadata[k] = xml_profile.get_meta(k)
-        
+            attrs = xml_profile.get_meta_attributes(k)
+            if attrs:
+                attributes[k] = attrs
+
+        # Attributes carry how a register is meant to be used -- the role
+        # ordering on channelSelect*Register, the clamp on delay*Register.
+        # Nested under one key so no attribute can collide with a metadata key.
+        metadata["_attributes"] = attributes
+
         # Add system metadata
         metadata["_system"] = {
             "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
