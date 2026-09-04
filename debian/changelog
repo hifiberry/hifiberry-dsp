@@ -1,3 +1,63 @@
+hifiberry-dsp (1.4.1) stable; urgency=medium
+
+  * restapi: filters are stored under the checksum the daemon restores
+    them by, so they survive a reboot. get_current_program_checksum_sha1()
+    documents itself as length-based and is what every REST write path keys
+    the settings store with, but it called calculate_program_checksums()
+    without a mode and so got the signature-based default. Startup looks
+    the filters up by the length-based SHA-1. The two modes hash different
+    byte ranges of the same program and so produce different digests, so
+    every filter written through the API was filed where nothing would ever
+    look for it, and was silently gone at the next restart. Observed on a
+    Beocreate 4-Channel Amplifier: 64 filters in the store, and a boot log
+    reading "No stored settings found for checksum E9C0...".
+  * settings store: new migrate_checksum() moves a profile's settings from
+    one checksum to another. It refuses when the destination already has an
+    entry, empty one included: delete_filters() empties a profile but keeps
+    its key, and migrating over that would bring deleted filters back at the
+    next start. A write that could not be saved is reported as a failure
+    rather than logged as a move, since save_store() returns False instead
+    of raising and the caller would otherwise stop looking while the file
+    still held the settings where they were.
+  * sigmatcp: startup brings filters filed under an older checksum of the
+    running program under the one the restore uses, so settings written by
+    an affected version come back rather than staying stranded. Both older
+    keys are tried, the signature-based SHA-1 and the signature-based MD5 an
+    earlier version used; the first match wins and any other older entry is
+    left where it is, since nothing can tell which of two holds the newer
+    settings. A device whose store is already keyed correctly returns before
+    computing anything, so the steady state costs one store read and logs
+    nothing. Verified across a reboot: the same device that logged "No
+    stored settings found" now logs the recovery and applies the filters,
+    and a second start does not migrate again.
+  * restapi: a filter written just after the DSP program changed is stored
+    under the new program's checksum rather than the old one's. The helper
+    noticed the change and cleared this module's cache, but then asked for a
+    cached digest, and the cache inside Adau145x still held the previous
+    program's. Only a change asks for a fresh digest, not a cache that has
+    simply never been filled: an uncached read stops the core to read
+    program memory, about a third of a second of silence, which would
+    otherwise have been paid on the first filter change after every boot.
+    Note that the check behind this compares program length, so it is a
+    backstop rather than the main guard -- a replacement program of the same
+    length leaves the cache valid, and it is prepare_update() clearing both
+    caches that covers the upload paths.
+  * sigmatcp: the legacy-key recovery returns before computing anything when
+    the store holds nothing that could be migrated. Working that out costs
+    one store read; computing a signature-mode checksum does not, since it
+    is taken over program memory and stops the core to read it, and a device
+    that has never stored a filter would have paid that on every start and
+    after every profile install.
+  * adau145x: reset_safeload_detection() takes the bus lock. The probe holds
+    it while it reads and writes the recorded answer, across several
+    transactions and the poll, so a reset landing mid-probe was undone by
+    the answer for the program that had just been replaced. A stale
+    "supported" is the dangerous way round: that path neither verifies the
+    transfer nor restores the staging window, so it would have left filter
+    coefficients in seven cells of the new program's live data.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 11:05:00 +0000
+
 hifiberry-dsp (1.4.0) stable; urgency=medium
 
   * adau145x: filter coefficients written through Adau145x.write_biquad()
