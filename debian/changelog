@@ -1,3 +1,17 @@
+hifiberry-dsp (1.5.3) stable; urgency=medium
+
+  * Preset validation now rejects a filter that is not a JSON object, and a
+    coefficient that is not a number, as PresetInvalid. A filter given as a
+    bare value made the coefficient check raise TypeError, which
+    list_presets() does not catch: one hand-edited file in the user preset
+    directory took GET /presets down with a 500 and hid every bundled preset
+    -- the opposite of the "skip the bad file, keep the rest" rule the
+    listing is built around. Non-numeric coefficients passed validation
+    entirely and failed later inside the apply, partway through a whole-bank
+    write, leaving earlier banks applied behind a 500.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 07 Sep 2026 09:00:00 +0000
+
 hifiberry-dsp (1.5.2) stable; urgency=medium
 
   * Add DELETE /presets/current: returns the four preset banks to genuinely
