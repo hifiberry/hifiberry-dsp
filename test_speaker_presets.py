@@ -157,6 +157,27 @@ class TestValidation(PresetDirTestCase):
         self.write(self.system_dir, "test-speaker", preset)
         self.assertNotIn("test-speaker", speaker_presets.list_presets())
 
+    def test_a_filter_that_is_not_an_object_is_rejected(self):
+        # It has to be PresetInvalid rather than the TypeError the coefficient
+        # check used to raise: list_presets() only catches PresetInvalid, so
+        # anything else takes the whole listing down with it -- including the
+        # bundled presets in the system directory.
+        preset = a_preset()
+        preset["channels"]["a"]["filters"] = [5]
+        self.write(self.user_dir, "test-speaker", preset)
+        self.write(self.system_dir, "good", a_preset("good"))
+        presets = speaker_presets.list_presets()
+        self.assertNotIn("test-speaker", presets)
+        self.assertIn("good", presets)
+
+    def test_non_numeric_coefficient_is_rejected(self):
+        # Coefficients reach the DSP verbatim, and applying is a whole-bank
+        # write: caught here, or the float() fails partway through an apply.
+        preset = a_preset()
+        preset["channels"]["a"]["filters"][0]["b2"] = "nope"
+        self.write(self.system_dir, "test-speaker", preset)
+        self.assertNotIn("test-speaker", speaker_presets.list_presets())
+
     def test_non_numeric_delay_is_rejected(self):
         preset = a_preset()
         preset["channels"]["a"]["delayMs"] = "bad"

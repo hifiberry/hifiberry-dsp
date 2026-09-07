@@ -124,11 +124,32 @@ def validate(preset, preset_id):
         if not isinstance(settings.get("filters"), list):
             raise PresetInvalid(f"Channel {channel!r} has no filter list")
         for index, filter_data in enumerate(settings["filters"]):
+            # Everything below assumes a mapping. Without this, a filter that
+            # is a bare number makes the 'in' test raise TypeError, which
+            # list_presets() does not catch -- one hand-edited user file would
+            # take the whole listing down with it, which is precisely what
+            # skipping malformed files is meant to prevent.
+            if not isinstance(filter_data, dict):
+                raise PresetInvalid(
+                    f"Channel {channel!r} filter {index} is not an object")
+
             missing = [c for c in COEFFICIENTS if c not in filter_data]
             if missing:
                 raise PresetInvalid(
                     f"Channel {channel!r} filter {index} is missing "
                     f"{', '.join(missing)}")
+
+            # Coefficients are the one part of a preset that reaches the DSP
+            # verbatim. Present but unusable is worth catching here for the
+            # same reason level and delayMs are: applying is a whole-bank
+            # write, so a float() failing on the third bank leaves the first
+            # two applied behind a 500.
+            for coefficient in COEFFICIENTS:
+                value = filter_data[coefficient]
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise PresetInvalid(
+                        f"Channel {channel!r} filter {index} "
+                        f"{coefficient!r} must be a number")
 
 
 def load_preset_file(path, preset_id):
