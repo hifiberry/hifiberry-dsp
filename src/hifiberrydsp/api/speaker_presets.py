@@ -105,19 +105,31 @@ def validate(preset, preset_id):
         # when present they must be usable, or a hand-edited user preset
         # would pass here and only blow up with a bare ValueError the first
         # time something applies it.
+        #
+        # Absent and null are different, and the test is `not in` rather than
+        # a None check for exactly that reason. A key carrying null used to
+        # be skipped here as if it were missing, but the consumers do not
+        # skip it: settings.get(field, default) returns the null, not the
+        # default, because the key is present. level and delayMs then reached
+        # float(None) and threw TypeError out of an apply as a bare 500,
+        # and enabled=null read as falsy and muted the channel outright --
+        # a preset applied with one driver silent and nothing said about it.
         for field in ("level", "delayMs"):
-            value = settings.get(field)
-            if value is not None:
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    raise PresetInvalid(
-                        f"Channel {channel!r} {field!r} must be a number")
-                if value < 0:
-                    raise PresetInvalid(
-                        f"Channel {channel!r} {field!r} must not be negative")
+            if field not in settings:
+                continue
+            value = settings[field]
+            if value is None or isinstance(value, bool) \
+                    or not isinstance(value, (int, float)):
+                raise PresetInvalid(
+                    f"Channel {channel!r} {field!r} must be a number")
+            if value < 0:
+                raise PresetInvalid(
+                    f"Channel {channel!r} {field!r} must not be negative")
 
         for field in ("invert", "enabled"):
-            value = settings.get(field)
-            if value is not None and not isinstance(value, bool):
+            if field not in settings:
+                continue
+            if not isinstance(settings[field], bool):
                 raise PresetInvalid(
                     f"Channel {channel!r} {field!r} must be a boolean")
 
