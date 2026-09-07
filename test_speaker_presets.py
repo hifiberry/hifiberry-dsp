@@ -202,6 +202,20 @@ class TestValidation(PresetDirTestCase):
         self.write(self.system_dir, "test-speaker", preset)
         self.assertNotIn("test-speaker", speaker_presets.list_presets())
 
+    def test_an_explicit_null_optional_field_is_rejected(self):
+        # A key present with value null is not the same as an absent key.
+        # validate() skipped it as if it were absent, and the two consumers
+        # then disagreed about what that meant: level and delayMs reached
+        # float(None) and raised TypeError out of the apply as a bare 500,
+        # while enabled=null read as falsy and silently muted the channel --
+        # a preset applied with one driver dead and nothing said about it.
+        for field in ("level", "delayMs", "invert", "enabled"):
+            with self.subTest(field=field):
+                preset = a_preset()
+                preset["channels"]["a"][field] = None
+                self.write(self.system_dir, "test-speaker", preset)
+                self.assertNotIn("test-speaker", speaker_presets.list_presets())
+
     def test_a_channel_omitting_the_optional_fields_is_still_accepted(self):
         preset = a_preset()
         for field in ("level", "delayMs", "invert", "enabled"):
