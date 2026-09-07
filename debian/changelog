@@ -1,3 +1,18 @@
+hifiberry-dsp (1.5.4) stable; urgency=medium
+
+  * Preset validation now rejects an optional channel field carrying an
+    explicit null. Absent and null are not the same thing, but validate()
+    skipped a null as if the key were missing, while the consumers did not:
+    settings.get(field, default) returns the null rather than the default,
+    because the key is present. level and delayMs reached float(None) and
+    threw TypeError out of an apply as a bare 500 with no reason attached;
+    enabled read as falsy and muted the channel outright, applying the
+    preset with one driver silent and saying nothing about it. The write
+    happens after the whole plan is built, so neither case ever reached the
+    DSP half-applied.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 07 Sep 2026 11:20:00 +0000
+
 hifiberry-dsp (1.5.3) stable; urgency=medium
 
   * Preset validation now rejects a filter that is not a JSON object, and a
