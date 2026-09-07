@@ -265,7 +265,31 @@ class XmlProfile():
             t = metadata["@type"]
             if (t == name):
                 return metadata["#text"]
-            
+
+    def get_meta_attributes(self, name):
+        """
+        Get the XML attributes of a metadata element as a plain dict.
+
+        get_meta() returns the element text only, which hides everything a
+        register's attributes say about how to use it -- the role ordering in
+        channelSelect*Register's 'channels', the clamp in delay*Register's
+        'maxDelay'. The '@' prefix xmltodict adds is stripped; '@type' is the
+        key the caller looked up by and is not repeated in the result.
+
+        Args:
+            name (str): The metadata key
+
+        Returns:
+            dict: attribute name -> value, empty if the key has no attributes
+                  or does not exist
+        """
+        for metadata in self.doc["ROM"]["beometa"]["metadata"]:
+            if metadata["@type"] == name:
+                return {key[1:]: value
+                        for key, value in metadata.items()
+                        if key.startswith("@") and key != "@type"}
+        return {}
+
     def get_meta_keys(self):
         """
         Get a list of all metadata keys

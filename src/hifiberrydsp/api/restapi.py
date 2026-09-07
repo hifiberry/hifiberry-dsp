@@ -31,6 +31,7 @@ from flask import Flask, jsonify, request
 from hifiberrydsp.parser.xmlprofile import XmlProfile, get_default_dspprofile_path
 from hifiberrydsp.api.filters import Filter
 from hifiberrydsp.api.settings_store import SettingsStore
+from hifiberrydsp.api import speaker_presets
 from hifiberrydsp import __version__
 from waitress import serve
 from hifiberrydsp.hardware.adau145x import Adau145x
@@ -237,10 +238,19 @@ def get_profile_metadata():
             return {"error": "DSP profile file not found or invalid"}
         
         # Extract metadata from XML
+        attributes = {}
         for k in xml_profile.get_meta_keys():
             logging.debug("Meta key: %s", k)
             metadata[k] = xml_profile.get_meta(k)
-        
+            attrs = xml_profile.get_meta_attributes(k)
+            if attrs:
+                attributes[k] = attrs
+
+        # Attributes carry how a register is meant to be used -- the role
+        # ordering on channelSelect*Register, the clamp on delay*Register.
+        # Nested under one key so no attribute can collide with a metadata key.
+        metadata["_attributes"] = attributes
+
         # Add system metadata
         metadata["_system"] = {
             "profileName": xml_profile.get_meta("profileName") or "Unknown Profile",
@@ -1161,8 +1171,11 @@ def get_cache_status():
         # Add metadata key count if available
         if _xml_profile_cache["metadata"] is not None:
             try:
-                # Count non-system metadata keys
-                meta_count = len(_xml_profile_cache["metadata"]) - (1 if "_system" in _xml_profile_cache["metadata"] else 0)
+                # Count the profile's own metadata keys. "_system" and
+                # "_attributes" are both synthesised by get_profile_metadata()
+                # and are not keys the profile declares, so neither counts.
+                meta_count = len([key for key in _xml_profile_cache["metadata"]
+                                  if key not in ("_system", "_attributes")])
                 cache_info["metadata"]["keyCount"] = meta_count
 
                 # Add system metadata if available
@@ -1450,6 +1463,38 @@ def _write_one_biquad(base_address, offset, filter_data, sample_rate, raw_addres
             "address": hex(actual_address),
             "coefficients": {"a0": a0, "a1": a1, "a2": a2, "b0": b0, "b1": b1, "b2": b2},
         }
+
+
+def _write_register(address, value, checksum):
+    """
+    Write one register and record it, matching POST /memory's value semantics.
+
+    The Python type of the value is what decides the encoding: a float is
+    converted to fixed point, an int is written as a raw memory word. A level
+    arriving as int 1 would be memory word 1 -- silence at full scale.
+
+    Args:
+        address (int): Memory address
+        value (float or int): The value, typed as above
+        checksum (str): Profile checksum to file the write under
+
+    Raises:
+        RuntimeError: the write reached the DSP but could not be recorded
+    """
+    with _dsp_write_lock:
+        if not Adau145x.is_valid_memory_address(address):
+            raise ValueError(f"Invalid memory address: {hex(address)}")
+
+        if isinstance(value, float):
+            int_value = Adau145x.decimal_repr(value)
+        else:
+            int_value = int(value)
+
+        Adau145x.write_memory(address, Adau145x.int_data(int_value, 4))
+
+        if not settings_store.store_memory_setting(checksum, str(address), [value]):
+            raise RuntimeError(
+                f"wrote register {address} to the DSP but failed to persist it")
 
 
 @app.route('/biquad', methods=['POST'])
@@ -2176,6 +2221,265 @@ def toggle_filter_bypass():
     except Exception as e:
         logging.error(f"Error toggling filter bypass: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/presets', methods=['GET'])
+def list_speaker_presets():
+    """
+    API endpoint listing the installed speaker presets.
+
+    Compatibility is evaluated here rather than left to the client: whether a
+    preset can be applied depends on the loaded DSP profile, which the server
+    is the one holding.
+    """
+    try:
+        metadata = get_profile_metadata()
+        presets = speaker_presets.list_presets()
+
+        current = None
+        checksum = get_current_program_checksum_sha1()
+        if checksum:
+            current = settings_store.get_speaker_preset(checksum)
+
+        return jsonify({
+            "presets": [speaker_presets.summary(preset, read_only, metadata)
+                        for _, (preset, read_only) in sorted(presets.items())],
+            "current": current,
+        })
+    except Exception as e:
+        logging.error(f"Error listing speaker presets: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/presets/<preset_id>', methods=['GET'])
+def get_speaker_preset(preset_id):
+    """API endpoint returning one speaker preset in full."""
+    try:
+        preset, read_only = speaker_presets.get_preset(preset_id)
+    except speaker_presets.PresetNotFound as e:
+        return jsonify({"error": str(e)}), 404
+    except speaker_presets.PresetInvalid as e:
+        return jsonify({"error": str(e)}), 500
+
+    metadata = get_profile_metadata()
+    reason = speaker_presets.incompatibility_reason(preset, metadata)
+
+    payload = dict(preset)
+    payload["readOnly"] = read_only
+    # The same per-channel counts the listing carries. A client typed against
+    # the listing entry reads this field here too, and it is cheap to compute
+    # from a document already in hand.
+    payload["filterCounts"] = {
+        c: len(preset["channels"][c]["filters"])
+        for c in speaker_presets.CHANNELS}
+    payload["compatible"] = reason is None
+    payload["incompatibleReason"] = reason
+    return jsonify(payload)
+
+
+@app.route('/presets/<preset_id>/apply', methods=['POST'])
+def apply_speaker_preset(preset_id):
+    """
+    API endpoint applying a speaker preset to the loaded DSP profile.
+
+    Writes four biquad banks and sixteen per-channel registers under one lock.
+    Everything is validated before the first write, so an incompatible preset
+    costs nothing; an I/O failure part-way through still leaves the DSP partly
+    applied, and the response says how far it got.
+    """
+    try:
+        preset, _ = speaker_presets.get_preset(preset_id)
+    except speaker_presets.PresetNotFound as e:
+        return jsonify({"error": str(e)}), 404
+    except speaker_presets.PresetInvalid as e:
+        return jsonify({"error": str(e)}), 500
+
+    metadata = get_profile_metadata()
+    reason = speaker_presets.incompatibility_reason(preset, metadata)
+    if reason:
+        return jsonify({"error": reason, "incompatibleReason": reason}), 409
+
+    checksum = get_current_program_checksum_sha1()
+    if not checksum:
+        # Same reasoning as /filters/bank: without a checksum the writes go on
+        # the DSP and nowhere else, to be lost at the next profile load behind
+        # a 200. 503, because the request is fine and retrying is the answer.
+        return jsonify({
+            "error": "Could not determine the active profile checksum; "
+                     "refusing to apply a preset that cannot be recorded"}), 503
+
+    sample_rate = preset["sampleRate"]
+
+    # Decide everything before touching hardware. incompatibility_reason()
+    # above does not check whether the profile can express each channel's
+    # role -- channel_register_writes() is the only thing that knows that --
+    # so it has to be called here, for every channel, before the first write.
+    # Raising PresetInvalid mid-loop (as a straight per-channel call would)
+    # would leave earlier channels already written behind a 409 that claims
+    # nothing happened. Bank geometry is read from the metadata already
+    # captured above rather than re-resolved inside the loop: re-resolving
+    # would re-read get_profile_metadata(), which a concurrent profile change
+    # can repopulate between validation and writing -- _dsp_write_lock does
+    # not cover profile loading -- so coefficients validated against the old
+    # profile could be written against banks resolved from a new one.
+    plan = []
+    try:
+        for channel in speaker_presets.CHANNELS:
+            settings = preset["channels"][channel]
+            bank_key = "IIR_" + channel.upper()
+
+            geometry = speaker_presets.bank_geometry(metadata.get(bank_key))
+            if geometry is None:
+                raise speaker_presets.PresetInvalid(
+                    f"Loaded profile has no usable filter bank {bank_key}")
+            base_address, slots = geometry
+
+            register_writes = speaker_presets.channel_register_writes(
+                channel, settings, metadata, sample_rate)
+
+            plan.append((bank_key, base_address, slots, settings["filters"],
+                        register_writes))
+    except speaker_presets.PresetInvalid as e:
+        reason = str(e)
+        return jsonify({"error": reason, "incompatibleReason": reason}), 409
+
+    banks = filters_written = registers = 0
+
+    try:
+        with _dsp_write_lock:
+            for bank_key, base_address, slots, channel_filters, register_writes in plan:
+                # store_filter() preserves an existing bypass flag rather than
+                # taking the caller's value, which is what /filters/bypass
+                # wants but not what an apply wants: a bank left bypassed by an
+                # A/B compare whose restore never landed would keep that flag
+                # through the apply, and the restore path would put a unity
+                # biquad in every slot of it at the next boot -- one channel
+                # flat and full-range into whatever driver it feeds while the
+                # others stay crossed over, appearing only after a reboot.
+                # Clearing the bank first is what makes the padding below true:
+                # nothing survives from whatever was applied before, bypass
+                # state included.
+                settings_store.set_filter_bank_bypass(checksum, bank_key, False)
+
+                # Write the bank whole. Slots the preset does not fill get a
+                # transparent biquad, so nothing survives from whatever was
+                # applied before.
+                for offset in range(slots):
+                    filter_data = (channel_filters[offset]
+                                   if offset < len(channel_filters)
+                                   else speaker_presets.TRANSPARENT)
+                    _write_one_biquad(base_address, offset, filter_data,
+                                      sample_rate, bank_key, checksum)
+                    filters_written += 1
+                banks += 1
+
+                for address, value in register_writes:
+                    _write_register(address, value, checksum)
+                    registers += 1
+
+            if not settings_store.store_speaker_preset(checksum, preset_id):
+                raise RuntimeError(
+                    f"wrote preset {preset_id} to the DSP but failed to "
+                    "persist the selection")
+
+    except Exception as e:
+        logging.error(f"Error applying speaker preset {preset_id}: {str(e)}")
+        return jsonify({
+            "status": "partial", "error": str(e), "preset": preset_id,
+            "banksWritten": banks, "filtersWritten": filters_written,
+            "registersWritten": registers}), 500
+
+    logging.info("Applied speaker preset %s (%s)", preset_id, preset["name"])
+    return jsonify({
+        "status": "success", "preset": preset_id,
+        "banksWritten": banks, "filtersWritten": filters_written,
+        "registersWritten": registers})
+
+
+@app.route('/presets/current', methods=['DELETE'])
+def clear_speaker_preset():
+    """
+    API endpoint returning the four preset banks to genuinely empty.
+
+    Writes a transparent biquad into every slot of all four IIR_<A-D> banks
+    and clears each bank's bypass state -- the same whole-bank write apply
+    makes, minus the per-channel registers, which this route does not touch
+    at all. Deliberately: role, level, delay and invert are not filters, and
+    silently re-routing someone's amplifier as a side effect of "clear the
+    filters" would be a worse surprise than leaving the channels exactly as
+    they were.
+
+    Also forgets the recorded selection, so the presets page stops showing
+    this profile as "Applied" and the crossover/EQ pages stop treating the
+    (now transparent) banks as preset-owned and read-only.
+    """
+    checksum = get_current_program_checksum_sha1()
+    if not checksum:
+        # Same reasoning as apply: without a checksum the cleared selection
+        # cannot be recorded, so retrying is the right answer, not a 200
+        # that silently leaves the old selection in the store.
+        return jsonify({
+            "error": "Could not determine the active profile checksum; "
+                     "refusing to clear a preset that cannot be recorded"}), 503
+
+    current = settings_store.get_speaker_preset(checksum)
+    if not current:
+        # Clearing nothing is not an error -- the UI may call this
+        # optimistically, without first checking whether a preset is applied.
+        return jsonify({"status": "success", "cleared": None})
+
+    metadata = get_profile_metadata()
+
+    # Resolve every bank's geometry from the metadata snapshot taken above,
+    # before the lock, and decide everything before the first write -- same
+    # ordering discipline as apply, and for the same reason: re-resolving
+    # bank_geometry() from a fresh get_profile_metadata() call inside the
+    # lock could see a profile that changed between validation and writing,
+    # since _dsp_write_lock does not cover profile loading.
+    plan = []
+    for channel in speaker_presets.CHANNELS:
+        bank_key = "IIR_" + channel.upper()
+        geometry = speaker_presets.bank_geometry(metadata.get(bank_key))
+        if geometry is None:
+            return jsonify({
+                "error": f"Loaded profile has no usable filter bank {bank_key}"
+            }), 409
+        base_address, slots = geometry
+        plan.append((bank_key, base_address, slots))
+
+    sample_rate = get_or_guess_samplerate()
+    banks = filters_cleared = 0
+
+    try:
+        with _dsp_write_lock:
+            for bank_key, base_address, slots in plan:
+                # Clear a stale bypass flag first, same as apply: otherwise a
+                # bank left bypassed by an A/B compare whose restore never
+                # landed would keep that flag through the clear.
+                settings_store.set_filter_bank_bypass(checksum, bank_key, False)
+
+                for offset in range(slots):
+                    _write_one_biquad(base_address, offset,
+                                      speaker_presets.TRANSPARENT,
+                                      sample_rate, bank_key, checksum)
+                    filters_cleared += 1
+                banks += 1
+
+            if not settings_store.clear_speaker_preset(checksum):
+                # A selection that cannot be recorded is not a success --
+                # same rule apply follows for store_speaker_preset.
+                raise RuntimeError(
+                    f"cleared preset {current} from the DSP but failed to "
+                    "forget the selection")
+
+    except Exception as e:
+        logging.error(f"Error clearing speaker preset {current}: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+    logging.info("Cleared speaker preset %s", current)
+    return jsonify({
+        "status": "success", "cleared": current,
+        "banksCleared": banks, "filtersCleared": filters_cleared})
 
 
 def apply_filter_bypass_to_dsp(checksum, address, offset, bypassed):

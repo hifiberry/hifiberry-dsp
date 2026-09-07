@@ -35,6 +35,8 @@ import fcntl
 MUTATING_METHODS = (
     "store_filter",
     "store_memory_setting",
+    "store_speaker_preset",
+    "clear_speaker_preset",
     "set_filter_bypass",
     "toggle_filter_bypass",
     "set_filter_bank_bypass",
@@ -198,6 +200,15 @@ class SettingsStore:
                                     new_timestamp = mem_data.get("timestamp", 0)
                                     if new_timestamp > existing_timestamp:
                                         normalized_data[normalized_checksum]["memory"][mem_key] = mem_data
+
+                        # Merge the speaker preset selection
+                        incoming = profile_data.get("speakerPreset")
+                        if incoming:
+                            existing = normalized_data[normalized_checksum].get(
+                                "speakerPreset")
+                            if not existing or \
+                                    incoming.get("timestamp", 0) > existing.get("timestamp", 0):
+                                normalized_data[normalized_checksum]["speakerPreset"] = incoming
                     else:
                         normalized_data[normalized_checksum] = profile_data
                 
@@ -556,7 +567,87 @@ class SettingsStore:
         except Exception as e:
             logging.error(f"Error storing memory setting: {str(e)}")
             return False
-    
+
+    def store_speaker_preset(self, checksum, preset_id):
+        """
+        Record which speaker preset is applied to a profile.
+
+        Scoped by profile checksum like the filters it writes: load a
+        different DSP program and the preset genuinely no longer applies.
+
+        Args:
+            checksum (str): DSP profile checksum
+            preset_id (str): The applied preset's id
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            checksum = self.normalize_checksum(checksum)
+
+            with self._file_lock():
+                store = self.load_store()
+
+                if checksum not in store:
+                    store[checksum] = {"filters": {}, "memory": {}}
+
+                store[checksum]["speakerPreset"] = {
+                    "id": preset_id,
+                    "timestamp": time.time(),
+                }
+
+                return self.save_store(store)
+        except Exception as e:
+            logging.error(f"Error storing speaker preset: {str(e)}")
+            return False
+
+    def get_speaker_preset(self, checksum):
+        """
+        The speaker preset applied to a profile, or None.
+
+        Args:
+            checksum (str): DSP profile checksum
+
+        Returns:
+            str or None: The preset id
+        """
+        try:
+            checksum = self.normalize_checksum(checksum)
+            entry = self.load_store().get(checksum, {}).get("speakerPreset")
+            return entry.get("id") if entry else None
+        except Exception as e:
+            logging.error(f"Error reading speaker preset: {str(e)}")
+            return None
+
+    def clear_speaker_preset(self, checksum):
+        """
+        Forget which speaker preset (if any) is applied to a profile.
+
+        Companion to store_speaker_preset: removes the 'speakerPreset' key
+        when present. A profile with no recorded selection is left as-is
+        rather than treated as an error -- the caller decides whether
+        "nothing to clear" is worth a distinct response.
+
+        Args:
+            checksum (str): DSP profile checksum
+
+        Returns:
+            bool: True if the store was saved successfully
+        """
+        try:
+            checksum = self.normalize_checksum(checksum)
+
+            with self._file_lock():
+                store = self.load_store()
+
+                if checksum in store:
+                    store[checksum].pop("speakerPreset", None)
+
+                return self.save_store(store)
+        except Exception as e:
+            logging.error(f"Error clearing speaker preset: {str(e)}")
+            return False
+
     def get_filters(self, checksum=None, group_by_bank=False):
         """
         Get stored filters, optionally filtered by checksum

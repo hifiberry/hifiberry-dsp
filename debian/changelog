@@ -1,3 +1,89 @@
+hifiberry-dsp (1.5.3) stable; urgency=medium
+
+  * Preset validation now rejects a filter that is not a JSON object, and a
+    coefficient that is not a number, as PresetInvalid. A filter given as a
+    bare value made the coefficient check raise TypeError, which
+    list_presets() does not catch: one hand-edited file in the user preset
+    directory took GET /presets down with a 500 and hid every bundled preset
+    -- the opposite of the "skip the bad file, keep the rest" rule the
+    listing is built around. Non-numeric coefficients passed validation
+    entirely and failed later inside the apply, partway through a whole-bank
+    write, leaving earlier banks applied behind a 500.
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 07 Sep 2026 09:00:00 +0000
+
+hifiberry-dsp (1.5.2) stable; urgency=medium
+
+  * Add DELETE /presets/current: returns the four preset banks to genuinely
+    empty (a transparent biquad in every slot, bypass cleared) and forgets
+    the recorded selection, so the presets page stops showing the profile as
+    "Applied" and the crossover/EQ pages stop treating the banks as
+    preset-owned. Backs the WebUI's "Clear preset and edit freely" action.
+    Per-channel registers -- role, level, delay, invert -- are left alone:
+    clearing filters is not the same as re-routing the amplifier. Clearing
+    when nothing is applied is a 200 with cleared: null, not an error; a
+    missing profile checksum is a 503, same as apply; a selection that
+    cannot be forgotten in the settings store is a 500, not a silent
+    success.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 14:16:53 +0000
+
+hifiberry-dsp (1.5.1) stable; urgency=medium
+
+  * Applying a speaker preset now clears the bypass state of the four
+    filter banks it writes. The settings store deliberately preserves an
+    existing bypass flag when a filter is stored, which is what the A/B
+    compare on the crossover page needs but not what an apply needs: a bank
+    left bypassed by a compare whose restore never landed kept that flag
+    through the apply. The DSP was written correctly and the speaker sounded
+    right, but at the next boot the restore path read the stale flag and put
+    a unity biquad in every slot of that bank -- one channel flat and
+    full-range into its driver while the other three stayed crossed over,
+    appearing only after a reboot.
+  * GET /presets/<id> now carries filterCounts, the same per-channel filter
+    counts GET /presets carries, so a client does not have to fetch the
+    listing to learn what the document it already holds contains.
+  * GET /cache no longer counts _attributes as one of the profile's own
+    metadata keys; like _system it is synthesised rather than declared by
+    the profile.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 13:23:59 +0000
+
+hifiberry-dsp (1.5.0) stable; urgency=medium
+
+  * Add speaker presets: GET /presets, GET /presets/<id> and
+    POST /presets/<id>/apply. A preset describes a loudspeaker as four DSP
+    channels and is applied as a unit -- four biquad banks and sixteen
+    per-channel registers under one lock, recorded in the settings store so
+    it survives a reboot and a profile reload. Presets are read from
+    /usr/share/hifiberry/speaker-presets and
+    /var/lib/hifiberry/speaker-presets, a local preset shadowing a shipped
+    one of the same name.
+  * Applying validates the loaded profile and every channel's role before
+    writing anything: program id, version, sample rate, bank sizes, and
+    whether the profile can express each channel's requested role. Any
+    mismatch is a 409 that writes nothing. The role check used to run inside
+    the write loop, so a role the profile could not express left the
+    amplifier crossed over for two different speakers behind a response that
+    claimed nothing had happened; it is now decided up front, for every
+    channel, before the first write. The sample rate check matters because
+    preset coefficients are computed for one rate and cannot be moved to
+    another by writing them somewhere else.
+  * A preset apply that reaches the DSP but fails to record which preset is
+    now active reports a 500 instead of a silent 200.
+  * GET /presets/<id> now tells a missing preset (404) apart from one that
+    exists but fails validation (500), so a hand-written preset with a typo
+    reports its own error instead of vanishing from the listing.
+  * Preset files are validated when read: a non-numeric or negative
+    level/delayMs, or a non-boolean invert/enabled, is rejected up front
+    instead of failing later with an untyped error. Fields left out of a
+    channel remain legal.
+  * GET /metadata now reports an _attributes map, exposing XML attributes
+    that were previously unreachable -- the role ordering on
+    channelSelect*Register and the clamp on delay*Register.
+
+ -- HiFiBerry <support@hifiberry.com>  Fri, 04 Sep 2026 12:37:30 +0000
+
 hifiberry-dsp (1.4.1) stable; urgency=medium
 
   * restapi: filters are stored under the checksum the daemon restores

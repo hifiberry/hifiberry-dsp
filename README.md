@@ -39,6 +39,59 @@ Read the detailed documentation in [doc/restapi.md](/doc/restapi.md).
 
 **Note:** The REST API is the recommended interface for all new development. It provides a more modern, flexible, and powerful way to interact with the DSP.
 
+### Speaker presets
+
+A speaker preset describes one loudspeaker as four DSP channels -- a biquad
+bank, a role, a level, a delay and a polarity each. Applying one turns a bare
+four-channel amplifier into an active crossover for that speaker.
+
+Presets are read from `/usr/share/hifiberry/speaker-presets` (shipped by
+`hifiberry-dspprofiles`) and `/var/lib/hifiberry/speaker-presets` (local); a
+local preset shadows a shipped one of the same name. A preset is validated
+when it is read: a non-numeric or negative `level`/`delayMs`, or a
+non-boolean `invert`/`enabled`, is rejected there rather than surfacing later
+as an untyped error out of an apply. Fields that are simply absent stay
+legal.
+
+- `GET /presets` -- installed presets with compatibility against the loaded
+  profile, plus `current`, the applied preset for this profile
+- `GET /presets/<id>` -- one preset in full. 404 when no file has that id;
+  500 when a file exists but fails validation, so a hand-edited preset with
+  a typo reports its own error instead of quietly disappearing from the list.
+- `POST /presets/<id>/apply` -- write it to the DSP
+- `DELETE /presets/current` -- return the four preset banks to genuinely
+  empty and forget the selection
+
+Applying validates everything before writing anything: the loaded profile
+must be the one the preset names, at least the version it names, at the same
+sample rate, with filter banks at least as large as the preset needs, and
+every channel's role must be one the loaded profile can express. Any of
+these failing is a 409 and writes nothing -- in particular, a role the
+profile has no name for is caught before the first bank is touched, not
+discovered partway through the write. The coefficients are computed for one
+sample rate, which is why a rate mismatch is refused rather than rescaled.
+A successful apply is recorded so the preset survives a reboot and a profile
+reload; if that record can't be written, the request reports a 500 rather
+than a silent 200. If the active profile's checksum cannot be read at all the
+apply is refused with a 503 before anything is written, because writes that
+cannot be filed under a profile would be lost at the next profile load behind
+a 200 -- the request is fine and retrying is the answer.
+
+Clearing writes a transparent biquad into every slot of all four `IIR_<A-D>`
+banks and clears each bank's bypass state -- the same whole-bank write an
+apply makes, minus the per-channel registers, which a clear does not touch
+at all: role, level, delay and invert are not filters, and resetting them as
+a side effect of "clear the filters" would silently re-route the amplifier,
+which is a worse surprise than leaving the channels as they were. It also
+forgets the recorded selection, so the presets page stops showing the
+profile as "Applied" and the crossover/EQ pages stop treating the (now
+transparent) banks as preset-owned and read-only. Clearing when no preset is
+recorded is not an error -- it answers `{"status": "success", "cleared":
+null}`, so a client can call it optimistically. As with apply, if the active
+profile's checksum cannot be read the request is refused with a 503 before
+anything is written, and a successful clear whose selection cannot be
+forgotten in the settings store reports a 500 rather than a silent 200.
+
 ## Command line utility (Deprecated)
 
 > **DEPRECATED:** The dsptoolkit command line interface is now considered deprecated. For new development, please use the REST API instead, which provides more functionality and better integration options.
