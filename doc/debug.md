@@ -6,12 +6,15 @@ To enable debug logging of all DSP memory writes (including REST API and SigmaSt
 
 1. Edit the configuration file:
    ```bash
-   sudo nano /etc/default/sigmatcpserver
+   sudo systemctl edit sigmatcpserver
    ```
 
-2. Uncomment the DEBUG_OPTIONS line:
-   ```bash
-   DEBUG_OPTIONS="--debug"
+2. Add these lines on top:
+   ```ini
+   [Service]
+   ExecStart=
+   ExecStart=sigmatcpserver --localhost --enable-rest --alsa --disable-tcp --debug
+
    ```
 
 3. Restart the service:
@@ -49,7 +52,7 @@ Debug logging captures all DSP memory writes regardless of the source:
 
 ## Available Options
 
-You can also add other options in `/etc/default/sigmatcpserver`:
+You can also add other options:
 
 - `--debug` - Log all DSP memory writes
 - `--verbose` - Enable verbose logging  
@@ -61,10 +64,13 @@ You can also add other options in `/etc/default/sigmatcpserver`:
 
 To disable debug logging:
 
-1. Edit `/etc/default/sigmatcpserver`
-2. Comment out or remove the DEBUG_OPTIONS line:
+1. Remove the override:
    ```bash
-   #DEBUG_OPTIONS="--debug"
+   sudo rm /etc/systemd/system/sigmatcpserver.service.d/override.conf
+   ```
+2. Reload the unit:
+   ```bash
+   sudo systemctl daemon-reload
    ```
 3. Restart the service:
    ```bash
