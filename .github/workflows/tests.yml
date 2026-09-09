@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # HiFiBerryOS is Debian trixie, which ships Python 3.13 - that is
+          # the interpreter this package actually runs under on device.
+          python-version: '3.13'
+
+      # setup.py's install_requires also lists spidev and pyalsaaudio, but
+      # those are only ever imported lazily, behind checks that skip the
+      # import while running under pytest (see conftest.py's
+      # `_called_from_test` flag and hardware/spi.py, alsa/alsasync.py).
+      # pyalsaaudio additionally needs libasound2-dev to build, and neither
+      # package is reachable from a runner with no DSP hardware attached, so
+      # we install only what the test suite itself imports rather than
+      # `pip install -r` against setup.py's full dependency list.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests flask waitress xmltodict
+
+      # The suite lives partly at the repo root (test_*.py) and partly under
+      # src/hifiberrydsp (*_test.py, lg/test_soundsync.py); nothing installs
+      # the package, so src/ has to be on PYTHONPATH for the imports in both
+      # halves to resolve.
+      - name: Run tests
+        run: |
+          PYTHONPATH=src python -m pytest -v
