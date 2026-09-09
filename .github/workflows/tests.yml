@@ -34,14 +34,6 @@ jobs:
       # src/hifiberrydsp (*_test.py, lg/test_soundsync.py); nothing installs
       # the package, so src/ has to be on PYTHONPATH for the imports in both
       # halves to resolve.
-      #
-      # test_autoload_filters.py is excluded: it imports
-      # hifiberrydsp.api.filter_store.FilterStore, a module that no longer
-      # exists after filter storage was folded into
-      # hifiberrydsp.api.settings_store.SettingsStore (commit b4835e8). The
-      # test file was never updated for that rename, so it fails to collect
-      # on any environment, not just CI - this is a pre-existing bug in the
-      # test file, tracked separately, not a runner limitation.
       - name: Run tests
         run: |
-          PYTHONPATH=src python -m pytest -v --ignore=test_autoload_filters.py
+          PYTHONPATH=src python -m pytest -v
