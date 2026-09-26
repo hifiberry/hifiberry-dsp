@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "configure" ]; then
+	# Up to 1.5.4 the service was installed into multi-user.target and
+	# crash-looped wherever SPI was disabled. It now belongs to
+	# dev-spidev0.0.device, but on an upgrade deb-systemd-helper only adds
+	# a new link when one of the unit's current links already exists, so
+	# the old link would stay and the new one would never be made. Where
+	# the unit was enabled, drop the helper's record of it (and the old
+	# link with it); the debhelper snippet below then enables it the way
+	# it does on a first install. A unit the admin disabled stays disabled.
+	old=/etc/systemd/system/multi-user.target.wants/sigmatcpserver.service
+	if dpkg --compare-versions "$2" lt-nl 1.5.5 && [ -L "$old" ]; then
+		deb-systemd-helper purge sigmatcpserver.service >/dev/null || true
+	fi
+fi
+
+#DEBHELPER#
+
+exit 0
