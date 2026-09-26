@@ -1,6 +1,19 @@
 [Unit]
 Description=HiFiBerry DSP TCP/REST API service
-After=network.target
+# The server talks to the chip over /dev/spidev0.0 and cannot do anything
+# without it. The service is installed into the device instead of into
+# multi-user.target, so it starts when the SPI device appears, and on a
+# system with SPI disabled it is never started at all, rather than failing
+# on the open() and being restarted every few seconds by Restart=on-failure.
+# dev-spidev0.0.device only exists because the package's udev rule tags
+# the node for systemd; the stock rules do not.
+#
+# Anything else that pulls the service in (config-detect Wants= it, the
+# package scripts restart it) is skipped quietly by the condition when the
+# node is not there. Requisite= would log a failed dependency on every
+# boot instead, and BindsTo= would wait 90 s for a device that never comes.
+ConditionPathExists=/dev/spidev0.0
+After=dev-spidev0.0.device network.target
 
 [Service]
 # --store: dump DSP data memory on graceful shutdown
@@ -19,4 +32,4 @@ Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=dev-spidev0.0.device

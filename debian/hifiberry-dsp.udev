@@ -1,0 +1,3 @@
+# Give the SPI device a systemd device unit, dev-spidev0.0.device, which
+# sigmatcpserver.service is installed into.
+SUBSYSTEM=="spidev", KERNEL=="spidev0.0", TAG+="systemd"
