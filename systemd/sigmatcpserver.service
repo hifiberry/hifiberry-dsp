@@ -20,7 +20,12 @@ After=dev-spidev0.0.device network.target
 # --restore: re-apply that dump on next start so volume/EQ/etc survive
 #            a reboot. On a fresh install with no saved snapshot,
 #            --restore logs "no saved data found" and continues.
-ExecStart=sigmatcpserver --localhost --enable-rest --alsa --disable-tcp --store --restore
+#
+# Extra options, e.g. --debug, go into SIGMATCP_OPTS in
+# /etc/default/sigmatcpserver. No such file is shipped; the leading "-"
+# makes it optional, and an unset variable adds no argument.
+EnvironmentFile=-/etc/default/sigmatcpserver
+ExecStart=sigmatcpserver --localhost --enable-rest --alsa --disable-tcp --store --restore $SIGMATCP_OPTS
 
 # The store path is in a `except KeyboardInterrupt` block, which Python
 # only raises for SIGINT (not the default SIGTERM systemd would send),

@@ -4,20 +4,27 @@
 
 To enable debug logging of all DSP memory writes (including REST API and SigmaStudio TCP server):
 
-1. Edit the configuration file:
+1. Create `/etc/default/sigmatcpserver` with the extra option:
    ```bash
-   sudo nano /etc/default/sigmatcpserver
+   echo 'SIGMATCP_OPTS="--debug"' | sudo tee /etc/default/sigmatcpserver
    ```
 
-2. Uncomment the DEBUG_OPTIONS line:
-   ```bash
-   DEBUG_OPTIONS="--debug"
-   ```
-
-3. Restart the service:
+2. Restart the service:
    ```bash
    sudo systemctl restart sigmatcpserver
    ```
+
+The service reads this file if it exists (`EnvironmentFile=-/etc/default/sigmatcpserver`
+in the unit) and appends `$SIGMATCP_OPTS` to its built-in options, so the defaults,
+including `--store --restore`, stay in effect. No such file is installed by the package.
+
+For a one-off session you can also run the server in the foreground instead:
+```bash
+sudo systemctl stop sigmatcpserver
+sudo sigmatcpserver --localhost --enable-rest --alsa --disable-tcp --store --restore --debug
+```
+Press Ctrl-C to stop it (this also stores the DSP memory), then
+`sudo systemctl start sigmatcpserver`.
 
 ## Viewing Debug Logs
 
@@ -49,7 +56,7 @@ Debug logging captures all DSP memory writes regardless of the source:
 
 ## Available Options
 
-You can also add other options in `/etc/default/sigmatcpserver`:
+`SIGMATCP_OPTS` can hold any additional option, separated by spaces:
 
 - `--debug` - Log all DSP memory writes
 - `--verbose` - Enable verbose logging  
@@ -57,16 +64,20 @@ You can also add other options in `/etc/default/sigmatcpserver`:
 - `--lgsoundsync` - Enable LG Sound Sync
 - `--no-autoload-filters` - Disable filter autoloading
 
+Options in `SIGMATCP_OPTS` are only added. To change or remove a built-in option, such as
+`--disable-tcp` to allow SigmaStudio connections, override the whole command with
+`sudo systemctl edit sigmatcpserver` (an empty `ExecStart=` line followed by the new one),
+and keep `--store --restore` in it unless you want to lose the DSP memory across reboots.
+
 ## Disabling Debug Mode
 
 To disable debug logging:
 
-1. Edit `/etc/default/sigmatcpserver`
-2. Comment out or remove the DEBUG_OPTIONS line:
+1. Remove the file, or remove `--debug` from `SIGMATCP_OPTS` in it:
    ```bash
-   #DEBUG_OPTIONS="--debug"
+   sudo rm /etc/default/sigmatcpserver
    ```
-3. Restart the service:
+2. Restart the service:
    ```bash
    sudo systemctl restart sigmatcpserver
    ```
