@@ -1,3 +1,26 @@
+hifiberry-dsp (1.5.7) stable; urgency=medium
+
+  * Writing a DSP profile to the EEPROM now holds the SPI bus for the whole
+    sequence. Until now every single write took the bus on its own, so the
+    ALSA volume sync or a /checksum or /program-info request (which stop and
+    restart the DSP core themselves) could run in between the page writes
+    of the self-boot programmer. That can leave the EEPROM half written,
+    which only shows at the next power-on, when the DSP no longer boots
+    (#87). Other SPI users now wait until the write is done; on a
+    Beocreate 4-Channel Amplifier a /checksum request sent during the write
+    waited 50 s.
+  * The 1 s wait after the program data write never happened: the check
+    looked for "Programn". It now matches "Program" and "Program Data".
+  * 5 s extra wait after the last EEPROM page before the program is loaded
+    into RAM, so the self-boot programmer can finish the last page.
+  * POST /dspprofile reports an error (HTTP 500, "status": "error") when the
+    program running on the DSP does not match the profile after writing,
+    instead of "success" with "match": false.
+  * Writing beocreate-universal-11 to a Beocreate 4-Channel Amplifier takes
+    70.1 s instead of 62.9 s.
+
+ -- HiFiBerry <support@hifiberry.com>  Wed, 11 Nov 2026 14:47:29 +0000
+
 hifiberry-dsp (1.5.6) stable; urgency=medium
 
   * Extra sigmatcpserver options can be set again without overriding the

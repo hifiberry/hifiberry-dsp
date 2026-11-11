@@ -1325,7 +1325,21 @@ def get_xml_profile_data():
                 # The cache should have already been updated by the write_eeprom_content function,
                 # but we'll invalidate it again to be sure the next read loads the new profile
                 invalidate_cache()
-                
+
+                if not checksums_match:
+                    # The write went through without an error, but the DSP
+                    # does not run the profile: the EEPROM may not hold it
+                    # either, which only shows at the next power-on.
+                    logging.error("Program on the DSP does not match the profile after writing: %s",
+                                  checksum_info)
+                    return jsonify({
+                        "status": "error",
+                        "message": f"Profile from {source_type} was written, but the program "
+                                   "running on the DSP does not match it",
+                        "checksums": checksum_info,
+                        "match": False
+                    }), 500
+
                 return jsonify({
                     "status": "success",
                     "message": f"Profile from {source_type} successfully written to EEPROM",
