@@ -58,6 +58,15 @@ class Adau145x():
     STARTCORE_REGISTER = 0xf402
     KILLCORE_REGISTER = 0xf403
 
+    # Waits while replaying a profile into the self-boot EEPROM, in seconds.
+    # The self-boot programmer works in the background after each write, so
+    # the next write has to wait until it is done.
+    EEPROM_ERASE_WAIT = 10          # after g_Erase
+    EEPROM_PAGE_WAIT = 1            # after every Page_ write
+    EEPROM_LAST_PAGE_WAIT = 5       # extra, after the last Page_ write
+    EEPROM_RAM_WRITE_WAIT = 1       # after Program, DM0, DM1, HIBERNATE
+    EEPROM_DELAY_WAIT = 1           # for every <delay> action
+
     PROGRAM_END_SIGNATURE = b'\x02\xC2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 
     PROGRAM_LEN_UPPER = 0xf463 
@@ -904,6 +913,21 @@ class Adau145x():
             return None
 
     @staticmethod
+    def _eeprom_wait_after(paramname):
+        """Seconds to wait after a profile write action with this ParamName."""
+        if "g_Erase" in paramname:
+            return Adau145x.EEPROM_ERASE_WAIT
+        if "Page_" in paramname:
+            return Adau145x.EEPROM_PAGE_WAIT
+        # "Program" / "Program Data" load the program into RAM. Matched at
+        # the start so the self-boot programmer's own parameters, such as
+        # "Sigma300.SelfbootProgrammer.PLL Lock Delay", do not count.
+        if (paramname.startswith("Program") or "DM0" in paramname
+                or "DM1" in paramname or "HIBERNATE" in paramname):
+            return Adau145x.EEPROM_RAM_WRITE_WAIT
+        return 0
+
+    @staticmethod
     def write_eeprom_content(xmldata):
         """
         Write EEPROM content based on XML data.
@@ -924,49 +948,49 @@ class Adau145x():
         
         try:
             doc = xmltodict.parse(xmldata)
+            actions = doc["ROM"]["page"]["action"]
+            if not isinstance(actions, list):
+                actions = [actions]
+            page_indices = [i for i, action in enumerate(actions)
+                            if "Page_" in action.get("@ParamName", "")]
+            last_page = page_indices[-1] if page_indices else None
 
-            # Kill DSP and clear checksum cache before updating
-            Adau145x.clear_checksum_cache()
-            Adau145x.kill_dsp()
-            
-            for action in doc["ROM"]["page"]["action"]:
-                instr = action["@instr"]
+            # The whole sequence is one operation for the DSP: the self-boot
+            # programmer copies pages into the EEPROM between our writes, and
+            # anything else on the bus in between (volume sync, checksum
+            # reads, which stop and restart the core) can leave the EEPROM
+            # half written. Hold the bus until the core runs again.
+            with SpiHandler.lock:
+                Adau145x.clear_checksum_cache()
+                Adau145x.kill_dsp()
 
-                if instr == "writeXbytes":
-                    addr = int(action["@addr"])
-                    paramname = action["@ParamName"]
-                    data = []
-                    for d in action["#text"].split(" "):
-                        value = int(d, 16)
-                        data.append(value)
+                for index, action in enumerate(actions):
+                    instr = action["@instr"]
 
-                    logging.debug("writeXbytes %s %s", addr, len(data))
-                    Adau145x.write_memory(addr, data)
+                    if instr == "writeXbytes":
+                        addr = int(action["@addr"])
+                        paramname = action.get("@ParamName", "")
+                        data = []
+                        for d in action["#text"].split(" "):
+                            value = int(d, 16)
+                            data.append(value)
 
-                    # Sleep after erase operations
-                    if ("g_Erase" in paramname):
-                        logging.debug(
-                            "found erase command, waiting 10 seconds to finish")
-                        time.sleep(10)
+                        logging.debug("writeXbytes %s %s", addr, len(data))
+                        Adau145x.write_memory(addr, data)
 
-                    # Delay after Programn, DM0 data, DM1 data, HIBERNATE
-                    if ("Programn" in paramname) or ("DM0" in paramname) or ("DM1" in paramname) or ("HIBERNATE" in paramname):
-                        logging.debug(
-                            "found program write command, waiting 1 seconds to finish")
-                        time.sleep(1)
+                        wait = Adau145x._eeprom_wait_after(paramname)
+                        if index == last_page:
+                            wait += Adau145x.EEPROM_LAST_PAGE_WAIT
+                        if wait:
+                            logging.debug("%s: waiting %s s", paramname, wait)
+                            time.sleep(wait)
 
-                    # Delay after a page write
-                    if ("Page_" in paramname):
-                        logging.debug(
-                            "found page write command, waiting 1 second to finish")
-                        time.sleep(1)
+                    if instr == "delay":
+                        logging.debug("delay")
+                        time.sleep(Adau145x.EEPROM_DELAY_WAIT)
 
-                if instr == "delay":
-                    logging.debug("delay")
-                    time.sleep(1)
-
-            # Restart the DSP core
-            Adau145x.start_dsp()
+                # Restart the DSP core
+                Adau145x.start_dsp()
 
             # Write current DSP profile to file
             with open(dspprogramfile, "w+b") as dspprogram:
