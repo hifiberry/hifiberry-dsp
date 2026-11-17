@@ -1,3 +1,12 @@
+hifiberry-dsp (1.5.8) stable; urgency=medium
+
+  * sigmatcpserver.service no longer waits for network.target. The server
+    binds to localhost only, which is up before any service starts, and the
+    wait made config-detect, and through it the audio server, start only
+    after NetworkManager: about 20 s later at boot on a Pi 4.
+
+ -- HiFiBerry <support@hifiberry.com>  Tue, 17 Nov 2026 11:45:00 +0000
+
 hifiberry-dsp (1.5.7) stable; urgency=medium
 
   * Writing a DSP profile to the EEPROM now holds the SPI bus for the whole
