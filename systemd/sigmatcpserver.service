@@ -13,7 +13,13 @@ Description=HiFiBerry DSP TCP/REST API service
 # node is not there. Requisite= would log a failed dependency on every
 # boot instead, and BindsTo= would wait 90 s for a device that never comes.
 ConditionPathExists=/dev/spidev0.0
-After=dev-spidev0.0.device network.target
+# Not after network.target: the server binds to localhost only, and loopback
+# is up before any service starts. Waiting for the network made config-detect,
+# and through it the audio server, wait for NetworkManager at boot.
+# Binding to a LAN address with --bind-address in SIGMATCP_OPTS needs that
+# address to exist, which network.target never guaranteed; add a drop-in with
+# After= and Wants=network-online.target for that.
+After=dev-spidev0.0.device
 
 [Service]
 # --store: dump DSP data memory on graceful shutdown
