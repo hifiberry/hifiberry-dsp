@@ -1,3 +1,11 @@
+hifiberry-dsp (1.5.9) stable; urgency=medium
+
+  * src/bin/sigmatcpserver carried a GPLv3 header although the toolkit is
+    MIT licensed. The header is now the MIT license, like the rest of the
+    package (#101, jspricke).
+
+ -- HiFiBerry <support@hifiberry.com>  Mon, 23 Nov 2026 10:08:29 +0100
+
 hifiberry-dsp (1.5.8) stable; urgency=medium
 
   * sigmatcpserver.service no longer waits for network.target. The server
